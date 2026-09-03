@@ -110,6 +110,16 @@ const ECONOMIC_DELETE_GUARD: Record<string, (record: { fields: Record<string, un
     String(r.fields.status ?? '') === 'cleared'
       ? 'A cleared vendor payment carries a posted cash/AP effect — it cannot be deleted. Reverse it through the governed payment reversal so the accounting is compensated and auditable.'
       : null,
+  // ERP Session 64 (the S63 census's STOP-class find) — the REVERSAL RECORD ITSELF is the
+  // evidence D4 produces: deleting one would flip the invoice/bill back to PAID through the
+  // shared reconciler while the booked `${base}-REV` GL entry is never compensated (an
+  // un-reversal wearing a delete), and would destroy a record whose own validate hook declares
+  // it "immutable historical evidence". Refused UNCONDITIONALLY (every reversal row is
+  // economically active by construction — there is no inert status to exempt). Key is the
+  // literal module id (= PAYMENT_REVERSALS_MODULE_ID in finance/paymentReconcile.ts; the
+  // framework does not import from modules/ — ids are stable persisted keys).
+  'finance-payment-reversals': () =>
+    'A payment reversal is immutable historical evidence carrying a posted compensating GL entry — it cannot be deleted. The original payment, the reversal, and their ledger effects are permanent records.',
 };
 import { ENTERPRISE_CHANNEL_PERMISSIONS } from '../authzGate';
 import type {

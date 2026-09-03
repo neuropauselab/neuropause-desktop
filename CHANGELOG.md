@@ -7,7 +7,17 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.23`._
+_No unreleased changes; the current build is `1.0.0-rc.24`._
+
+## [1.0.0-rc.24] — S57–S64 governance ships: reversals, policy closures, and the un-reversal door shut (2026-09-03)
+
+Version bumped from `1.0.0-rc.23` because the rc.23 artifacts predate ERP sessions 57–64: the
+eight governed O2C reversal/settlement commands (S57), the operator policy closures and
+issued-invoice adjustment governance (S58–S60), the governed payment reversal with the
+financial delete boundary (S61, FG-activated in S62), and S64's closure of the S63-found
+reversal-record delete gap (a forced delete could un-reverse a payment; now refused
+unconditionally in the canonical delete guard). rc.24 is the first shippable artifact carrying
+all of it; promotion record: `certification/SESSION64-REVERSAL-DELETE-GUARD-AND-RC24-CERTIFICATION.md`.
 
 ## [1.0.0-rc.23] — the S55 governance-closure fence set ships (2026-09-03)
 

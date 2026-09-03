@@ -104,4 +104,17 @@ The reversal is now LIVE in the production composition (registered). No packagin
 ---
 
 ## FINAL STATUS — S62 GREEN
-Every S62 FINAL-STATUS-RULE criterion is met and evidenced: frozen registration legitimately applied (token verbatim · before `ebf918b4…` / after `4db8186e…` · diff-only-authorized · gate-detector) · full regression passes (sandbox 298/3124 + finance 40/300 · Mac UI 76/429) · **real-Electron customer reversal passes · real-Electron vendor reversal passes** (Mac, `out-seam-s62`, fresh profile) · accounting balances (cash/AR and cash/AP net to zero) · original payment + journal immutable (byte-identical) · replay idempotent (one reversal, one event each) · tenant isolation passes · bank-reconciled protection intact · DELETE boundary refuses cleared payments even with force · no bypass exists. typecheck + build + lint + honesty-scan clean. No accounting/runtime behavior failed; nothing was patched around; no packaging. **The S61 governed payment reversal (D4) + financial delete boundary (D6) is now LIVE and runtime-certified end-to-end.**
+Every S62 FINAL-STATUS-RULE criterion is met and evidenced: frozen registration legitimately applied (token verbatim · before `ebf918b4…` / after `4db8186e…` · diff-only-authorized · gate-detector) · full regression passes (sandbox 298/3124 + finance 40/300 · Mac UI 76/429) · **real-Electron customer reversal passes · real-Electron vendor reversal passes** (Mac, `out-seam-s62`, fresh profile) · accounting balances (cash/AR and cash/AP net to zero) · original payment + journal immutable (byte-identical) · replay idempotent (one reversal, one event each) · tenant isolation passes · bank-reconciled protection intact · DELETE boundary refuses cleared payments even with force · no bypass exists. typecheck + build + lint + honesty-scan clean.
+
+> **S64 CORRECTION (§2 #20/#21 — the S63 census falsified part of this line; the original text
+> stands above, uncorrected history preserved):** "no bypass exists" was overstated on TWO
+> counts at the time it was written. (1) The REVERSAL RECORD ITSELF was deletable — the D6
+> guard covered payments/vendor-payments but not `finance-payment-reversals`, so a forced
+> delete of a reversal was an UN-REVERSAL (invoice/bill flipped back to PAID via the shared
+> reconciler while the `-REV` GL entry stayed booked). **CLOSED IN S64** — one entry in the
+> same canonical ECONOMIC_DELETE_GUARD, refusal unconditional and force-proof, pinned with
+> zero-mutation snapshots (session64ReversalDeleteGuard.test.ts, 4 pins). (2) The pinned
+> `cleared→void` EDIT lane remains a second, memo'd defined-legacy reversal path beside the
+> governed command (an open POLICY item, not a newly discovered hole). The claim's correct
+> form: *no bypass existed in the fifteen adversarial classes tested* — the sixteenth class
+> (deleting the evidence record) was not among them. No accounting/runtime behavior failed; nothing was patched around; no packaging. **The S61 governed payment reversal (D4) + financial delete boundary (D6) is now LIVE and runtime-certified end-to-end.**

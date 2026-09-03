@@ -105,6 +105,12 @@ async function main() {
     const delPay = await del('finance-payments', payId, true);
     assert(delPay.ok === false, 'DELETE of a cleared payment REFUSED even with force (D6)');
     assert(String((await record('finance-payments', payId)).status) !== 'deleted', 'payment NOT deleted');
+    // ═══ S64 — the REVERSAL RECORD itself is delete-proof (the un-reversal door closed) ═══
+    const delRev = await del('finance-payment-reversals', rev.data.id, true);
+    assert(delRev.ok === false, 'S64: DELETE of the customer REVERSAL RECORD refused even with force (un-reversal blocked)');
+    const invStill = await record('finance', invId);
+    assert(String(invStill.fields.status) === 'issued' && Number(invStill.fields.amountPaid) === 0,
+      'S64: invoice UNCHANGED after the refused reversal delete (no flip back to paid, no GL mutation)');
 
     // ═══ VENDOR reversal journey ═══
     const po = await create('procurement-orders', { poNumber: 'PO-REV', supplier: 'Globex', warehouse: 'WH-1', currency: 'USD', lines: JSON.stringify([{ sku: 'SKU-A', quantity: 16, unitPrice: 5 }]) });
@@ -131,6 +137,11 @@ async function main() {
     assert(vrevReplay.ok && vrevReplay.replayed === true, 'same-key vendor reversal REPLAYS (one reversal, ever)');
     const delVpay = await del('finance-vendor-payments', vpayId, true);
     assert(delVpay.ok === false, 'DELETE of a cleared vendor payment REFUSED even with force (D6)');
+    const delVrev = await del('finance-payment-reversals', vrev.data.id, true);
+    assert(delVrev.ok === false, 'S64: DELETE of the vendor REVERSAL RECORD refused even with force');
+    const billStill = await record('finance-vendor-bills', bill.record.id);
+    assert(Number(billStill.fields.amountPaid) === 0 && String(billStill.fields.status) === 'approved',
+      'S64: bill UNCHANGED after the refused reversal delete');
 
     // ═══ DURABLE journal — one reversal event each, no duplicate on replay ═══
     const journalPath = path.join(userData, 'platform-command-journal.json');

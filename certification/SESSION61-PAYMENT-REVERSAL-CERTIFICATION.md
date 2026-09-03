@@ -78,6 +78,13 @@ Customer reversal (module + governed): nets Cash/AR to zero, re-opens the invoic
 
 1 unauthorized ✓ · 2 cross-tenant ✓ · 3 renderer cannot mutate status to reverse (S46 edit-fence + reversal is create-only, no reverse-by-edit) ✓ · 4 legacy action bypass — reversal is create-only through the governed create door (RBAC + validate); no action door exists to bypass ✓ · 5 original not rewritten ✓ · 6 original journal not deleted ✓ · 7 duplicate reversal rejected ✓ · 8 duplicate GL impossible ✓ · 9 duplicate event impossible (idempotent replay) ✓ · 10 bank-reconciled evidence not erased ✓ · 11 DELETE cannot substitute ✓ · 12 nonexistent payment fails ✓ · 13 already-reversed deterministic (refused) ✓ · 14 forged tenant fails (TENANT_SCOPE_VIOLATION) ✓ · 15 forged internal-action origin — reversal uses the create door (no origin token); `.strict()` schemas reject any forged field; the S46 action-origin boundary is unaffected ✓.
 
+> **S64 CORRECTION (§2 #21 — the list above was complete for what it tested and silent about
+> what it did not; original preserved):** item 11 ("DELETE cannot substitute") covered deleting
+> the ORIGINAL cleared payment. It did not cover deleting the REVERSAL RECORD — which was
+> possible at this cert's HEAD and constituted an un-reversal (S63 census finding, STOP-class).
+> S64 closed it in the same canonical delete guard with zero-mutation pins. The fifteen classes
+> above all still hold; a sixteenth now exists and holds too.
+
 ## 20 · Full regression
 
 Memory-safe focused (the full 964+ main + UI + real-Electron run is the Mac's, per the standing pattern): finance module suite **40 files / 300 passed** (S60 base 39/290; +1 file +10 S61 module pins); finance + framework + platform/command **53/449**; ipc/handlers + erp **27/326** (incl. the 8 S61 governed pins); enterprise + tenancy **265 files / 2713 passed** — zero regression from the reconciler refactor, the new module, the D6 guard, or the command/bus additions. The delegate refactor is proven byte-identical by the unchanged existing payment/vendor-payment suites. typecheck:node clean; eslint clean on all changed files; typecheck:test introduces no new S61 errors.
