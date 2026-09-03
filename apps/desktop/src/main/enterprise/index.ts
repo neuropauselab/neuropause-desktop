@@ -142,6 +142,7 @@ import { fixedAssetModule } from './modules/finance/fixedAssetModuleInstance';
 import { creditNoteModule } from './modules/finance/creditNoteModuleInstance';
 import { debitNoteModule } from './modules/finance/debitNoteModuleInstance';
 import { vendorPaymentModule } from './modules/finance/vendorPaymentModuleInstance';
+import { paymentReversalModule } from './modules/finance/paymentReversalModuleInstance';
 import { exchangeRateModule } from './modules/finance/exchangeRateModuleInstance';
 import { financialRatiosModule } from './modules/finance/financialRatiosModuleInstance';
 import { cashFlowModule } from './modules/finance/cashFlowModuleInstance';
@@ -1278,6 +1279,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   registerModule(creditNoteModule); // Finance → Credit Notes (invoice adjustments, revenue/tax reversal)
   registerModule(debitNoteModule); // Finance → Debit Notes (bill adjustments, AP/input-credit reversal)
   registerModule(vendorPaymentModule); // Finance → Vendor Payments (partial-capable AP settlement)
+  registerModule(paymentReversalModule); // Finance → Payment Reversals (S61: governed reversal of a cleared payment)
   registerModule(exchangeRateModule); // Finance → Exchange Rates (effective-dated FX rate table)
   registerModule(financialRatiosModule); // Finance → Financial Ratios (GL-derived ratio registers)
   registerModule(cashFlowModule); // Finance → Cash Flow Statement (direct-method over posted GL entries)
