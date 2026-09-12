@@ -7,7 +7,41 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_Everything in flight is described in the `1.0.0-rc.29` entry below._
+_Everything in flight is described in the `1.0.0-rc.30` entry below._
+
+## [1.0.0-rc.30] — the pilot decision gate gets a thrower, and the gates get exercised (2026-09-12)
+
+Version bumped from `1.0.0-rc.29` via the sanctioned tool (`npm run version:bump`), five fields in
+sync. `v1.0.0-rc.29` is tagged and bound to `f0ba0e8`; a version is spent once a tag exists for it,
+so this work ships as rc.30 rather than producing a second binary under the rc.29 label — the
+`da36851` failure class Gate 27 exists to prevent. Gate 27 caught this bump itself: it failed on the
+first full-suite run of this work and named the remedy, which is what was then done.
+
+**The orphaned refusal path is closed.** `PilotErrorCode` declared six codes and the router mapped
+`human_decision_required` to HTTP 403, but at `f0ba0e8` nothing in the module ever threw it:
+`DECLARED_MINUS_THROWN = ['human_decision_required']`. The 403 was unreachable.
+`apps/backend/src/pilot/authority.ts` supplies the missing thrower — a deny-by-default decision
+authority evaluator — and after this change the set difference is empty. An enforcement code with no
+thrower is a mapping that looks like a control and is not one.
+
+**The enforcement gates are exercised rather than merely implemented.** `router.enforcement.test.ts`
+pins refusal at the consequential consumer: every outcome state (`CONTINUE`,
+`PAID_PENDING_HUMAN_DECISION`, `INSTITUTIONAL_PENDING`, `EXTENDED`, `STOPPED`, `COMPLETED`) is refused
+for a self-issued decision and writes nothing, an unauthenticated caller is rejected before the
+service, and `actor !== subject` is refused identically so the path cannot serve as a state-name
+oracle. `service.test.ts` adds the `NP-ENF-015-*` series, including `-016` (an evaluator injected via
+`Object.prototype` is refused with no write), `-026a/b/c` (`NO_AUTHORITY_CONFIGURED` answers UNKNOWN
+for every context, and the coercion withholds every non-ALLOW/DENY answer), and `-027`, a positive
+control proving the guard is not merely always-denying. 32 pilot tests, 450 backend tests, 53
+workspaces typechecking clean.
+
+**Certification artifacts.** Adds the SLSA-style supply-chain audit and the FG16 / IPC-ENV execution
+evidence under `certification/`, plus `certification/pilot-gate-closure/` carrying a state snapshot
+object, a pilot claim register, a test-to-artifact binding for every execution record, a regulatory
+reviewer briefing pack, and a gate status board.
+
+No authorization is created by this release. `GATE-INTENDED-USE` remains `NOT_ESTABLISHED`, no
+baseline is designated, no pilot claim is adopted, and no classification is assigned.
 
 ## [1.0.0-rc.29] — the import journey waits for the refresh it started (2026-09-07)
 
