@@ -1,7 +1,8 @@
 # macOS build + release pipeline for NeuroPause.
 #
 # Mirror of windows-release.yml for the macOS target. It builds the macOS
-# artifacts (.dmg + .zip, arm64) on a macos-latest runner and, on a tag push,
+# artifacts (.dmg + .zip, UNIVERSAL x86_64+arm64) on a macos-latest runner and,
+# on a tag push,
 # publishes them to a GitHub Release. Signing and notarization turn on
 # automatically when the credential secrets are present and are skipped
 # (clean unsigned build, no failure) when they are absent — matching the
@@ -76,7 +77,8 @@ jobs:
       - name: Test
         run: npm run test:release
 
-      # Package the macOS .dmg + .zip (arm64). The backend URL is baked into
+      # Package the macOS .dmg + .zip (universal: x86_64 + arm64, so Intel Macs are
+      # covered as well as Apple Silicon). The backend URL is baked into
       # build-info.json by generate-build-info.cjs (same mechanism as Windows).
       #
       # Signing is opt-in and fail-open-to-unsigned:
@@ -194,7 +196,13 @@ jobs:
           echo "$DEPLOY_SSH_KEY" > deploy_key
           chmod 600 deploy_key
           # Stable, version-agnostic name the download page links to.
-          cp apps/desktop/dist/NeuroPause-arm64.dmg "NeuroPause.dmg" 2>/dev/null || \
+          # The build is UNIVERSAL (x86_64 + arm64) as of rc.30, so electron-builder
+          # emits NeuroPause-universal.dmg. The glob is kept as a fallback so an arch
+          # rename never silently publishes nothing, but the explicit name is listed
+          # first so the intended artifact is obvious rather than incidental — the
+          # previous line named NeuroPause-arm64.dmg and, after the universal switch,
+          # only ever succeeded via the fallback with its error sent to /dev/null.
+          cp apps/desktop/dist/NeuroPause-universal.dmg "NeuroPause.dmg" 2>/dev/null || \
             cp apps/desktop/dist/*.dmg "NeuroPause.dmg"
           scp -o StrictHostKeyChecking=no -i deploy_key "NeuroPause.dmg" \
             root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause.dmg

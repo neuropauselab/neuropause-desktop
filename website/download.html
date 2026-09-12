@@ -238,9 +238,12 @@
       var RELEASES_PAGE = 'https://neuropause033.com/download.html';
 
       // Asset file names as PUBLISHED to /downloads/, which is not always the
-      // name electron-builder emits: macos-release.yml renames the arm64 build
-      // to a plain NeuroPause.dmg on the way to the droplet, so linking the
-      // builder's NeuroPause-arm64.dmg here 404s for every Mac visitor.
+      // name electron-builder emits: macos-release.yml renames the build to a
+      // plain NeuroPause.dmg on the way to the droplet, so linking the builder's
+      // own NeuroPause-universal.dmg here would 404 for every Mac visitor.
+      // The macOS build is UNIVERSAL (x86_64 + arm64) as of rc.30 — one file
+      // serves both Intel and Apple Silicon, so this page needs no architecture
+      // detection and no second Mac link.
       var WIN_EXE = BASE + 'NeuroPause-Setup.exe';
       var MAC_DMG = BASE + 'NeuroPause.dmg';
 
