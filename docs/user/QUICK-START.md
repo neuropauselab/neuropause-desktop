@@ -19,12 +19,12 @@ Business users who want their work and their AI in one place; administrators who
 
 ## Download & install
 
-**Maturity: Release Candidate.** The first target platform is **macOS (Apple Silicon)**.
+**Maturity: Release Candidate.** The first target platform is **macOS (Apple Silicon and Intel — the build is universal)**.
 
 - **Pilot from source (available today):** clone the repository, then `npm install` and `npm run dev` from the repo root — this launches the backend and the desktop app together. See the [Enterprise Pilot Guide](../enterprise/ENTERPRISE-PILOT-GUIDE.md) for the full setup (PostgreSQL + Redis).
-- **Packaged desktop build:** produced with `npm run package:mac` (macOS, Apple Silicon). A **signed & notarized** pilot artifact is **not yet published** — code-signing identity is an operator action. See the [Download Catalog](../downloads/DOWNLOAD-CATALOG.md) for the current, honest artifact status (no invented download links).
+- **Packaged desktop build:** produced with `npm run package:mac` (macOS, universal — Apple Silicon and Intel). A **signed & notarized** pilot artifact is **not yet published** — code-signing identity is an operator action. See the [Download Catalog](../downloads/DOWNLOAD-CATALOG.md) for the current, honest artifact status (no invented download links).
 
-> Windows and Linux are on the roadmap; macOS (Apple Silicon) is the first target. **Maturity: Planned** for other platforms.
+> Windows and Linux are on the roadmap; macOS (Apple Silicon and Intel, universal) is the first target. **Maturity: Planned** for other platforms.
 
 ## Launch & sign in
 

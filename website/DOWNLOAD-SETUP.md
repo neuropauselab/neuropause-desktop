@@ -28,8 +28,10 @@ scp "~/Downloads/NeuroPause Setup 1.0.0-rc.1.exe" \
   root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause-Setup.exe
 
 # (optional) upload the macOS dmg too
-scp ~/Desktop/neuropause-desktop/apps/desktop/dist/NeuroPause-*arm64.dmg \
-  root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause-arm64.dmg
+# The build is universal (Intel + Apple Silicon); publish it under the stable,
+# arch-free name that download.html actually links.
+scp ~/Desktop/neuropause-desktop/apps/desktop/dist/NeuroPause-universal.dmg \
+  root@64.227.128.218:/opt/neuropause-site/website/downloads/NeuroPause.dmg
 ```
 Then verify: `curl -I https://neuropause033.com/downloads/NeuroPause-Setup.exe`
 → `HTTP/2 200`. The download page is now fully functional for anyone.

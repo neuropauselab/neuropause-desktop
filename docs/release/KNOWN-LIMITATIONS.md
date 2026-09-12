@@ -5,7 +5,7 @@ None of these are defects — they are the deliberate boundaries of this release
 
 ## Platform
 
-- **macOS on Apple Silicon (arm64) only.** Windows and Linux are designed for and
+- **macOS ships as a universal binary (Apple Silicon and Intel).** Windows and Linux are designed for and
   structurally accounted for, but are not built or supported in this release.
   Intel Macs are not targeted.
 

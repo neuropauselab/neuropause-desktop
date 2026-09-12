@@ -49,7 +49,7 @@ client** (local-first Electron app) and the **optional backend** (Express + Post
 
 | Plane         | Prerequisite                                                                               | Source                                 |
 | ------------- | ------------------------------------------------------------------------------------------ | -------------------------------------- |
-| Desktop       | Apple Silicon (M1+), macOS 12+, ~300 MB free                                               | `INSTALLATION.md`                      |
+| Desktop       | macOS 12+ on Apple Silicon **or Intel** (universal build), ~500 MB free                                               | `INSTALLATION.md`                      |
 | Desktop       | Signed & notarized DMG from pilot contact (reject "unidentified developer" builds)         | `INSTALLATION.md`                      |
 | Desktop       | Identity: Google / GitHub / Microsoft / Apple / email sign-in                              | `QUICK-START.md`                       |
 | Backend       | Docker Engine + Compose v2; ~1 GB RAM for the stack                                        | `DEPLOYMENT.md`                        |
