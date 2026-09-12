@@ -1,0 +1,108 @@
+{
+  "ARTIFACT": "TR-GPR-03_TEST_ARTIFACT_BINDING",
+  "SCHEMA": "np.pilot.test-artifact-binding/v1",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "MEASUREMENT_TIME": "2026-09-12T13:18:31Z",
+  "PURPOSE": "Implements TR-GPR-03, recorded as IMPLEMENTED_THIS_SEAM: false. Binds each test result to the exact source tree and environment it ran against, so a release label can never again carry two contradictory test outcomes.",
+  "PROBLEM_ADDRESSED": "NP-GLOBAL-PILOT-READINESS-20260907-001 TEST_EVIDENCE_STATE: \"0 full-64-hex artifact digests cross any test boundary in either custody\" and \"one release label carries two contradictory test outcomes in B custody\" (LOCAL_GREEN 98/98 vs REMOTE_RED 97/98).",
+  "BINDING_RULE": "every run below records exit status, a sha256 over its combined stdout+stderr computed at creation, and the HEAD/TREE/SOURCE_DIGEST/BUILD_DEFINITION_DIGEST it executed against.",
+  "EXECUTION_RECORDS": [
+    {
+      "RUN_ID": "EXEC-01-TYPECHECK",
+      "DESCRIPTION": "TypeScript typecheck of @neuropause/backend",
+      "COMMAND": "npx tsc --noEmit",
+      "WORKING_DIRECTORY": "/Users/saurabhpatel/Desktop/np-pilot-gate-closure/apps/backend",
+      "STARTED_UTC": "2026-09-12T13:18:26Z",
+      "FINISHED_UTC": "2026-09-12T13:18:28Z",
+      "EXIT_STATUS": 0,
+      "STDOUT_STDERR_BYTES": 0,
+      "STDOUT_STDERR_SHA256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "DIGEST_COMPUTED_AT": "CREATION \u2014 hashed in-process immediately on completion, not retrospectively",
+      "BOUND_TO": {
+        "HEAD": "61b1503debad6783d2e8d2f3b78071794ee1df16",
+        "TREE": "36f75c069ac83fc2dee300f99211e674af7f70f0",
+        "BRANCH": "pilot/gate-closure",
+        "SOURCE_DIGEST": "a9afa5e1f91bf8aa1a59fbbf69994c007a8bfa2c999cbacb48ad3c2de2ad9072",
+        "BUILD_DEFINITION_DIGEST": "d224195e58263621a4122d076fd9f3c498fcf5aa8aa534eb8d2e59e8773cb7f0",
+        "SNAPSHOT_DIGEST": "63e78575ce04b3c65906e70493868927adfa09c3a05ea6a33993486aaf9ffa1d"
+      },
+      "ENVIRONMENT": {
+        "os": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+        "arch": "arm64",
+        "node": "v20.20.2",
+        "npm": "10.8.2"
+      }
+    },
+    {
+      "RUN_ID": "EXEC-02-PILOT-SUITE",
+      "DESCRIPTION": "pilot lifecycle + enforcement suite",
+      "COMMAND": "npx vitest run src/pilot",
+      "WORKING_DIRECTORY": "/Users/saurabhpatel/Desktop/np-pilot-gate-closure/apps/backend",
+      "STARTED_UTC": "2026-09-12T13:18:28Z",
+      "FINISHED_UTC": "2026-09-12T13:18:29Z",
+      "EXIT_STATUS": 0,
+      "STDOUT_STDERR_BYTES": 519,
+      "STDOUT_STDERR_SHA256": "67181c3d4f0c3daef4d48fe6b4e309829b09cee194fa9cbcd87797ba24391394",
+      "DIGEST_COMPUTED_AT": "CREATION \u2014 hashed in-process immediately on completion, not retrospectively",
+      "BOUND_TO": {
+        "HEAD": "61b1503debad6783d2e8d2f3b78071794ee1df16",
+        "TREE": "36f75c069ac83fc2dee300f99211e674af7f70f0",
+        "BRANCH": "pilot/gate-closure",
+        "SOURCE_DIGEST": "a9afa5e1f91bf8aa1a59fbbf69994c007a8bfa2c999cbacb48ad3c2de2ad9072",
+        "BUILD_DEFINITION_DIGEST": "d224195e58263621a4122d076fd9f3c498fcf5aa8aa534eb8d2e59e8773cb7f0",
+        "SNAPSHOT_DIGEST": "63e78575ce04b3c65906e70493868927adfa09c3a05ea6a33993486aaf9ffa1d"
+      },
+      "ENVIRONMENT": {
+        "os": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+        "arch": "arm64",
+        "node": "v20.20.2",
+        "npm": "10.8.2"
+      },
+      "TESTS_PASSED": 32,
+      "TESTS_TOTAL": 32,
+      "TEST_FILES_PASSED": 2,
+      "TEST_FILES_TOTAL": 2
+    },
+    {
+      "RUN_ID": "EXEC-03-FULL-SUITE",
+      "DESCRIPTION": "full @neuropause/backend test suite",
+      "COMMAND": "npx vitest run",
+      "WORKING_DIRECTORY": "/Users/saurabhpatel/Desktop/np-pilot-gate-closure/apps/backend",
+      "STARTED_UTC": "2026-09-12T13:18:29Z",
+      "FINISHED_UTC": "2026-09-12T13:18:31Z",
+      "EXIT_STATUS": 0,
+      "STDOUT_STDERR_BYTES": 14105,
+      "STDOUT_STDERR_SHA256": "5a64d94de39d80d604608a8a8d6862e1761df8746d57f6ea96b8ca390ca35c27",
+      "DIGEST_COMPUTED_AT": "CREATION \u2014 hashed in-process immediately on completion, not retrospectively",
+      "BOUND_TO": {
+        "HEAD": "61b1503debad6783d2e8d2f3b78071794ee1df16",
+        "TREE": "36f75c069ac83fc2dee300f99211e674af7f70f0",
+        "BRANCH": "pilot/gate-closure",
+        "SOURCE_DIGEST": "a9afa5e1f91bf8aa1a59fbbf69994c007a8bfa2c999cbacb48ad3c2de2ad9072",
+        "BUILD_DEFINITION_DIGEST": "d224195e58263621a4122d076fd9f3c498fcf5aa8aa534eb8d2e59e8773cb7f0",
+        "SNAPSHOT_DIGEST": "63e78575ce04b3c65906e70493868927adfa09c3a05ea6a33993486aaf9ffa1d"
+      },
+      "ENVIRONMENT": {
+        "os": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+        "arch": "arm64",
+        "node": "v20.20.2",
+        "npm": "10.8.2"
+      },
+      "TESTS_PASSED": 450,
+      "TESTS_TOTAL": 450,
+      "TEST_FILES_PASSED": 39,
+      "TEST_FILES_TOTAL": 39
+    }
+  ],
+  "RECORD_COUNT": 3,
+  "ALL_EXIT_ZERO": true,
+  "MG_01_RELEVANCE": "MG-01 requires \"three execution records \u2014 exit status, stdout, digest computed at creation\". Three are present. Whether they satisfy MG-01 formally is a human determination: MG-01 carries HUMAN_DECISION_REQUIRED true, and these runs were executed under the operator instruction of 2026-09-12, on an isolated branch at the same commit \u2014 not against the certified baseline worktree.",
+  "NOT_CLAIMED": [
+    "This does not adopt any pilot claim.",
+    "This does not designate a baseline.",
+    "This does not authorize a pilot.",
+    "A passing test is not a verified scientific claim."
+  ],
+  "BINDING_DIGEST": "a19c919b10c3698443601560ce1f2f8e52630a3b2948a068a521c70b5c447956"
+}

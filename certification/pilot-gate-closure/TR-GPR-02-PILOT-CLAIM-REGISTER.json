@@ -1,0 +1,61 @@
+{
+  "ARTIFACT": "TR-GPR-02_PILOT_CLAIM_REGISTER",
+  "SCHEMA": "np.pilot.claim-register/v1",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "MEASUREMENT_TIME": "2026-09-12T13:17:50Z",
+  "PURPOSE": "Implements TR-GPR-02, recorded as IMPLEMENTED_THIS_SEAM: false. Binds each pilot claim to its evidence requirement.",
+  "SCOPE": "PILOT-A-BASELINE-INTEGRITY-01, four-claim set",
+  "ADOPTION_STATE": "ALL FOUR NEITHER_ADOPTED_NOR_EXCLUDED; VERIFIER NOT_SELECTED",
+  "ADOPTION_IS_AN_AUTHORITY_ACT": "PILOT_CLAIM_SET_ADOPTION \u2014 MACHINE_ACTION_ALLOWED: false",
+  "CLAIMS": [
+    {
+      "CLAIM_ID": "PC-01",
+      "CLAIM_TEXT": "The frozen artefact set enumerated by the NP-RAT-01 manifest recomputes to the digests that manifest records.",
+      "CLAIM_TYPE": "SOFTWARE_BEHAVIOR",
+      "EVIDENCE_CLASS": "MEASURABLE",
+      "EVIDENCE_REQUIREMENT": "an enumerated manifest + a recomputation of every member digest + an equality result",
+      "EVIDENCE_PRESENT_THIS_SEAM": "PARTIAL \u2014 this seam produced a full source digest over 5617 tracked files (a9afa5e1f91bf8aa), but the NP-RAT-01 manifest itself is an A-custody object not present in B custody",
+      "STATUS": "NEITHER_ADOPTED_NOR_EXCLUDED",
+      "BLOCKED_BY": "PILOT_CLAIM_SET_ADOPTION (authority)"
+    },
+    {
+      "CLAIM_ID": "PC-02",
+      "CLAIM_TEXT": "The NPC 1.2 constitution document satisfies its 30 defined checks.",
+      "CLAIM_TYPE": "DOCUMENTARY",
+      "EVIDENCE_CLASS": "MEASURABLE",
+      "EVIDENCE_REQUIREMENT": "instruments/verify_npc.py executed against NPC 1.2, 30/30 checks, exit status recorded",
+      "EVIDENCE_PRESENT_THIS_SEAM": "ABSENT \u2014 instruments/verify_npc.py is an A-custody instrument (14,824 B) and is not present in B custody",
+      "STATUS": "NEITHER_ADOPTED_NOR_EXCLUDED",
+      "BLOCKED_BY": "instrument not in custody + PILOT_CLAIM_SET_ADOPTION"
+    },
+    {
+      "CLAIM_ID": "PC-03",
+      "CLAIM_TEXT": "The NPMS 1.4 master set document satisfies its 26 defined checks.",
+      "CLAIM_TYPE": "DOCUMENTARY",
+      "EVIDENCE_CLASS": "MEASURABLE",
+      "EVIDENCE_REQUIREMENT": "instruments/verify_npms.py executed against NPMS 1.4, 26/26 checks, exit status recorded",
+      "EVIDENCE_PRESENT_THIS_SEAM": "ABSENT \u2014 instruments/verify_npms.py is an A-custody instrument (11,089 B) and is not present in B custody",
+      "STATUS": "NEITHER_ADOPTED_NOR_EXCLUDED",
+      "BLOCKED_BY": "instrument not in custody + PILOT_CLAIM_SET_ADOPTION"
+    },
+    {
+      "CLAIM_ID": "PC-04",
+      "CLAIM_TEXT": "Each output of the pilot run is digest-bound at the moment of its creation.",
+      "CLAIM_TYPE": "PROVENANCE",
+      "EVIDENCE_CLASS": "MEASURABLE_ON_EXECUTION",
+      "EVIDENCE_REQUIREMENT": "every output object carries a digest computed at creation time, not retrospectively",
+      "EVIDENCE_PRESENT_THIS_SEAM": "DEMONSTRATED FOR THIS SEAMS OWN OUTPUTS \u2014 TR-GPR-01/02/03 each carry a digest computed at creation. NOT demonstrated for a pilot run, because no pilot run has occurred.",
+      "STATUS": "NEITHER_ADOPTED_NOR_EXCLUDED",
+      "BLOCKED_BY": "MG-01 (no pilot execution) + PILOT_CLAIM_SET_ADOPTION"
+    }
+  ],
+  "TALLY": {
+    "total": 4,
+    "measurable_now_in_B_custody": 1,
+    "blocked_by_absent_instrument": 2,
+    "blocked_by_no_execution": 1,
+    "adopted": 0
+  },
+  "REGISTER_DIGEST": "6a6609c79f2596fc1ea610352f8b8a03a43d03ecb24ef009505242843a0bd95f"
+}

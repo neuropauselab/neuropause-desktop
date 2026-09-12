@@ -1,0 +1,59 @@
+{
+  "ARTIFACT": "TR-GPR-01_STATE_SNAPSHOT_OBJECT",
+  "SCHEMA": "np.pilot.state-snapshot/v1",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "MEASUREMENT_TIME": "2026-09-12T13:17:50Z",
+  "PURPOSE": "Implements TR-GPR-01 from NP-GLOBAL-PILOT-READINESS-20260907-001, recorded there as IMPLEMENTED_THIS_SEAM: false.",
+  "CRITICAL_BOUNDARY": "This object is a MEASUREMENT. It is NOT a baseline. Designating a snapshot AS the baseline is BG-02b / MG-02 / BASELINE_AUTHORITY, which carries MACHINE_ACTION_ALLOWED: false. This artifact deliberately does NOT self-designate.",
+  "BASELINE_DESIGNATION": {
+    "DESIGNATED": false,
+    "DESIGNATED_BY": null,
+    "DESIGNATED_AT": null,
+    "HOW_TO_DESIGNATE": "a human authority records this snapshot_digest as authoritative; the machine must not"
+  },
+  "HEAD": "61b1503debad6783d2e8d2f3b78071794ee1df16",
+  "TREE": "36f75c069ac83fc2dee300f99211e674af7f70f0",
+  "BRANCH": "pilot/gate-closure",
+  "PARENT_COMMIT": "f0ba0e8faa6fd89e8b73a84f3967ddbdded0a5c6",
+  "DESCRIBE": "v1.0.0-rc.29-1-g61b1503",
+  "WORKTREE_STATE": {
+    "porcelain_count": 0,
+    "porcelain_digest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "clean": true
+  },
+  "SOURCE_DIGESTS": {
+    "tracked_file_count": 5617,
+    "digested_file_count": 5617,
+    "source_digest": "a9afa5e1f91bf8aa1a59fbbf69994c007a8bfa2c999cbacb48ad3c2de2ad9072",
+    "preimage_bytes": 654396,
+    "rule": "sha256 over LF-joined \"<path>\\t<sha256>\" records, LC_ALL=C sorted, terminal LF, UTF-8"
+  },
+  "BUILD_DEFINITION_DIGEST": {
+    "files": {
+      "package.json": "8d692e6fbc7a11eda38df2b803a7bf1dd9a59e857ff6ec040975804fc94d1b67",
+      "package-lock.json": "08970ff9d33dcea127bd2379bf019de69113f59a4780cfdd63076a9080fe8060",
+      "apps/backend/tsconfig.json": "2eb9fb13acbc19a478b7df98c20f5425e597adadea453db88b16587455ffdb6a",
+      "apps/backend/package.json": "2ff34317e57c54955f8064ef22b59ae93850f9ad561526b0053d7312f38d0b83"
+    },
+    "combined": "d224195e58263621a4122d076fd9f3c498fcf5aa8aa534eb8d2e59e8773cb7f0"
+  },
+  "ARTIFACT_DIGEST": {
+    "status": "NOT_BUILT_THIS_SEAM",
+    "reason": "no build was invoked; BUILD_INVOCATION_EXISTS remains False"
+  },
+  "ENVIRONMENT": {
+    "os": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "arch": "arm64",
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "python": "3.14.7",
+    "git": "git version 2.54.0"
+  },
+  "VERSIONS": {
+    "root": "1.0.0-rc.29",
+    "backend": "0.1.0"
+  },
+  "PROVENANCE_OF_THIS_OBJECT": "computed read-only from an isolated git worktree at branch pilot/gate-closure. The certified NP-B baseline worktree (HEAD f0ba0e8f, porcelain 16, digest 27302b87) was not modified.",
+  "SNAPSHOT_DIGEST": "63e78575ce04b3c65906e70493868927adfa09c3a05ea6a33993486aaf9ffa1d"
+}
