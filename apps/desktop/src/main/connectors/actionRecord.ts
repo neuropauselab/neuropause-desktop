@@ -28,6 +28,7 @@ import { recordFingerprint } from '../evidence/recordFingerprint';
 import { classifyTerminal } from '../verification/verificationTerminals';
 import { readStoreFile, envelopeStamp } from '../storage/storeEnvelope';
 import { declareStoreScope } from '../tenancy/storeScope';
+import { registerShutdownFlush } from '../shutdownFlush';
 import { createLogger } from '../logger';
 
 const log = createLogger('action-record');
@@ -602,6 +603,15 @@ class ActionRecordStore {
 }
 
 export const actionRecord = new ActionRecordStore();
+
+// GATE 16 — the evidence trail joins the shutdown barrier, registered beside its
+// singleton (the `*Instance.ts` idiom) because no composition file owns it.
+// NOT the coalesced-writer case the barrier was built for: every observe()
+// awaits its own atomic persist. The exposure is the gate's FIRE-AND-FORGET
+// emit (`connectors/index.ts:645`) — a quit landing inside that window loses the
+// evidence row for a send that has already left. `flush()` is exactly that
+// window's completion boundary, and it never rejects.
+registerShutdownFlush('action-records', () => actionRecord.flush());
 
 /**
  * SEAM-22 §21 — a READ-ONLY, FRESH reader over a specific directory's persisted

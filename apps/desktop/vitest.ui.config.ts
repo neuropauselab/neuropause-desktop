@@ -22,6 +22,14 @@ export default defineConfig({
     environment: 'jsdom',
     include: ['ui-tests/**/*.test.tsx'],
     setupFiles: ['ui-tests/setup.ts', './vitest.setup.ts'],
+    // Individual waits in here go up to 8000 ms on purpose — a real import
+    // commits to disk mid-test, and a slow Windows CI runner needs the room.
+    // Vitest's 5000 ms default kills the test BEFORE such a wait can elapse,
+    // so a missing button surfaces as an opaque suite-level timeout instead of
+    // the locator's own "unable to find an element" report. 30 s clears the
+    // longest chain in a single test (a 5 s mount wait plus three 8 s
+    // post-import waits) while still failing a genuinely hung test in seconds.
+    testTimeout: 30_000,
     // Testing Library must go through Vite's resolver, not Node's require, so
     // the react/react-dom aliases below apply to it too. Externalized, it
     // resolves its own React copy and every hook call fails with a null

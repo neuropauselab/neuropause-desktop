@@ -237,9 +237,12 @@
       var BASE = 'https://neuropause033.com/downloads/';
       var RELEASES_PAGE = 'https://neuropause033.com/download.html';
 
-      // Asset file names electron-builder produces (version-agnostic via /latest/download/).
+      // Asset file names as PUBLISHED to /downloads/, which is not always the
+      // name electron-builder emits: macos-release.yml renames the arm64 build
+      // to a plain NeuroPause.dmg on the way to the droplet, so linking the
+      // builder's NeuroPause-arm64.dmg here 404s for every Mac visitor.
       var WIN_EXE = BASE + 'NeuroPause-Setup.exe';
-      var MAC_DMG = BASE + 'NeuroPause-arm64.dmg';
+      var MAC_DMG = BASE + 'NeuroPause.dmg';
 
       var ua = navigator.userAgent;
       var isWin = /Windows/i.test(ua);

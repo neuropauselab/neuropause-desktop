@@ -56,6 +56,11 @@ const REQUIRED: Record<string, string> = {
   'ai-routing-usage': 'ai/routingUsageInstance.ts',
   'document-store': 'documents/index.ts',
   'identity-store': 'identity/index.ts',
+  // The action record is write-through, so it was read as needing no drain and
+  // stayed off both the barrier and this list. The gate emits it
+  // fire-and-forget (`connectors/index.ts`), so a quit can still land inside an
+  // in-flight write of governance evidence — it registers beside its singleton.
+  'action-records': 'connectors/actionRecord.ts',
 };
 
 describe('every background-write subsystem registers on the shutdown barrier (Gate 16)', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryPilotRepository } from './memoryRepository';
 import { advanceMachineStates, applyHumanDecision, day7Report, enroll, pilotDay, recordConsent, recordEvent, status } from './service';
 import { HUMAN_DECISION_STATES, PilotError } from './types';
+import { NO_AUTHORITY_CONFIGURED, ownAuthority, resolveAuthority } from './authority';
 
 const U = 'user-1';
 
@@ -62,7 +63,11 @@ describe('pilot lifecycle service', () => {
   });
 
   it('GOVERNANCE: every outcome state requires a recorded human decision; invalid targets rejected', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
+    // Authority is now evaluated BEFORE the value-domain check, so without an ALLOW the
+    // endpoint cannot be used as an oracle enumerating valid state names. This fixture
+    // injects a development-only ALLOW to reach the domain check at all.
+    // FIXTURE=TRUE ENVIRONMENT=DEVELOPMENT NON_PILOT=TRUE NON_AUTHORITY=TRUE
+    const deps = { repo: createMemoryPilotRepository(), authority: { evaluate: () => 'ALLOW' as const } };
     await recordConsent(deps, U, 'v1');
     await enroll(deps, U);
     await expect(applyHumanDecision(deps, 'actor-1', U, 'PILOT_ACTIVE', 'x', 'y')).rejects.toMatchObject({
@@ -81,6 +86,170 @@ describe('pilot lifecycle service', () => {
     const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
     expect(repo.decisions).toHaveLength(1);
     expect(repo.decisions[0]!.actorId).toBe('actor-1');
+  });
+
+  // NP-ENF-015-022: oracle resistance. Without authority, an INVALID target state is
+  // refused with the SAME code as a valid one — the endpoint leaks no membership signal.
+  it('NP-ENF-015-022 refusal is indistinguishable for valid and invalid target states', async () => {
+    const deps = { repo: createMemoryPilotRepository() };
+    await recordConsent(deps, U, 'v1');
+    await enroll(deps, U);
+    const valid = await applyHumanDecision(deps, 'actor-A', U, 'CONTINUE', 'd', 'r').catch((e) => e);
+    const invalid = await applyHumanDecision(deps, 'actor-A', U, 'NOT_A_STATE', 'd', 'r').catch((e) => e);
+    expect(valid.code).toBe('human_decision_required');
+    expect(invalid.code).toBe(valid.code);
+  });
+
+  // NP-ENF-015-001/002/003: the authority predicate, not actor/subject equality, is
+  // what withholds the operation. BOTH shapes must fail closed.
+  it.each([
+    ['NP-ENF-015-003 actor === subject', U, U],
+    ['NP-ENF-015-002 actor !== subject', 'actor-A', U],
+  ])('%s — refused with zero side effects when authority is UNKNOWN', async (_label, actorId, subjectId) => {
+    const deps = { repo: createMemoryPilotRepository() };
+    await recordConsent(deps, U, 'v1');
+    await enroll(deps, U);
+    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
+    const stateBefore = repo.enrollments.get(U)!.state;
+    const decisionIdBefore = repo.enrollments.get(U)!.decisionId;
+
+    await expect(
+      applyHumanDecision(deps, actorId, subjectId, 'PAID_PENDING_HUMAN_DECISION', 'd', 'r'),
+    ).rejects.toMatchObject({ code: 'human_decision_required' });
+
+    // §25 side-effect accounting on the refusal path.
+    expect(repo.decisions).toHaveLength(0);
+    expect(repo.enrollments.get(U)!.state).toBe(stateBefore);
+    expect(repo.enrollments.get(U)!.decisionId).toBe(decisionIdBefore);
+  });
+
+  // NP-ENF-015-004..011: nothing that is not an explicit ALLOW may widen the gate.
+  // Each evaluator below returns a non-ALLOW answer while carrying the tempting
+  // signal in its context; none may permit the write.
+  it.each([
+    ['NP-ENF-015-004 operator candidate', 'UNKNOWN' as const],
+    ['NP-ENF-015-005 admin', 'UNKNOWN' as const],
+    ['NP-ENF-015-006 founder', 'UNKNOWN' as const],
+    ['NP-ENF-015-007 verifier candidate', 'UNKNOWN' as const],
+    ['NP-ENF-015-008 consent granted', 'UNKNOWN' as const],
+    ['NP-ENF-015-009 claim exists unadopted', 'UNKNOWN' as const],
+    ['NP-ENF-015-010 baseline exists undesignated', 'DENY' as const],
+  ])('%s does not manufacture authority', async (_label, answer) => {
+    const deps = {
+      repo: createMemoryPilotRepository(),
+      // FIXTURE=TRUE ENVIRONMENT=DEVELOPMENT NON_PILOT=TRUE NON_AUTHORITY=TRUE
+      authority: { evaluate: () => answer },
+    };
+    await recordConsent(deps, U, 'v1');
+    await enroll(deps, U);
+    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
+
+    await expect(
+      applyHumanDecision(deps, 'actor-A', U, 'CONTINUE', 'd', 'r'),
+    ).rejects.toMatchObject({ code: 'human_decision_required' });
+    expect(repo.decisions).toHaveLength(0);
+  });
+
+  // NP-ENF-015-011: a string that merely LOOKS like a designation is not one.
+  it('NP-ENF-015-011 a synthetic "MR-04:DESIGNATED:true" string has no authority semantics', async () => {
+    const deps = {
+      repo: createMemoryPilotRepository(),
+      authority: {
+        evaluate: (ctx: { actorId: string }) =>
+          // Deliberately inspects the tempting signal and still refuses.
+          ctx.actorId.includes('MR-04:DESIGNATED:true') ? ('UNKNOWN' as const) : ('UNKNOWN' as const),
+      },
+    };
+    await recordConsent(deps, U, 'v1');
+    await enroll(deps, U);
+    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
+
+    await expect(
+      applyHumanDecision(deps, 'MR-04:DESIGNATED:true', U, 'CONTINUE', 'd', 'r'),
+    ).rejects.toMatchObject({ code: 'human_decision_required' });
+    expect(repo.decisions).toHaveLength(0);
+  });
+
+  // NP-ENF-015-026: the two pieces a mutation probe found UNPINNED. Removing the
+  // coercion, or flipping NO_AUTHORITY_CONFIGURED to ALLOW, previously left the whole
+  // suite green. These bind both.
+  it('NP-ENF-015-026a NO_AUTHORITY_CONFIGURED answers UNKNOWN for every context', () => {
+    expect(NO_AUTHORITY_CONFIGURED.evaluate({ actorId: 'a', subjectId: 'b', action: 'x' })).toBe('UNKNOWN');
+    expect(NO_AUTHORITY_CONFIGURED.evaluate({ actorId: 'a', subjectId: 'a', action: 'x' })).toBe('UNKNOWN');
+    expect(resolveAuthority(NO_AUTHORITY_CONFIGURED, { actorId: 'a', subjectId: 'b', action: 'x' })).toBe('UNKNOWN');
+  });
+
+  it('NP-ENF-015-026b the coercion withholds every non-ALLOW/DENY answer', () => {
+    const ctx = { actorId: 'a', subjectId: 'b', action: 'x' };
+    for (const bad of ['allow', ' ALLOW ', true, 1, null, undefined, ['ALLOW'], { toString: () => 'ALLOW' }])
+      expect(resolveAuthority({ evaluate: () => bad } as never, ctx)).toBe('UNKNOWN');
+    expect(resolveAuthority({ evaluate: () => 'DENY' } as never, ctx)).toBe('DENY');
+    expect(resolveAuthority({ evaluate: () => 'ALLOW' } as never, ctx)).toBe('ALLOW');
+  });
+
+  it('NP-ENF-015-026c an inherited or malformed evaluator is not an evaluator', () => {
+    const ctx = { actorId: 'a', subjectId: 'b', action: 'x' };
+    // Inherited via the prototype chain, not an own property.
+    const inherited = Object.create({ evaluate: () => 'ALLOW' });
+    expect(resolveAuthority(inherited, ctx)).toBe('UNKNOWN');
+    // Malformed shapes fail closed rather than throwing out of the guard.
+    for (const bad of ['ALLOW', 42, {}, () => 'ALLOW'])
+      expect(resolveAuthority(bad as never, ctx)).toBe('UNKNOWN');
+    expect(resolveAuthority({ evaluate: () => { throw new Error('boom'); } } as never, ctx)).toBe('UNKNOWN');
+  });
+
+  // NP-ENF-015-016: prototype-chain injection of an evaluator. A bare deps.authority
+  // lookup found a polluted Object.prototype.authority and WROTE a decision row against
+  // a production-shaped { repo } — measured. ownAuthority() is the fix; this pins it.
+  it('NP-ENF-015-016 an evaluator injected via Object.prototype is refused with no write', async () => {
+    const polluted = Object.prototype as unknown as { authority?: unknown };
+    polluted.authority = { evaluate: () => 'ALLOW' };
+    try {
+      const deps = { repo: createMemoryPilotRepository() };
+      await recordConsent(deps, U, 'v1');
+      await enroll(deps, U);
+      const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
+
+      // The polluted property IS visible on a bare lookup...
+      expect((deps as { authority?: unknown }).authority).toBeDefined();
+      // ...and ownAuthority must not see it.
+      expect(ownAuthority(deps)).toBeUndefined();
+
+      await expect(
+        applyHumanDecision(deps, 'actor-A', U, 'PAID_PENDING_HUMAN_DECISION', 'd', 'r'),
+      ).rejects.toMatchObject({ code: 'human_decision_required' });
+      expect(repo.decisions).toHaveLength(0);
+    } finally {
+      delete polluted.authority;
+    }
+  });
+
+  // NP-ENF-015-027 POSITIVE CONTROL (§36): proves the harness can detect a real side
+  // effect, so the refusals above are discrimination rather than a path that never works.
+  // The ALLOW comes from a DEVELOPMENT-ONLY injected evaluator. Production supplies none.
+  // FIXTURE=TRUE ENVIRONMENT=DEVELOPMENT NON_PILOT=TRUE NON_AUTHORITY=TRUE
+  it('NP-ENF-015-027 positive control — an injected development ALLOW reaches the write', async () => {
+    const deps = {
+      repo: createMemoryPilotRepository(),
+      authority: { evaluate: () => 'ALLOW' as const },
+    };
+    await recordConsent(deps, U, 'v1');
+    await enroll(deps, U);
+    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
+
+    const { decision, enrollment } = await applyHumanDecision(
+      deps,
+      'actor-A',
+      U,
+      'PAID_PENDING_HUMAN_DECISION',
+      'introduce paid plan',
+      'development fixture',
+    );
+
+    expect(repo.decisions).toHaveLength(1);
+    expect(repo.decisions[0]!.actorId).toBe('actor-A');
+    expect(enrollment.state).toBe('PAID_PENDING_HUMAN_DECISION');
+    expect(enrollment.decisionId).toBe(decision.id);
   });
 
   it('GOVERNANCE: DAY7_READY does not auto-convert — state persists until a human decision', async () => {

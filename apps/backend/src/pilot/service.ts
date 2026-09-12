@@ -10,11 +10,18 @@
  *    requires a recorded human decision — there is no machine path to paid conversion.
  */
 import { HUMAN_DECISION_STATES, PILOT_EVENT_TYPES, PilotError } from './types';
+import { isPermitted, ownAuthority, resolveAuthority, type AuthorityEvaluator } from './authority';
 import type { HumanDecision, PilotEnrollment, PilotEvent, PilotEventType, PilotState } from './types';
 import type { PilotRepository } from './repository';
 
 export interface PilotServiceDeps {
   repo: PilotRepository;
+  /**
+   * Optional decision-authority evaluator. Production supplies none, so
+   * resolveAuthority yields UNKNOWN and consequential operations fail closed.
+   * Supplying one that returns ALLOW is a DESIGNATION and requires MR-04.
+   */
+  authority?: AuthorityEvaluator;
 }
 
 const DAY_MS = 86_400_000;
@@ -99,6 +106,29 @@ export async function applyHumanDecision(
   decision: string,
   reason: string,
 ): Promise<{ decision: HumanDecision; enrollment: PilotEnrollment }> {
+  // Fail-closed on the AUTHORITY PREDICATE, not on actor/subject equality.
+  //
+  // The previous guard refused only when actor === subject. That made enforcement an
+  // incidental consequence of the router passing one id twice: a SEPARATED actor with
+  // no authority passed straight through and wrote both rows. Separation is a property,
+  // not a permission.
+  //
+  // This guard asks the authority question instead, and withholds unless the answer is
+  // an explicit ALLOW. No evaluator is configured in production, so the answer is
+  // UNKNOWN and every caller is refused — separated or not. That grants authority to
+  // no one. Placed before the value-domain check and before any repository read, so the
+  // refusal path performs zero reads and cannot be used as a state-name oracle.
+  const authority = resolveAuthority(ownAuthority(deps), {
+    actorId,
+    subjectId: subjectUserId,
+    action: 'pilot.decision.record',
+    targetId: subjectUserId,
+  });
+  if (!isPermitted(authority))
+    throw new PilotError(
+      'human_decision_required',
+      `A pilot outcome decision requires a designated decision authority. Authority is ${authority}; no decision authority is designated, so this operation is withheld.`,
+    );
   if (!(HUMAN_DECISION_STATES as readonly string[]).includes(targetState))
     throw new PilotError('invalid_decision', `Not a human-decision outcome state: ${targetState}`);
   const e = await deps.repo.getEnrollment(subjectUserId);

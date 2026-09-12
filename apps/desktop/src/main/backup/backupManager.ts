@@ -206,8 +206,17 @@ export class BackupManager {
           const out = join(dest, 'data', file);
           await fs.mkdir(dirname(out), { recursive: true });
           await fs.copyFile(src, out);
-          const stat = await fs.stat(src);
-          entries.push({ domain, relativePath: file, sizeBytes: stat.size, sha256: await sha256(src) });
+          /**
+           * The digest and size are taken from the ARCHIVED copy, never from the
+           * live source. Hashing `src` after the copy meant a store write landing
+           * between `copyFile` and the hash produced a manifest describing bytes
+           * the archive does not hold — an archive that fails `validate` and so
+           * aborts every restore, including the pre-migration and restore-safety
+           * snapshots, which are exactly the ones needed when a migration fails.
+           * Reading `out` is what `validate` reads, so the two cannot disagree.
+           */
+          const stat = await fs.stat(out);
+          entries.push({ domain, relativePath: file, sizeBytes: stat.size, sha256: await sha256(out) });
         }
       }
     }
