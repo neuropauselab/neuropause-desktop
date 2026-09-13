@@ -11,6 +11,7 @@
  */
 import { Router, type Request, type Response } from 'express';
 import { logger } from '../config/logger';
+import { recordAiGateway } from '../observability/metrics';
 import { GatewayError, assertNoAuthorityClaim, completeViaProvider, gatewayConfigFromEnv, gatewayConfigured, validateRequest, type GatewayConfig, type GatewayRequest, type GatewayResponse } from './gateway';
 
 export interface AiGatewayDeps {
@@ -49,19 +50,22 @@ export function createAiGatewayRouter(deps: AiGatewayDeps = {}): Router {
     const userId = req.userId;
     if (!userId) { res.status(401).json({ error: 'unauthorized', message: 'Authentication required.' }); return; }
     const rl = window.take(userId);
-    if (!rl.ok) { res.set('retry-after', String(rl.retryAfterSeconds)); res.status(429).json({ error: 'rate_limited', message: 'Too many AI requests; slow down.', retryAfterSeconds: rl.retryAfterSeconds }); return; }
+    if (!rl.ok) { recordAiGateway(cfg.provider, 'rate_limited', 0); res.set('retry-after', String(rl.retryAfterSeconds)); res.status(429).json({ error: 'rate_limited', message: 'Too many AI requests; slow down.', retryAfterSeconds: rl.retryAfterSeconds }); return; }
     const started = Date.now();
     try {
       const body = validateRequest(cfg, req.body);
       const out = assertNoAuthorityClaim(await complete(cfg, body));
+      recordAiGateway(out.provider, 'ok', out.latency_ms, out.usage.input_tokens, out.usage.output_tokens);
       logger.info({ requestId: (req as Request & { id?: string }).id, userId, provider: out.provider, model: out.model, input_tokens: out.usage.input_tokens, output_tokens: out.usage.output_tokens, proposals: out.tool_proposals.length, finish: out.finish_reason, ms: Date.now() - started }, 'ai_gateway.chat');
       res.json(out);
     } catch (err) {
       if (err instanceof GatewayError) {
+        recordAiGateway(cfg.provider, err.status >= 500 ? 'error' : 'refused', Date.now() - started);
         logger.warn({ userId, code: err.code, status: err.status, ms: Date.now() - started }, 'ai_gateway.refused');
         res.status(err.status).json({ error: err.code, message: err.message });
         return;
       }
+      recordAiGateway(cfg.provider, 'error', Date.now() - started);
       logger.error({ userId, err: (err as Error).message }, 'ai_gateway.error');
       res.status(500).json({ error: 'gateway_error', message: 'The AI gateway failed.' });
     }

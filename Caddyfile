@@ -10,6 +10,10 @@
 api.neuropause033.com {
 	encode zstd gzip
 
+	# NP-PUBLIC-LAUNCH-003: /metrics is unauthenticated Prometheus text and must not be
+	# public at the edge (matches the k8s HTTPRoute denylist). Scrape it inside the network.
+	respond /metrics 404
+
 	# The backend listens on 4000 inside the compose network.
 	reverse_proxy backend:4000 {
 		header_up X-Forwarded-Proto {scheme}
