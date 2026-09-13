@@ -1,0 +1,89 @@
+{
+  "ARTIFACT": "10_SIGNING_VERIFICATION",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "signed": true,
+  "identifier": "com.neuropause.desktop",
+  "team_id": "J3G89MY3QG",
+  "authority_chain": [
+    "Developer ID Application: Dishant Dobariya (J3G89MY3QG)",
+    "Developer ID Certification Authority",
+    "Apple Root CA"
+  ],
+  "hardened_runtime": true,
+  "codesign_verify_deep_strict": true,
+  "codesign_dvvv": "Executable=/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app/Contents/MacOS/NeuroPause\nIdentifier=com.neuropause.desktop\nFormat=app bundle with Mach-O universal (x86_64 arm64)\nCodeDirectory v=20500 size=450 flags=0x10000(runtime) hashes=3+7 location=embedded\nHash type=sha256 size=32\nCandidateCDHash sha256=0941efe5e0a5fb6a0a9f90c685499e4079418fcf\nCandidateCDHashFull sha256=0941efe5e0a5fb6a0a9f90c685499e4079418fcf994920c68f971bc93ab380f3\nHash choices=sha256\nCMSDigest=0941efe5e0a5fb6a0a9f90c685499e4079418fcf994920c68f971bc93ab380f3\nCMSDigestType=2\nCDHash=0941efe5e0a5fb6a0a9f90c685499e4079418fcf\nSignature size=8982\nAuthority=Developer ID Application: Dishant Dobariya (J3G89MY3QG)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=13 Sep 2026 at 9:26:36 AM\nInfo.plist entries=32\nTeamIdentifier=J3G89MY3QG\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=42\nInternal requirements count=1 size=184\n",
+  "entitlements_xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"https://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>com.apple.security.cs.allow-dyld-environment-variables</key><true/><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/><key>com.apple.security.cs.disable-library-validation</key><true/><key>com.apple.security.network.client</key><true/><key>com.apple.security.network.server</key><true/></dict></plist>\n",
+  "nested": [
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libvk_swiftshader.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Mantle.framework/Versions/A/Mantle",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (GPU).app/Contents/MacOS/NeuroPause Helper (GPU)",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Plugin).app/Contents/MacOS/NeuroPause Helper (Plugin)",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Renderer).app/Contents/MacOS/NeuroPause Helper (Renderer)",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper.app/Contents/MacOS/NeuroPause Helper",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/ReactiveObjC.framework/Versions/A/ReactiveObjC",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Squirrel",
+      "ok": true
+    }
+  ],
+  "result": {
+    "status": "PASS",
+    "checks": 6
+  },
+  "classification": "MEASURED",
+  "credentials_path": "local keychain identity (not CI)"
+}

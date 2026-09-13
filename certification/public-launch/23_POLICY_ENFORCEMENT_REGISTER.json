@@ -1,0 +1,19 @@
+{
+  "ARTIFACT": "23_POLICY_ENFORCEMENT_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "admissible_set_rule": "U_NP(Z_t) = { U ∈ U_cap : Π(Z_t,U)=1 } — implemented as admissibility() in gatewayAgentLoop.ts",
+  "backend_pilot_authority": "deny-by-default evaluator; human_decision_required → 403; 32 pilot tests",
+  "policy_version": "ABSENT in backend decision object (gap); loop records policy_version per run",
+  "stale_authorization": "loop: decision bound to proposal_id; backend: no expiry/nonce (gap)"
+}

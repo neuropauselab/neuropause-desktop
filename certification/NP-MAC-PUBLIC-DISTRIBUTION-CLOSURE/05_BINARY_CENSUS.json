@@ -1,0 +1,167 @@
+{
+  "ARTIFACT": "05_BINARY_CENSUS",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "objects": [
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 390184640,
+      "sha256": "a5148533e94ec357cbfea2046060f58bf3d18fe91f2ac73235ef500885f10b17"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 2550448,
+      "sha256": "f93c26ef9c16b42ad4e6486a76b1d0371ae60af42cca7be2c0ecd7d5c702895f"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 207968,
+      "sha256": "a85fb4668f9ad79f5ac4d131d4f9fc83cd8ba1f8f0273a2307077c801fdb4dcc"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 12977504,
+      "sha256": "d29213f5c70860dfed14a56c88d51efaffc7100ac0c04068437317949d4b4759"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 4758544,
+      "sha256": "34352c40122a4f41bdc5f60b9464d520a9dd64c608d5ce5b3bcc20512379dbdf"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libvk_swiftshader.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 21182032,
+      "sha256": "f5d2bf53d4e35609af939a5945442ed97e331a9a537a7f718f40415d2d273305"
+    },
+    {
+      "path": "Contents/Frameworks/Mantle.framework/Versions/A/Mantle",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 291488,
+      "sha256": "2db533cb10367267d44d05dd4b5ababeae8c1abb6b089ae4a0e803e934711e1b"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (GPU).app/Contents/MacOS/NeuroPause Helper (GPU)",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451504,
+      "sha256": "a12cfca3ce19f488d404d4671899fbba2829e3efab3e2cedb6c9612dda6cfcd7"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Plugin).app/Contents/MacOS/NeuroPause Helper (Plugin)",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451504,
+      "sha256": "bf3e9b36574b080e5b7f0bfe87954cd58f4ed5323201947ccdad5d2eb4581be2"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Renderer).app/Contents/MacOS/NeuroPause Helper (Renderer)",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451520,
+      "sha256": "1fd06a351388edda5d12eb8529e6b431dea4bd8fe56e7b66378a810b3cca1df0"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper.app/Contents/MacOS/NeuroPause Helper",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451488,
+      "sha256": "d58d9b63f683543139d13ecfda7a29b6761771410e2f7130fb944cf391be6e14"
+    },
+    {
+      "path": "Contents/Frameworks/ReactiveObjC.framework/Versions/A/ReactiveObjC",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 762032,
+      "sha256": "f4a25acc01e8a23ba6cf3974f1f8aac7178166e604fed3362b41f9e16c4e7744"
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 291984,
+      "sha256": "dfe9d345f8924547e0aafedea4e3d50331ad9bd9056395da8ea243b8fddb4d7c"
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Squirrel",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 326304,
+      "sha256": "ae56f86c885ac5711b89da0661664cc434a8beb6944cde94ba983bf7b467998b"
+    },
+    {
+      "path": "Contents/MacOS/NeuroPause",
+      "class": "MAIN_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 118992,
+      "sha256": "e5ee77ce8f3ad3bb43dd4470897b622d2c93428d74b6fe3b0d8baacaed402b11"
+    }
+  ],
+  "not_universal": [],
+  "native_modules": 0
+}

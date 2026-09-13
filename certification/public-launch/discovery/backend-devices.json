@@ -1,0 +1,427 @@
+{
+  "key": "backend-devices",
+  "generated_at_utc": "2026-09-12",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399f",
+    "version_declared": "1.0.0-rc.30",
+    "classification": "MEASURED (git rev-parse / git branch --show-current)"
+  },
+  "scope_note": "Subsystem = org-scoped Trusted Devices registry (backend apps/backend/src/devices + migration 0010, desktop apps/desktop/src/main/devices/deviceClient.ts + deviceRuntimeState.ts + renderer TrustedDevices.tsx). apps/desktop/src/main/identity/ is NOT device identity: it is the external-identity (provider record <-> NeuroPause record) match queue (identity/index.ts:1-20, identityStore.ts:1-25). The only key-bound device identity in the repo is the separate LAN Companion (mobile pairing) surface, mapped here for contrast.",
+  "device_object": {
+    "backend_type": {
+      "file": "apps/backend/src/devices/types.ts",
+      "lines": "11-25",
+      "fields": [
+        "orgId",
+        "deviceId",
+        "userId",
+        "name",
+        "platform",
+        "os",
+        "arch",
+        "appVersion",
+        "trustStatus",
+        "lastSeen",
+        "registeredAt"
+      ],
+      "classification": "MEASURED"
+    },
+    "db_schema": {
+      "file": "apps/backend/src/db/migrations/0010_devices.sql",
+      "lines": "7-26",
+      "table": "devices",
+      "primary_key": "(org_id, device_id)",
+      "columns": {
+        "org_id": "UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE",
+        "device_id": "TEXT NOT NULL (client-supplied; 'the client's stable installation id (the livesync device id)' per header comment lines 2-3)",
+        "user_id": "UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE",
+        "name/platform/os/arch/app_version": "TEXT NOT NULL",
+        "trust_status": "TEXT NOT NULL DEFAULT 'trusted' CHECK IN ('trusted','blocked','revoked')",
+        "last_seen": "TIMESTAMPTZ NOT NULL",
+        "registered_at": "TIMESTAMPTZ NOT NULL"
+      },
+      "indexes": [
+        "devices_org_last_seen_idx (org_id, last_seen DESC)",
+        "devices_user_idx (user_id)"
+      ],
+      "classification": "MEASURED"
+    },
+    "shared_type": {
+      "file": "packages/shared/src/types/device.ts",
+      "lines": "6-20",
+      "classification": "MEASURED",
+      "note": "identical shape to backend type"
+    },
+    "absent_fields": {
+      "key_id": "ABSENT",
+      "public_key": "ABSENT",
+      "installation_id_distinct_from_device_id": "ABSENT (device_id IS the livesync installation UUID)",
+      "runtime_id": "ABSENT",
+      "activation_state": "ABSENT",
+      "policy_version": "ABSENT",
+      "attestation / artifact_sha256 / release_ref": "ABSENT",
+      "enrolled_at / evidence_ref": "ABSENT",
+      "expires_at": "ABSENT",
+      "classification": "ABSENT (grep of types.ts, 0010_devices.sql, packages/shared/src/types/device.ts)"
+    },
+    "request_schemas": {
+      "file": "apps/backend/src/devices/schemas.ts",
+      "RegisterDeviceBody": "orgId uuid, deviceId string 1..200, name 1..120, platform/os/arch/appVersion 1..40, strict (lines 7-17)",
+      "HeartbeatBody": "orgId uuid, appVersion (lines 19-24)",
+      "OrgScopeBody": "orgId uuid (line 26)",
+      "classification": "MEASURED"
+    }
+  },
+  "device_id_origin": {
+    "file": "apps/desktop/src/main/cloud/livesync/liveSyncInstance.ts",
+    "lines": "74-96",
+    "mechanism": "loadOrCreateDeviceId(): reads <userData>/livesync-device-id; if missing/unreadable mints randomUUID() and writes it with mode 0o600; getDeviceId() wraps it. Declared store scope INSTALL_GLOBAL / authority SYSTEM / classification INSTALL_METADATA (lines 41-72).",
+    "generated_by": "CLIENT (not server)",
+    "proof_of_possession": "ABSENT — plain UUID string, no keypair, no signature, no challenge",
+    "classification": "MEASURED"
+  },
+  "device_states": {
+    "enum": [
+      "trusted",
+      "blocked",
+      "revoked"
+    ],
+    "evidence": "apps/backend/src/devices/types.ts:11; 0010_devices.sql:16-17; packages/shared/src/types/device.ts:6",
+    "classification": "MEASURED",
+    "default_on_insert": "trusted (repository.ts:49 literal 'trusted'; memoryRepository.ts:28)",
+    "pending_state": "ABSENT",
+    "active_state": "ABSENT as a distinct value (trusted functions as active)",
+    "expired_state": "ABSENT",
+    "transitions": {
+      "-> trusted": "on first INSERT only (repository.ts:48-49). Re-registration does NOT reset trust (ON CONFLICT DO UPDATE omits trust_status, repository.ts:50-56; memoryRepository.ts:28 existing?.trustStatus ?? 'trusted').",
+      "-> revoked": "POST /devices/:deviceId/revoke, owner/admin only (router.ts:102-113; service.ts:78-89 setTrust 'revoked')",
+      "-> blocked": "ABSENT — no code path sets 'blocked' (grep \"'blocked'\" across apps/backend/src, apps/desktop/src, packages/shared/src: only the enum and UI tone mappers)",
+      "revoked -> trusted": "ABSENT direct path; DELETE /devices/:deviceId (owner/admin, router.ts:115-123) removes the row, after which any member's POST /devices re-inserts it as 'trusted' (repository.ts:48-49) — DERIVED",
+      "classification": "MEASURED/DERIVED as labeled"
+    }
+  },
+  "registration_flow": {
+    "backend": {
+      "route": "POST /devices (router.ts:60-76), mounted at app.ts:135-139 behind requireAuth",
+      "auth": "requireAuth verifies Bearer JWT; claims = {sub, email} only (apps/backend/src/auth/requireAuth.ts:13-27; auth/jwt.ts:6-9, 32). No device claim in the token.",
+      "authorization": "registerDevice -> assertMember (service.ts:23-31, 37-52). getMemberRole returns role only when membership status === 'active' (app.ts:130-133). Any active role (owner/admin/member/viewer) may register.",
+      "identity_binding": "deviceId is taken verbatim from request body (router.ts:66); server performs no ownership check that (orgId, deviceId) is not already owned by a different userId.",
+      "upsert_semantics_pg": "ON CONFLICT (org_id, device_id) DO UPDATE SET name, platform, os, arch, app_version, last_seen=now(); user_id, trust_status, registered_at preserved (repository.ts:44-70)",
+      "upsert_semantics_memory": "overwrites userId with caller's userId (memoryRepository.ts:22); preserves trustStatus/registeredAt (lines 28-29)",
+      "divergence": "PG keeps ORIGINAL user_id on re-registration by a different user; in-memory repo REASSIGNS userId. Unit tests run only against the in-memory repo. — DERIVED",
+      "domain_event": "'device.registered' emitted only if deps.publish wired (service.ts:43-50). Production wiring at app.ts:138 passes {repo, getMemberRole} with NO publish -> no event in production. Revoke/remove emit no event at all. — MEASURED",
+      "audit": "ABSENT — no AuditRecorder call in devices/* (grep audit in apps/backend/src/devices: 0 hits)",
+      "rate_limit": "ABSENT on /devices (app.ts rateLimit applied only to password_reset line 117 and semantic_health line 196)",
+      "device_limits": "ABSENT — 'Plan-based device limits (Module 3) are intentionally NOT in this increment' (service.ts:5-6, DECLARED)",
+      "classification": "MEASURED unless labeled"
+    },
+    "desktop": {
+      "client": "apps/desktop/src/main/devices/deviceClient.ts:89-95 registerCurrent(orgId) POSTs {orgId, ...currentDeviceInfo()}; currentDeviceInfo() (lines 71-87) = {deviceId: getDeviceId(), name: hostname()||'This Mac', platform:'desktop', os: process.platform, arch: process.arch, appVersion: app.getVersion()}",
+      "ipc_handler": "runtimeCore.ts:2337-2345 IpcChannel.DevicesRegister -> requireCloudOrgMembership(orgId) then deviceClient.registerCurrent",
+      "ipc_bridge_permission": "DevicesRegister and DevicesRevoke require enterprise permission 'org:manage' (ipc/runtimeAuthz.ts:445-446); DevicesList and DeviceReportHealth are PUBLIC (runtimeAuthz.ts:1053-1055). 'org:manage' is granted to the local ADMIN seeded role and above, not MEMBER/MANAGER (enterprise/org/seed.ts:~105-130).",
+      "trigger": "Registration happens ONLY when the renderer mounts Settings -> Trusted Devices (TrustedDevices.tsx:65-70 inside load() called from useEffect line 86-88). No app-start / sign-in registration and no heartbeat loop exists (grep deviceClient.registerCurrent -> runtimeCore.ts:2343 only; grep heartbeat in desktop devices/ipc -> 0 hits).",
+      "cloud_role_check": "requireCloudOrgMembership (runtimeCore.ts:392-410) fetches orgClient.list(); fails closed on unreachable backend, blank org id, or non-membership with one opaque message.",
+      "tension": "GATE10 evidence certification/GATE10-SECURITY-EVIDENCE.md:53 declares 'device self-register stay membership-only' (cloud-role layer), while the local bridge layer gates DevicesRegister at 'org:manage' (runtimeAuthz.ts:445). In a multi-user local-RBAC install a non-admin local principal cannot self-register even as an active cloud member; TrustedDevices.tsx:71-75 then shows 'This device could not be registered right now'. — DERIVED",
+      "classification": "MEASURED unless labeled"
+    }
+  },
+  "heartbeat": {
+    "backend_route": "POST /devices/:deviceId/heartbeat (router.ts:88-100) -> heartbeatDevice (service.ts:63-76): assertMember then repo.touch(app_version, last_seen). No trust_status check; no check that device.userId === caller.",
+    "desktop_caller": "ABSENT — deviceClient.ts exposes registerCurrent/list/revoke/remove only (lines 89-112); no heartbeat IPC channel (channels.ts:170-174).",
+    "consequence": "A revoked device's heartbeat returns HTTP 200 with trustStatus 'revoked'; last_seen keeps advancing. Any active org member can heartbeat any other member's device row (overwrites app_version/last_seen). — DERIVED",
+    "classification": "MEASURED/DERIVED as labeled"
+  },
+  "revocation": {
+    "backend": {
+      "route": "POST /devices/:deviceId/revoke body {orgId} (router.ts:102-113); revokeDevice requires role owner|admin (service.ts:33-35, 78-89); 403 device_forbidden otherwise (router.ts:28-32)",
+      "self_service": "ABSENT on backend — a plain member cannot revoke even their own device (service.ts:82-85); the desktop's 'own device is self-service (any member)' branch (runtimeCore.ts:2355-2366) therefore ends in a backend 403 for member/viewer roles. — DERIVED",
+      "enforcement_of_trust_status": "ABSENT — grep 'trust_status|trustStatus' across apps/backend/src outside devices/: 0 hits (app.ts imports only). requireAuth (JWT only), /sync (sync/router.ts:44-58 membership only; deviceId is a free string, schemas.ts:23, never checked against devices table; grep trust in sync/*: 0), /billing, /license, /pilot never consult device trust.",
+      "classification": "MEASURED unless labeled"
+    },
+    "propagation_to_desktop": {
+      "channel": "PULL only, and only via the Settings -> Trusted Devices pane: TrustedDevices.tsx:67-70 registerCurrent() returns the row; renderer calls ipc.devices.reportHealth(device.trustStatus) -> IpcChannel.DeviceReportHealth (runtimeCore.ts:2369-2377) -> setDeviceRuntimeState (deviceRuntimeState.ts:21-23).",
+      "push_channel": "ABSENT — no backend->device notification, no websocket event, no sync-engine consultation (grep trust/revok in cloud/livesync/*.ts: 0 relevant hits)",
+      "storage": "ephemeral in-memory `current` (deviceRuntimeState.ts:18); never persisted; never refreshed on a timer; never cleared on sign-out (only caller is the IPC handler, grep setDeviceRuntimeState -> runtimeCore.ts:2374 only)",
+      "consumer": "NeuroCore only: runtimeCore.ts:2255 deviceState: () => getDeviceRuntimeState(); neuroCore.ts:40,97; composeSystemHealth packages/shared/src/types/systemHealth.ts:318-331 -> subsystem id 'device', level 'healthy' if trusted else 'critical', detail 'Revoked'/'Blocked'; declared 'Visible + scored, but not supervised' (line 319-320)",
+      "source_of_truth": "The RENDERER is the sole source of the device-trust signal main consumes; DeviceReportHealthRequest accepts any of trusted|blocked|revoked|null from the renderer (packages/shared/src/ipc/contracts.ts:136-139) and the channel is on PUBLIC_CHANNELS (runtimeAuthz.ts:1053). — MEASURED; implication (client-asserted trust) DERIVED",
+      "classification": "MEASURED unless labeled"
+    },
+    "fails_closed": {
+      "verdict": "NO. A revoked device fails OPEN on every surface.",
+      "actions_blocked_on_revoked": [],
+      "actions_still_permitted_on_revoked": [
+        "authenticate (JWT has no device claim, jwt.ts:32)",
+        "POST /devices re-register (stays revoked but succeeds, repository.ts:50-56)",
+        "POST /devices/:id/heartbeat (service.ts:63-76)",
+        "GET /devices list (service.ts:54-61)",
+        "POST /sync/:orgId/push and GET /sync/:orgId/pull (sync/router.ts:50-77)",
+        "desktop livesync engine continues (no trust consult)",
+        "all other authenticated routes (billing, license, pilot, semantic)",
+        "desktop: every IPC handler; only the NeuroCore health dashboard shows 'critical'"
+      ],
+      "classification": "DERIVED from the MEASURED absence of any trust_status/trustStatus read outside the registry and the health composer"
+    }
+  },
+  "key_material": {
+    "trusted_devices_registry": {
+      "keypair": "ABSENT",
+      "signature_or_challenge": "ABSENT",
+      "identifier_secrecy": "deviceId is a UUID string stored in plain text at <userData>/livesync-device-id (mode 0600, liveSyncInstance.ts:86); it is sent in every sync push/pull body (transport.ts:99-113) and returned to every org member via GET /devices (listByOrg returns deviceId + userId for all rows, repository.ts:72-78)",
+      "implication": "Any active org member can present any other member's deviceId to POST /devices, heartbeat, or /sync push — identity is a bearer string with no proof of possession. — DERIVED",
+      "classification": "MEASURED/DERIVED"
+    },
+    "companion_surface_for_contrast": {
+      "desktop_identity": "static X25519 keypair; private key ONLY in OS keychain via credentialStore; refuses to run without keychain (apps/desktop/src/main/companion/identity.ts:1-49)",
+      "paired_device_record": "CompanionDeviceRecord {id, name, platform ios|android, model, publicKeyB64 (pinned X25519 static public key), boundMember, boundTenantId, createdAt, lastSeenAt, revoked, lastSeq replay guard} (companion/deviceRegistryStore.ts:63-91)",
+      "revocation_enforced": "gatewayServer.ts:430-483, 553 — WS hello matched against activeByPublicKey which excludes revoked; test 'rejects a revoked device' gatewayWs.test.ts:121-122 (DECLARED from file; not executed here)",
+      "note": "This is LAN phone pairing, NOT the org trusted-device registry; it does not inform backend authorization.",
+      "classification": "MEASURED (code), DECLARED (test outcome)"
+    }
+  },
+  "tests": {
+    "executed": [
+      {
+        "file": "apps/backend/src/devices/service.test.ts",
+        "command": "cd apps/backend && npx vitest run src/devices/service.test.ts",
+        "result": "7 passed / 7, 159ms",
+        "classification": "MEASURED"
+      },
+      {
+        "file": "apps/desktop/src/main/organization/cloudOrgAuthorize.test.ts",
+        "command": "cd apps/desktop && npx vitest run src/main/organization/cloudOrgAuthorize.test.ts",
+        "result": "13 passed / 13, 942ms",
+        "classification": "MEASURED"
+      }
+    ],
+    "backend_service_test_cases": [
+      "registers a device for a member -> trustStatus 'trusted' (service.test.ts:32-38)",
+      "rejects registration from a non-member -> forbidden (40-42)",
+      "re-registration upserts, preserves registeredAt (44-53)",
+      "heartbeat updates version; unregistered -> not_found (55-73)",
+      "member cannot revoke/remove; admin revoke -> 'revoked'; remove -> list empty (75-92)",
+      "emits device.registered when publisher wired (94-110)",
+      "works without publisher (112-116)"
+    ],
+    "desktop_test_cases_relevant": [
+      "deviceRevokeRequiresManagerRole(OWN,OWN)=false (cloudOrgAuthorize.test.ts:102-104)",
+      "other device => true (106-108)",
+      "blank own id => true, both blank => true (110-115)",
+      "wiring pin: DevicesRevoke handler branches on deviceRevokeRequiresManagerRole, uses getDeviceId(), requireCloudOrgRole(CLOUD_ORG_MANAGERS), requireCloudOrgMembership (152-171)",
+      "membership-only reads incl devices.list allow every role (verbose run output)",
+      "unreachable backend / blank org / non-member refused with one opaque message (verbose run output)"
+    ],
+    "systemHealth_device_tests": {
+      "file": "apps/desktop/src/main/systemHealth.test.ts",
+      "lines": "199-222",
+      "cases": [
+        "omits device subsystem when no signal",
+        "trusted -> healthy",
+        "revoked -> critical + drags overall to critical, detail 'Revoked'",
+        "blocked -> critical"
+      ],
+      "classification": "DECLARED (file read, not executed)"
+    },
+    "claim_coverage": {
+      "revoked_device_denied": {
+        "status": "ABSENT",
+        "detail": "No test anywhere asserts a denial after revoke on the trusted-devices surface; service.test.ts:84-89 asserts only that trustStatus becomes 'revoked'. The only 'rejects a revoked device' test is the Companion WS surface (gatewayWs.test.ts:121)."
+      },
+      "device_A_cannot_control_device_B": {
+        "status": "PARTIAL",
+        "detail": "Desktop-side: revoking another device requires cloud manager role (MEASURED pass). Backend-side: only owner/admin can revoke/remove ANY device (service.test.ts:75-80); but member X may re-register or heartbeat member Y's deviceId in the same org — no ownership check and no test (ABSENT)."
+      },
+      "user_A_cannot_read_user_B": {
+        "status": "PARTIAL",
+        "detail": "Non-member cannot register (service.test.ts:40-42, MEASURED). listDevices non-member refusal is enforced (service.ts:59) but UNTESTED (ABSENT). Org-level isolation tested at organizations/router.test.ts:117-125. Within an org, every member incl. viewer sees every device row including userId (by design, router.ts:9, types.ts:6-9)."
+      },
+      "http_router_tests_for_devices": {
+        "status": "ABSENT",
+        "detail": "apps/backend/src/devices contains only service.test.ts; organizations and sync have router.test.ts; devices does not."
+      },
+      "integration_tests_for_devices": {
+        "status": "ABSENT",
+        "detail": "apps/backend/src/__integration__/ = auth.test.ts, organizations.test.ts, waitForDb.ts; grep device: 0 hits. repository.ts:3-4 claims 'Exercised by the integration suite' — DECLARED, contradicted."
+      },
+      "ui_tests_for_TrustedDevices": {
+        "status": "ABSENT",
+        "detail": "grep TrustedDevices|devices.registerCurrent in apps/desktop/ui-tests and renderer tests: 0 hits"
+      }
+    }
+  },
+  "history": {
+    "introducing_commit": "9923c4f 2026-07-06 'V6.5 desktop: deviceClient + register-on-open + Trusted Devices in Settings (reuses livesync id + orgClient pattern)' — 19 files, 972 insertions, includes backend devices/*, 0010_devices.sql, app.ts mount (git show --stat) — MEASURED",
+    "neurocore_commit": "2214398 'V6.5: NeuroCore device-trust subsystem — renderer-reported device trust composed into system health (trusted/blocked/revoked), visible + scored, not supervised' — adds deviceRuntimeState.ts, DeviceReportHealth channel, systemHealth device tests — MEASURED",
+    "gate10_round53": "certification/GATE10-SECURITY-EVIDENCE.md:132-155 declares device-revoke closed at the root via deviceRevokeRequiresManagerRole; states 'the backend remains the ultimate authority' — DECLARED; the desktop helper is MEASURED present and tested",
+    "architecture_mapping": "certification/ARCHITECTURE-MAPPING.md:185 rates the Device identity object 'Real (companion + trusted devices)' while noting System/Installation ids 'fragmentary' and the 8-field identity shape not uniform — DECLARED",
+    "admin_guide": "docs/guides/ADMINISTRATOR-GUIDE.md:152 'Trusted devices are backend-backed ... trust status of trusted | blocked | revoked'; :164 no admin session list/revoke-others API — DECLARED",
+    "evidence_corpus": {
+      "NP-DEVICE-IDENTITY-GAP-005": {
+        "path": "/Users/saurabhpatel/Downloads/attachments-95/NP-DEVICE-IDENTITY-GAP-005.md (2026-09-09, Computer-A custody; listed in R2 NP-B-023 a_inventory.json:2113)",
+        "declares": "DEVICE_ID = NOT_ESTABLISHED; RUNTIME_ID = NOT_ESTABLISHED; names tables installations / installation_keys (key_id, public_key, algorithm, state, evidence_ref, enrolled_at) / installation_challenges / installation_attributes / systems with 0 rows; sessions has no device column; I-10 (device identity != human identity) untested; step 2 'decide whether an installation is a sufficient device proxy ... not Computer-A's to make'",
+        "repo_check": "installations / installation_keys / installation_challenges tables are ABSENT from this repo (grep -rl installation_keys . excluding node_modules: 0; migrations 0001-0013 define none). The schema GAP-005 describes does not exist in np-public-launch; the trusted-devices table it does not mention does.",
+        "classification": "DECLARED (doc) / ABSENT (repo grep)"
+      },
+      "NP-OS-DEVICE-REGISTRY-SPEC": {
+        "path": "/Users/saurabhpatel/Downloads/attachments/NP-OS-DEVICE-REGISTRY-SPEC.md",
+        "declares": "device_id 'opaque uuid v4, generated server-side'; owner_ref; device_class; build_id; installation_id distinct; activation_state UNREGISTERED|REGISTERED|ELIGIBLE|ACTIVATED|SUSPENDED|REVOKED|RETIRED; policy_version; last_attested_state{artifact_sha256, release_ref, result MATCH|MISMATCH|INDETERMINATE}; 'Trust is never a stored field — it is recomputed from the current attestation every time it matters'; 'no device should become trusted merely because it downloaded an installer'",
+        "implementation_vs_spec": "device_id client-generated (spec: server); 3 stored trust states (spec: 7 activation states, trust not stored); no attestation/build_id/policy_version; default 'trusted' on registration (the exact counter-example the spec's §8 names). — DERIVED",
+        "classification": "DECLARED (spec) / DERIVED (comparison)"
+      },
+      "NP-B-016..023": "No NP-B experiment measured the trusted-devices subsystem; 'device' hits in NP-B-017/018 are filesystem dev:ino keys; NP-B-018/023 inventories list the V6.5 drop folders (neuropause-v6-5-devices-desktop, neuropause-v6-5-neurocore-device-trust) as payload names only. Gate names DEVICE-REGISTRATION / DEVICE-ENROLLMENT / DEVICE-IDENTITY appear nowhere in the repo or R2 (grep: 0) and only in GAP-005 + TRANSFER-MANIFEST-HDI-005.md in R1. — MEASURED (grep)"
+    }
+  },
+  "invariant_audit": {
+    "AI_never_authorization_authority": {
+      "status": "NOT_APPLICABLE",
+      "reason": "No AI component participates in device registration, listing, revocation, or trust reporting (no ai/ import in devices/*, deviceClient.ts, deviceRuntimeState.ts)."
+    },
+    "client_never_final_authorization_authority": {
+      "status": "VIOLATED_FOR_TRUST_SIGNAL",
+      "reason": "Device trust as consumed by the desktop is asserted by the renderer over a PUBLIC IPC channel (contracts.ts:136-139; runtimeAuthz.ts:1053); device identity is client-minted with no proof (liveSyncInstance.ts:84). Registry MUTATION authority (revoke/remove) correctly sits on the backend role check (service.ts:82-88) — that part holds."
+    },
+    "network_connection_must_not_imply_authorization": {
+      "status": "PARTIAL",
+      "reason": "Desktop requireCloudOrgMembership fails closed when the backend is unreachable (runtimeCore.ts:392-410; tested). But a valid JWT + active membership grants every device-scoped and sync action irrespective of device trust, so the device layer adds no authorization signal at all."
+    },
+    "stale_authorization_must_be_rejected": {
+      "status": "VIOLATED",
+      "reason": "deviceRuntimeState is set once per Settings-pane visit and never expires, refreshes, or clears on sign-out (deviceRuntimeState.ts:18-27; single writer runtimeCore.ts:2374). A 'trusted' report outlives a backend revocation for the process lifetime; the backend itself never re-evaluates trust on any request."
+    },
+    "control_compute_evidence_verification_human": {
+      "status": "INCOMPLETE",
+      "reason": "HUMAN (owner/admin) -> CONTROL (revoke row) exists; COMPUTE never reads the control state; EVIDENCE limited to a health badge; no VERIFICATION that a revoked device stopped; no HUMAN DECISION recorded (no audit, no event in prod wiring app.ts:138)."
+    }
+  },
+  "gaps": [
+    "No enforcement of trust_status anywhere outside the registry: revoked/blocked devices are never denied (backend or desktop).",
+    "No proof-of-possession for deviceId; identity is a client-minted UUID broadcast to every org member via GET /devices and every sync body.",
+    "No ownership binding on re-register/heartbeat: member X can overwrite member Y's device row metadata in the same org (PG keeps Y's user_id; in-memory reassigns to X) — repo divergence plus missing check.",
+    "No PENDING/approval or EXPIRED state; registration = trusted by default (contradicts NP-OS-DEVICE-REGISTRY-SPEC §8).",
+    "'blocked' state has no setter (dead enum value).",
+    "Heartbeat endpoint exists but is never called by the desktop; last_seen only moves on Settings-pane visits.",
+    "Revocation reaches the device only if the user opens Settings -> Trusted Devices; no push, no timer, no sync consult.",
+    "Renderer-asserted trust over a PUBLIC IPC channel; main cannot distinguish a genuine backend answer from a renderer claim.",
+    "Backend self-service own-device revoke is absent (owner/admin only), so the desktop's member self-service branch ends in 403.",
+    "Bridge permission 'org:manage' on DevicesRegister blocks self-registration for non-admin local principals; GATE10 text says self-register is membership-only.",
+    "No HTTP router tests, no integration tests, no UI tests for the devices surface; repository.ts:3-4 claims integration coverage that does not exist.",
+    "No audit record and (in production wiring) no domain event for device.registered / revoked / removed.",
+    "installations/installation_keys enrolment schema referenced by NP-DEVICE-IDENTITY-GAP-005 is absent from this repo; DEVICE_ID = NOT_ESTABLISHED stands in substance (id exists, identity does not).",
+    "No rate limit or per-plan cap on device registration."
+  ],
+  "gate_assessments": [
+    {
+      "gate": "DEVICE-REGISTRATION",
+      "status": "MEASURABLE",
+      "reason": "Mechanism exists and is unit-verified (POST /devices, membership-gated, upsert preserves trust/registeredAt; service.test.ts 7/7 MEASURED). Not measured at HTTP or integration level; registration auto-trusts with no approval, no ownership binding, no audit, no limits — whether 'registered == trusted' is acceptable is a human/product decision (GAP-005 step 2)."
+    },
+    {
+      "gate": "DEVICE-ENROLLMENT",
+      "status": "FAIL",
+      "reason": "No enrolment lifecycle: no pending/eligible/activated states, no key enrolment (installation_keys schema absent), no attestation, and revocation does not fail closed on any surface. Evidence: types.ts:11, repository.ts:49, service.ts:63-76, sync/router.ts:44-58, deviceRuntimeState.ts:18-27."
+    },
+    {
+      "gate": "DEVICE-IDENTITY",
+      "status": "FAIL",
+      "reason": "Device identity is a client-minted bearer UUID (liveSyncInstance.ts:84) with no key material, no proof of possession, no server-side generation, no runtime id, not bound to the session token (jwt.ts:32). Spec NP-OS-DEVICE-REGISTRY-SPEC non-conformant; GAP-005 'DEVICE_ID = NOT_ESTABLISHED' remains substantively true."
+    }
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Add backend tests: listDevices/heartbeat/revoke refused for non-member; HTTP router test for /devices (mirror organizations/router.test.ts); integration test for 0010 upsert semantics.",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/devices/service.test.ts",
+        "apps/backend/src/devices/router.test.ts (new)",
+        "apps/backend/src/__integration__/devices.test.ts (new)"
+      ],
+      "risk": "none — tests only"
+    },
+    {
+      "action": "Enforce trust_status server-side: heartbeat and re-register of a revoked/blocked device -> 403 device_revoked; add a trust check hook to /sync push/pull (deviceId lookup in devices table) — and add the 'revoked device denied' test.",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/devices/service.ts",
+        "apps/backend/src/sync/router.ts",
+        "apps/backend/src/app.ts"
+      ],
+      "risk": "sync from unregistered devices currently works; decide whether unregistered == denied (product decision) or only revoked/blocked == denied"
+    },
+    {
+      "action": "Ownership binding: refuse re-register/heartbeat when existing row's userId != caller (or explicitly reassign with audit); make in-memory upsert match PG on user_id.",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/devices/service.ts",
+        "apps/backend/src/devices/memoryRepository.ts",
+        "apps/backend/src/devices/repository.ts"
+      ],
+      "risk": "shared-machine multi-user orgs would need a reassign path"
+    },
+    {
+      "action": "Desktop: check trustStatus on registerCurrent response in main (not renderer); on revoked/blocked stop livesync engine and gate cloud IPC handlers; refresh on sign-in and on an interval; clear deviceRuntimeState on sign-out; move DeviceReportHealth off PUBLIC or have main source it from deviceClient directly.",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/runtimeCore.ts",
+        "apps/desktop/src/main/deviceRuntimeState.ts",
+        "apps/desktop/src/main/cloud/livesync/liveSyncInstance.ts",
+        "apps/desktop/src/main/ipc/runtimeAuthz.ts"
+      ],
+      "risk": "fail-closed on network error must be designed (offline-first app)"
+    },
+    {
+      "action": "Wire the domain-event publisher in production app.ts and emit device.revoked / device.removed; record AuditRecorder entries for register/revoke/remove.",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/app.ts",
+        "apps/backend/src/devices/service.ts"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Add backend self-service own-device revoke (member may revoke a row whose userId == caller) to match the desktop branch, or remove the desktop self-service branch.",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/devices/service.ts",
+        "apps/desktop/src/main/runtimeCore.ts"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Reconcile bridge permission for DevicesRegister ('org:manage' -> 'org:read' or a dedicated scope) with the documented membership-only self-registration.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/ipc/runtimeAuthz.ts",
+        "certification/GATE10-SECURITY-EVIDENCE.md"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Either implement a setter for 'blocked' (admin block without device consent) or drop the enum value.",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/devices/router.ts",
+        "apps/backend/src/devices/service.ts"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Key-bound device identity: enrol a per-install keypair (reuse companion-protocol X25519/keychain pattern), server-issued device_id, challenge-response on register/heartbeat, device claim in the access token.",
+      "effort": "L",
+      "files": [
+        "apps/backend/src/devices/*",
+        "apps/backend/src/db/migrations/0014_*.sql (new)",
+        "apps/desktop/src/main/devices/deviceClient.ts",
+        "apps/backend/src/auth/jwt.ts"
+      ],
+      "risk": "requires the human decision below first; changes the auth contract"
+    }
+  ],
+  "human_decisions_required": [
+    "GAP-005 step 2 (verbatim: 'not Computer-A's to make'): is a client-minted installation UUID a sufficient device proxy for the pilot, or is a distinct, key-bound, attested device identity required? This gates DEVICE-IDENTITY and the L-effort action.",
+    "Policy: must a device be approved (pending -> trusted) before it can sync/act, or is registration-equals-trusted acceptable for launch? (NP-OS-DEVICE-REGISTRY-SPEC says no; current code says yes.)",
+    "Policy: which actions must a revoked/blocked device lose — sync only, all authenticated API, or also local desktop functionality — and must an unreachable backend fail closed for an offline-first product?",
+    "Policy: may an org member revoke their own device without owner/admin (desktop assumes yes, backend says no)?",
+    "Whether within-org visibility of every device row including its owning userId to viewer-role members is acceptable."
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "ARTIFACT": "29_NPB023_CORRECTION_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-002",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "finding": {
+    "OUTBOUND_RECORD_EXISTENCE": "ESTABLISHED",
+    "OUTBOUND_AUTHORSHIP": "A_ESTABLISHED",
+    "CONTAINER_BINDING": "LEVEL_0",
+    "container_digests_bound": "0/7",
+    "container_filenames_bound": "0/7"
+  },
+  "notes": [
+    "/Users/saurabhpatel/Downloads/B-TRANSFER/READ-THIS-FIRST.md sha256 d224f367a7ed49c16efbebe2801f06e856d2f244fa97878d140d36dc4230d4e0",
+    "/Users/saurabhpatel/Downloads/B-TRANSFER-2/READ-THIS-FIRST.md sha256 8a794b593f72873807d6a52cd71c8385591155c3037689d19dcf8eb400f515cb",
+    "/Users/saurabhpatel/Downloads/B-TRANSFER-G2/READ-THIS-FIRST.md sha256 3c9c5d0f2ce765cf1afd87e4531aa4552b776c22b8e0b30df475a68fd77b3125"
+  ],
+  "defect_NPB023_DEF_02": "hyphen-only detector missed COMPUTER_A (underscore)",
+  "normalization_rule": "certification/public-launch/tools/authorship-normalize.cjs (rule v1: COMPUTER + one separator run [_ - whitespace] + A|B, whole-token; suffixed/prefixed forms distinct; A≠B; no-separator form rejected)",
+  "regression_tests": "certification/public-launch/tools/authorship-normalize.test.cjs — 7/7 incl. positive control on the three notes",
+  "custody": "NOT_ESTABLISHED (unchanged)"
+}

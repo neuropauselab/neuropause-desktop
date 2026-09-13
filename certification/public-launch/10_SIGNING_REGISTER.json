@@ -1,0 +1,59 @@
+{
+  "ARTIFACT": "10_SIGNING_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "macos": {
+    "signed": true,
+    "identifier": "com.neuropause.desktop",
+    "team_id": "J3G89MY3QG",
+    "authority_chain": [
+      "Developer ID Application: Dishant Dobariya (J3G89MY3QG)",
+      "Developer ID Certification Authority",
+      "Apple Root CA"
+    ],
+    "hardened_runtime": true,
+    "codesign_verify_deep_strict": true,
+    "entitlements_present": true,
+    "nested_checked": 14,
+    "method": "electron-builder keychain auto-discovery on COMPUTER_B (CI path failed at rc.29 in the keychain step)"
+  },
+  "windows": {
+    "signingStatus": "NOT CONFIGURED",
+    "certificate": "ABSENT (WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD not set)"
+  },
+  "ci_secrets_presence": {
+    "note": "PRESENCE ONLY (gh secret list / gh variable list). No value was read, printed or stored.",
+    "github_secrets_present": [
+      "APPLE_APP_SPECIFIC_PASSWORD",
+      "APPLE_CSC_KEY_PASSWORD",
+      "APPLE_CSC_LINK",
+      "APPLE_ID",
+      "APPLE_TEAM_ID",
+      "DEPLOY_SSH_KEY"
+    ],
+    "github_secrets_absent": [
+      "WIN_CSC_LINK",
+      "WIN_CSC_KEY_PASSWORD"
+    ],
+    "github_variables_present": [],
+    "github_variables_absent": [
+      "PUBLISH_TO_SITE",
+      "NEUROPAUSE_BACKEND_URL"
+    ],
+    "local_keychain_codesigning_identities": [
+      "Developer ID Application: Dishant Dobariya (J3G89MY3QG)"
+    ],
+    "local_notarytool_keychain_profile": "ABSENT",
+    "local_provider_api_key_env": "ABSENT (no ANTHROPIC_/OPENAI_ env in session)"
+  }
+}

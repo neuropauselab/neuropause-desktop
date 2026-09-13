@@ -1,0 +1,312 @@
+{
+  "key": "desktop-authz-execution",
+  "generated_utc": "2026-09-12",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399f",
+    "porcelain_entries": 0,
+    "version_declared": "1.0.0-rc.30",
+    "classification": "MEASURED (git rev-parse / git status --porcelain | wc -l)"
+  },
+  "method": "Read-only. Source read via Read/sed; greps with quoted globs; one node -e enumeration of M365 action ids vs CST cohorts. No tests executed, no builds, no network. Historical context: HANDOFF-2026-09-12.md §2,§4,§5; certification/pilot-gate-closure/GATE-STATUS-BOARD.md; NP-B-016 header (backend pilot authority — out of desktop scope, noted only).",
+  "architecture_invariant_audited": "HUMAN -> CONTROL -> COMPUTE -> EVIDENCE -> VERIFICATION -> HUMAN DECISION. AI proposes; policy governs; Computer-B executes; Computer-A verifies; Human decides. AI never authorization authority; client never final authority; network != authorization; stale authorization rejected.",
+  "q1_tool_action_authorization_model": {
+    "single_registry_with_TOOL_ID_RISK_LEVEL_REQUIRED_AUTHORITY_REQUIRED_CONFIRMATION_SIDE_EFFECT_CLASS_EVIDENCE_REQUIREMENT_ROLLBACK_CAPABILITY": {
+      "status": "ABSENT",
+      "evidence": "No file/type declares those seven fields together. Searched capabilities/*, cst/*, connectors/*, shared types. Authority is expressed in FIVE partially-overlapping layers below.",
+      "classification": "ABSENT"
+    },
+    "layer_1_ipc_channel_permission_rbac": {
+      "source": "apps/desktop/src/main/ipc/runtimeAuthz.ts:50-820 RUNTIME_CHANNEL_PERMISSIONS (Partial<Record<IpcChannelName, EnterprisePermission>>); PUBLIC_CHANNELS allowlist :882-1264",
+      "family_gates": [
+        "memory/memoryAuthzGate.ts:57-124 MEMORY_CHANNEL_AUTHORITY ('PUBLIC' is an explicit value, not absence :50-55)",
+        "ai/aiAuthzGate.ts:59-215 AI_CHANNEL_AUTHORITY",
+        "workforce/authzGate.ts:46-47 WorkforceProposalApprove/Reject -> 'workforce:approve'",
+        "connectors/index.ts:728-746 gateConnectorHandlers: CONNECTOR_READ_CHANNELS -> 'connectors:read', everything else -> 'connectors:manage' (M365ActionExecute is NOT in the read set -> connectors:manage)",
+        "enterprise withEnterpriseAuthz (referenced runtimeAuthz.ts:14, connectors/index.ts:725)"
+      ],
+      "representative_rows": {
+        "execute:run / execute:cancel": "'workforce:operate' (runtimeAuthz.ts:275-276)",
+        "assistant:plan.decide": "'workforce:operate' (runtimeAuthz.ts:550)",
+        "decision:setStatus / decision:createFromRecommendation": "'operations:manage' (:436-437)",
+        "hold:resolve": "'governance:manage' + audit (:249; decisions/index.ts:88-92)",
+        "dp:import": "'data:import' + handler re-checks destination module write scope + 'data:approve' for high-risk (:165-171, :235)",
+        "opportunity:execute": "'procurement:read' at bridge, handler enforces 'procurement:manage' via HOLD (:257-265; enterprise/index.ts:1566-1570 second gate)",
+        "runtime:stop": "'operations:manage' (:424)",
+        "plugins:*/perms:*/backup:*/recovery:run/update:*/nps:install..": "'cloud:operate' (PLATFORM_ONLY, no org role can hold it) (:297-330, :338-339, :388-420, :659-669)"
+      },
+      "classification": "MEASURED (source read)"
+    },
+    "layer_2_cst_kernel_per_action_governance_m365": {
+      "kernel": "@neuropause/cst 1.3.0 (node_modules/@neuropause/cst/package.json) — FROZEN; adapters under apps/desktop/src/main/cst/ are FROZEN (certification/frozen-surfaces.json:8)",
+      "adapters": {
+        "mail.send": "cst/sendTransition.ts (SEND_ACTION 'connectors.m365.send' :62; policyVersion 'm365-send-policy-1' supplied by caller connectors/index.ts:628; APPROVAL_TTL_MS 15min :60; C3 :186)",
+        "other 28 mutating M365 actions": "cst/governedAction.ts GOVERNED_ACTION_COHORT1 (13, :76-93) + COHORT2A (3, :105-109) + COHORT2B_I (9, :118-128) + COHORT2B_II (3, :139-143); POLICY_VERSION 'm365-action-policy-1' :68; APPROVAL_TTL_MS 15min :66; consequence 'C3' uniform :275; reversibility per action ACTION_REVERSIBILITY :152-166 default IRREVERSIBLE :170-172",
+        "data import": "cst/importTransition.ts (APPROVAL_TTL_MS 15min :50); production caller dataPlane/index.ts",
+        "journal post": "enterprise/modules/finance/journalPostTransition.ts (imports cst adapters)"
+      },
+      "coverage_measured": "node enumeration over connectors/m365/{mail,calendar,drive,contacts,teams}.ts: 34 actions, 29 mutates:true, 5 mutates:false; MUTATING NOT IN CST COHORTS = (none); COHORT IDS NOT FOUND = (none). Therefore the non-CST fallback `m365.execute(...)` at connectors/index.ts:687 is reachable only for the 5 read-only actions or an unknown id.",
+      "per_action_fields_present": [
+        "actionId (WriteAction.id)",
+        "domain",
+        "scopes (Graph)",
+        "mutates",
+        "consequence C3 (uniform)",
+        "reversibility (per action, descriptive only, not part of idempotency key :146-150)",
+        "policyVersion (adapter constant)",
+        "approval TTL",
+        "idempotencyKey sha256(canonicalJSON{tenantId,connectorId,accountId,actionId,params}) :253-260",
+        "expectedPostState {actionResolved:true} (non-vacuous, Profile A unreachable) :278"
+      ],
+      "per_action_fields_absent": [
+        "RISK_LEVEL (no per-action risk; only uniform C3)",
+        "ROLLBACK_CAPABILITY (reversibility label only; no rollback executor)",
+        "EVIDENCE_REQUIREMENT (implicit: Profile A = no oracle; only mail.send has a read-back oracle deriveOracle liveBrain/executionGate.ts:62-66)",
+        "REQUIRED_AUTHORITY per action (all M365 writes share connectors:manage; drive.share and mail.markRead same tier)"
+      ],
+      "classification": "MEASURED"
+    },
+    "layer_3_capability_catalog": {
+      "source": "capabilities/capabilityCatalog.ts:52-73 DiscoveredCapability {connectorId, accountId, accountLabel, workspaceId, capabilityId, title, domain, operation read|mutate, consequential (DERIVED from mutates :137-138), approvalRequired (DERIVED = consequential :146), executor, verification 'provider-ack-only'|'none' (:38-42, no 'verified' value), availability, requiredScopes}",
+      "invariants": "'no field, and no caller, that can mark a mutation non-consequential or approval-free' (:20-24); selectCapability -> NOT_FOUND | CROSS_TENANT | NOT_AVAILABLE, never executes (:181-207)",
+      "classification": "MEASURED"
+    },
+    "layer_4_workforce_governance": {
+      "source": "packages/shared/src/types/workforceJobs.ts:51-63 JobProposal {id,title,summary,sideEffects,risk:RiskLevel,evidence:ActionEvidence[],payload,verdict:GovernanceVerdict,approval:ProposalApproval|null,execution?:ExecutionBinding}; workforceGovernance.ts:92-103 GovernanceVerdict {requestId, workerId, skillId, decision allow|deny|require_approval, reasons[], checks[{kind permission|trust|evidence|policy, outcome, pass, detail}], evaluations[{ruleId,title,effect,matched,reason}], trustScore, risk, decidedAt}",
+      "note": "policy set is UNVERSIONED — no authoritative per-decision policyVersion (cst/boundDecisionClaim.ts:24-29 I-A3-STEP2-FINDING-1)",
+      "classification": "MEASURED"
+    },
+    "layer_5_store_scope_and_channel_resource": {
+      "source": "tenancy/storeScope.declareStoreScope {name, scope, persistence, authority, classification, retentionScope, retentionAuthority, retention, reason} (e.g. executionStore.ts:26-53, actionRecord.ts:38-58); ipc/channelResource.ts:61-73 declareChannelResource {channel, store, effect read|mutate, reason}; rules :119-181 (PUBLIC+CUSTOMER_DERIVED, PUBLIC+mutate+GLOBAL, PUBLIC+mutate+scoped); coverage self-declared PARTIAL (:42-53)",
+      "classification": "MEASURED (code) / DECLARED (partial coverage statement)"
+    },
+    "verdict": "Authority is expressed primarily as IPC-channel permissions (RBAC) plus a per-action CST governance layer for M365 writes/data import; there is no unified consequential-action registry with the seven requested fields."
+  },
+  "q2_default_deny": {
+    "unclassified_channel_at_composition": "withRuntimeAuthz THROWS 'has no permission classification' (runtimeAuthz.ts:829-842); withMemoryAuthz THROWS (memoryAuthzGate.ts:150-156) and THROWS on disagreement with central table (:158-164); withAiAuthz same (aiAuthzGate.ts:241-255); gateConnectorHandlers defaults unclassified to the STRICTER 'connectors:manage' (connectors/index.ts:740-746)",
+    "boot_invariant": "runtimeCore.ts:4105-4117: gatedChannels = defs with permission||requireAuth; ungated = assertAllChannelsClassified(gated, PUBLIC_CHANNELS); if length>0 -> log.error + THROW 'Refusing to start: N runtime IPC channel(s) ride on sender-trust alone'. assertAllChannelsClassified itself THROWS when a channel is BOTH gated and public (runtimeAuthz.ts:1311-1328). Also assertAllStoreScopesBound() :4097.",
+    "bridge_runtime": "secureBridge.runSecureHandler: requireAuth && !isAuthenticated -> throw 'Sign in to continue.' (:149-151); permission && !authorize -> throw 'Authorization is not available.' (fail closed, :152-155); zod safeParse failure -> throw (:158-162); untrusted sender -> throw (:182-184). isAuthenticated = hasActivePrincipal: only 'authenticated' | 'local' (auth/governedActor.ts:19-21).",
+    "router": "ipc/router.ts:140-158 registers only INVOKABLE_CHANNELS that have a route; sender-origin check (file:// or allowed dev origins :128-133) + zod. routerClassification.test.ts:81 pins router set DISJOINT from gated set.",
+    "rbac_resolver": "enterprise/authzGate.ts createAuthorize :242+: no session -> throw; platform-only permission -> isPlatformOperator or AuthorizationError (never org roles); resolveActor returns null on UNRESOLVED_TENANT (:181) or non-member (:196-206) -> refusal + HOLD 'insufficient_permission' recorded (enterprise/index.ts:784-815).",
+    "denial_classification": "denialCode.classifyDenial: typed AuthorizationError -> missing-permission; TenantContextError only for the 5 authority reasons; anything unrecognised -> null ('an unknown failure must never be dressed up as a refusal') (:100-151).",
+    "cst_kernel": "kernel.js: DENIED TENANT_ISOLATION_VIOLATION :81, AUTHORIZATION_FAILURE :87; BLOCKED MODEL_SELF_AUTHORIZATION :129, SEPARATION_OF_DUTIES :138, APPROVAL_MISMATCH :143, APPROVAL_SCOPE_VIOLATION :152, CONSTRAINT_EXCEEDED :164; HOLD APPROVAL_EXPIRED :173, EVIDENCE_STALE :182; STALE_RESOURCE_VERSION :290. Adapter: policy grant withheld unless hasActor && ownsAccount && scopesOk && token (governedAction.ts:270-273); non-canonicalizable params -> DENIED before kernel (:251-259).",
+    "execution_engine": "no executor registered -> failed (executeEngine.ts:200-203); tenantId absent -> session visible to nobody (:52-55, :288-292); governed persist failure -> refuse, roll back reservation (:163-182); duplicate decisionId -> refused single-use (:149-152).",
+    "capability_selection": "unknown capability -> NOT_FOUND; empty catalog -> NOT_FOUND; governance-not-proven never selectable (constitutionalInvariants.test.ts:200-226 RULE-003).",
+    "verification_terminals": "unrecognised terminal -> 'unresolved' (verification/verificationTerminals.ts:30-34).",
+    "tests_pinning": [
+      "ipc/runtimeAuthz.test.ts:63 'throws at composition time for an unclassified channel'",
+      ":130 'never gates a channel that is also on the public allowlist'",
+      ":171 'flags exactly the channel that is neither gated nor public'",
+      ":276 'accounts for every invokable runtime channel'",
+      "ipc/routerClassification.test.ts:65,81,91"
+    ],
+    "classification": "MEASURED (source + test names read; tests not executed in this pass)"
+  },
+  "q3_renderer_as_final_authority": {
+    "main_recheck_per_call": "Every gated channel re-runs auth + RBAC + zod in main on each invoke (secureBridge.ts:144-168, 179-221); actor identity resolved from authService session email server-side (createAuthorize deps.sessionEmail), never from payload.",
+    "renderer_cannot_inject_execution_authority": "ExecuteRunRequest is .strict() with only kind/targetId/input/label (packages/shared/src/ipc/contracts.ts:113-131); ExecutionRequest.params and .confirmed are IN-PROCESS ONLY (packages/shared/src/types/executeEngine.ts:47-60); readGovernedClaim reads params.claim by reference (executeEngine.ts:63-79). A renderer execute:run of kind 'connector' has no binding -> 'No execution binding on request' (workforceActionExecutor.ts:40-43).",
+    "workforce_path_human_act_bound_in_main": "WorkforceProposalApprove ('workforce:approve') -> resolveAuthoritativeApprover(deps.actor) throws if null, never renderer/'user' literal (workforce/approverAuthority.ts:13-24; workforce/index.ts:490-491) -> workerRuntime.decide stamps approval {decision, decidedBy: by, decidedAt, note} (:246) -> dispatch mints BoundDecisionClaim from main clock/nonce/actor/tenant (workforce/index.ts:257-258, 280-284; CLAIM_TTL_MS 5min :108) -> router sets confirmed:true in-process (execution/router.ts:64) -> ExecuteEngine durable single-use on decisionId (executeEngine.ts:143-158) -> Boundary B recomputes digest before runBinding (workforceActionExecutor.ts:45-49; boundaryB.ts:47-84).",
+    "livebrain_path": "admitForExecution re-derives authority/oracle/tenant/expiry/state-hash; ASK-only, no ALLOW branch (liveBrain/proposalExecutionBoundary.ts:52-93); hostile confirmed:true/approved:true on the artifact are inert (constitutionalInvariants.test.ts:149-155 RULE-001); l6ExecutionGate refuses IDENTITY_UNRESOLVED / MALFORMED_REQUEST / re-derivation mismatch and emits governance-class evidence (liveBrain/executionGate.ts:82-222).",
+    "GAP_m365_direct_path_confirmed_is_renderer_supplied": {
+      "fact": "M365ActionExecuteRequest.confirmed: z.boolean().default(false) (contracts.ts:470) is set by the renderer (M365WritePanel.tsx:109 passes `true`; confirmedAt = new Date() at :102). In main, r.confirmed is passed verbatim as the C3 approval: governedSend(...confirmed: r.confirmed...) connectors/index.ts:625 and governedAction(...confirmed: r.confirmed...) :669; the adapter builds Approval only when confirmed (governedAction.ts:283-297; sendTransition.ts:195-204). Main does not independently verify that a human gesture occurred; `confirmedAt` is EVIDENCE ONLY (actionRecord.ts:160-169). Same pattern for InfraActionRequest.confirmed (contracts.ts:2728-2740).",
+      "what_main_still_decides": "approver identity (deps.actor(), null -> DENY), tenant (deps.workspaceId()), account ownership, granted scopes, valid token, RBAC connectors:manage, sender trust, L6 gate for brain proposals, idempotency/replay, TTL. The renderer flag converts HOLD(APPROVAL_REQUIRED) into proceed for an actor main has already authorized.",
+      "assessment": "INFERRED: the client is NOT the final authorization authority (permission/identity/tenant/policy are main-decided), but the client IS the sole source of the human-confirmation predicate on the direct M365 path; a compromised or scripted trusted renderer frame can assert consent. Mitigated by sender-origin trust + RBAC + audit; not by an independent main-side consent proof.",
+      "classification": "MEASURED (code) + INFERRED (risk)"
+    },
+    "assistant_path": "AssistantPlanDecide ('workforce:operate', audit) -> decideStep: step.decidedBy = 'user' LITERAL (assistantService.ts:656, not the authenticated principal); dispatch only in 'execute' mode (MODE_CONFIG.execute.dispatchOnApproval true; ask/analyze/plan/monitor false — assistantModel.ts:222-262); dispatch calls deps.execute({kind, targetId, input, label, correlationId}) WITHOUT confirmed (assistantService.ts:716-722); executionKind is only 'automation' | 'worker' (assistantModel.ts:359,386); needsApproval is always true for side-effect steps (:324,355,382).",
+    "decision_center": "DecisionSetStatus lets the renderer set ExecutiveDecision.status to any of draft|suggested|accepted|in_progress|blocked|completed|rejected|archived (contracts.ts:201-212; executiveCenter.ts:202-211) — a tracking board; the 'decision' executor only advances status (runtimeCore.ts executeEngine.register('decision')). INFERRED: 'completed' is a renderer-settable label, not proof of an executed effect.",
+    "classification": "MEASURED + INFERRED as marked"
+  },
+  "q4_human_decision_objects_and_recommendation_to_decision": {
+    "ProposalApproval": "{decision:'approved'|'rejected', decidedBy:string, decidedAt:string, note:string|null} (workforceJobs.ts:19-26)",
+    "CST_Approval_9_fields": "{approvalId, transitionId, approver:Actor{id,type HUMAN|AI|SERVICE|CONNECTOR|WORKFLOW|ROBOT,tenantId}, action, scope{tenantId,resourceType,resourceId}, resourceVersion, purpose, policyVersion, issuedAt, expiresAt, constraints?, consumed} (cst types.d.ts:55-75); kernel refuses approval(A) for request(B) APPROVAL_SCOPE_VIOLATION (approvalActionBinding.test.ts:131-142), no approval at C3 -> HOLD APPROVAL_REQUIRED (:144-150), MODEL_SELF_AUTHORIZATION blocked (kernel.js:129)",
+    "BoundDecisionClaim": "{decisionId (= verdict.requestId), nonce, bindingDigest sha256(canonicalize 8-field EffectBinding{executor,target,accountId,actionId,params,actor,tenantId,decisionId}), issuedAt, expiresAt} — NOT signed, by-reference only (boundDecisionClaim.ts:17-19, 35-58); mint fails closed NOT_APPROVED|NO_EXECUTION_BINDING|INCOMPLETE_BINDING|NO_ACTOR|NO_TENANT|NON_CANONICAL_PARAMS (boundDecisionClaimMint.ts:26-92)",
+    "HoldRecord": "HoldView{reason (10 HoldReason values), why, known[], unknown[], resolution, ifProceeding} + {tenantId?, workspaceId?, id hold_<uuid>, at, actor, title, subject, decisionId, status open|resolved, resolvedAt, resolvedOutcome proceeded|took_alternative|cancelled, resolvedNote} (understanding.ts:121-200); open() dedupes per subject (holdStore.ts:44-70); resolve requires HoldResolve IPC ('governance:manage', audit) and writes a DecisionRecord (decisions/index.ts:88-118)",
+    "DecisionRecord": "{tenantId?, workspaceId?, id dec_<uuid>, at, actor, requestedAction, subject, assessment{risk supported|questionable|high_risk|insufficient_evidence, recommendation, evidence[{label,detail,count}], alternative}, outcome proceeded|took_alternative|cancelled, executed:string, holdId} (understanding.ts:243-275; decisionService.ts:97-113); append-only store",
+    "ExecutionProposalRecord_handoff": "status draft->pending_confirmation->accepted|rejected|cancelled (decisionExecutionHandoff.ts:84-108); 'Accepting a proposal changes ONLY the proposal record's state — it never runs production' (:13-14); confirmedBy/confirmedAt fields (:283-286)",
+    "can_a_recommendation_populate_a_decision_without_a_human_act": {
+      "finding": "NO autonomous path found. decisionStore.create( has exactly ONE caller: the DecisionCreateFromRecommendation IPC handler (enterprise/decisionSubsystem.ts:39-56), which requires a renderer invoke under 'operations:manage'. The created ExecutiveDecision has status 'suggested' and a history entry actor:'system' kind:'created' (enterprise/decisionStore.ts:100-130). Workforce: proposals with verdict require_approval park awaiting_approval; decide() refuses when verdict != require_approval (workerRuntime.ts:243-244). Assistant: no auto-approve (grep 'autoApprove|auto-approve' none). CST: MODEL_SELF_AUTHORIZATION refused.",
+      "caveat": "INFERRED: history actor 'system' on a human-initiated creation is a labeling inaccuracy (the human's identity is not recorded on the decision creation event).",
+      "classification": "MEASURED (single-caller grep) + INFERRED (labeling)"
+    }
+  },
+  "q5_user_visible_state_labels": {
+    "grep_requested_tokens_shared": "packages/shared/src (non-test): REQUESTED 0, AUTHORIZED 0, EXECUTING 0, EXECUTED 0, VERIFIED 2 (comments in decisionExecutionHandoff.ts:3,43), DECISION_REQUIRED 0, NOT_PERMITTED 0, BLOCKED 2 (TenantMigrationStatus tenancy.ts:230,242), STOPPED 0, DEGRADED 0, OFFLINE 0",
+    "grep_requested_tokens_renderer": "apps/desktop/src/renderer/src (non-test): EXECUTING 4 (m365Outcome.ts:20,44; operatorConsole.ts:159,192), VERIFIED 7 (mostly comments; HoldsView.tsx:438,477 'NOT VERIFIED' label), DEGRADED 3 (missionControlModel.ts:331,337; retrievalStatus.ts:21), all others 0",
+    "actual_vocabularies": {
+      "shared_ExecutionState": "queued|running|waiting|paused|completed|failed|cancelled|interrupted (packages/shared/src/types/executeEngine.ts:27-35)",
+      "renderer_OperatorExecutionState": "PENDING|EXECUTING|ACKNOWLEDGED|OUTCOME_UNCERTAIN|EXECUTION_FAILED|INTERRUPTED|CANCELLED — 'NEVER reports VERIFIED_SUCCESS'; a governed 'failed' is treated as possibly-UNKNOWN (understanding/operatorConsole.ts:150-200)",
+      "renderer_M365WriteState": "EXECUTING|APPROVAL_REQUIRED|ACKNOWLEDGED|OUTCOME_UNKNOWN|EXECUTION_FAILED|HELD|ESCALATED|DENIED (connectors/m365Outcome.ts:19-27)",
+      "main_ActionSemanticOutcome": "ACKNOWLEDGED|UNKNOWN|EXECUTION_FAILED|VERIFIED_NOOP|DENIED|HOLD|ESCALATE (cst/governedAction.ts:174-181)",
+      "cst_Verdict / VerificationOutcome": "ALLOW|HOLD|DENY|ESCALATE ; VERIFIED|DEVIATION|UNKNOWN|'NOT_APPLICABLE' (types.d.ts:30-32, 153)",
+      "verification_terminals": "VERIFIED_SUCCESS|VERIFY_FAILED|VERIFY_PENDING|UNKNOWN|HOLD|EXECUTED_ACK|VERIFIED_FAILURE|VERIFIED_NOOP (verification/verificationTerminals.ts:5-10)",
+      "hold": "HoldReason x10 with HOLD_REASON_LABELS; RunState success|failure|hold -> 'Done'|'Failed'|'On hold' (understanding.ts:121-211)",
+      "denial_codes_user_facing": "not-authenticated|missing-permission|not-a-member|authz-unavailable|untrusted-sender (main ipc/denialCode.ts:41-52; renderer lib/ipcError.ts:109-115; stamp 'NPDENY:' stripped at renderer invoke chokepoint ipc.ts:285; parity pinned by ipc/denialCodeContract.test.ts)",
+      "ExecutiveDecision.status": "draft|suggested|accepted|in_progress|blocked|completed|rejected|archived (executiveCenter.ts:202-211) — renderer-settable"
+    },
+    "honesty_tests": {
+      "appTabContentHonesty": "ABSENT (find -iname '*honesty*' over apps/desktop/src + packages: no such file)",
+      "productOpsHonesty": "ABSENT as named; nearest: apps/desktop/src/renderer/src/productOps/productOpsModel.test.ts describes 'status → tone maps ... are honest' (:47-48), 'operational-gap catalog (honesty ledger)' (:62-74), 'labels the panels as fallback, not verified state' (:132)",
+      "other_found": [
+        "apps/desktop/src/renderer/src/intelligence/intelligenceHonesty.test.ts (+ intelligenceHonesty.ts emptyGraphNotice)",
+        "packages/industry/src/analyticsHonestyReuse.test.ts",
+        "packages/autonomous-ops/src/sdkMarketplaceGovernanceHonesty.test.ts",
+        "packages/workplace/src/dashboardsMarketplaceSdkHonesty.test.ts",
+        "packages/workforce/src/governanceHonestyReuse.test.ts",
+        "packages/commercial/src/sdkGovernanceHonesty.test.ts"
+      ],
+      "state_model_tests": "operatorConsole.test.ts ABSENT; m365Outcome.test.ts ABSENT (find over understanding/ and connectors/ returned only connectorCenterModel.test.ts, m365ProposalHandoff.test.ts, understandingModel.test.ts). The renderer's two honest execution-state mappers are therefore NOT pinned by a dedicated test in this tree.",
+      "classification": "MEASURED (find/grep)"
+    }
+  },
+  "q6_stop_kill_switch": {
+    "execute_cancel": "IPC execute:cancel ('workforce:operate') -> ExecuteEngine.cancel(id): tenant-scoped ('foreign id is no such session'), sets state 'cancelled', removes from live map, persists, emits execution.cancelled — 'best-effort — marks state; executors are cooperative' (executeEngine.ts:317-331). Only cooperation point: setStep no-ops when state !== 'running' (:191). No AbortSignal is passed to executors (grep AbortSignal|isCancelled in executeEngine.ts + workforce/execution: none). Renderer: 'Cancel' button per live session (enterprise/ExecutePanel.tsx:405-411 -> lib/ipc.ts:1347).",
+    "assistant_cancel": "assistant:cancel (PUBLIC allowlist) -> service.cancel(conversationId), caller's own in-flight request only (assistant/index.ts:644-647; runtimeAuthz.ts:1169-1175)",
+    "runtime_stop": "runtime:stop|suspend ('operations:manage', audit) -> supervisor.stop(instanceId) for launched app runtimes (runtimeCore.ts:2034-2040)",
+    "connector_kill_switch": "connectors:control action pause|resume|disable|enable ('connectors:manage', audit) -> supervisor.control -> connectorControlStore.setDisabled per ACTIVE WORKSPACE; unresolved workspace THROWS rather than silently succeeding; legacy install-wide flag is cleared per-workspace only (connectors/index.ts:577-585; contracts.ts ConnectorControlRequest; connectorControlStore.ts:253-281)",
+    "package_ops": "nps:pause|cancel ('cloud:operate') abort in-flight install (runtimeAuthz.ts:664-666)",
+    "global_emergency_stop": "ABSENT — no IPC or menu path that halts all execution; serviceManager.stopAll() exists but is internal with no IPC (services/serviceManager.ts:175-178). Grep for kill.?switch|emergency.?stop|stopAll|cancelAll|haltAll in main hit only connectorControlStore.ts, services/serviceManager.ts, memory/retrievalHealth.ts, connectors/index.ts.",
+    "in_flight_cst_effect": "A governed M365 effect is a single awaited action.run with effectCalls <= 1 and is not cancellable mid-flight by design (governedAction.ts:339-365); UNKNOWN -> durable reconciliation hold, never retried (connectors/index.ts:641-644, :681-683; runtimeCore.ts runBinding m365 branch).",
+    "fail_closed_on_interruption": "Boot recovery marks in-flight sessions 'interrupted' and NEVER reruns (runtimeCore.ts:2645-2660; executeEngine.seedHistory :338-349); crash-orphaned governed commands surface as HOLD 'verification_unavailable' and are permanently blocked from silent replay (decisions/heldCommandHold.ts:37-55; heldCommandHoldService.ts).",
+    "classification": "MEASURED"
+  },
+  "q7_evidence_chain_fields": {
+    "INTENT": "ExecutionRequest{kind,targetId,input,label,params(in-process),confirmed(in-process),correlationId}; JobProposal{title,summary,payload,evidence[]}; liveBrain Proposal{proposalId,tenantId,purpose,observation,diagnosis,evidence[EvidenceRef{kind,id,asOfMs}],policyFacts[],options[],selectedOption,proposedAction{capabilityId,params},target{connector,account,tenantId,scope},scope,authorityRequired,risk,reversibility,expectedEffect,verificationPlan,expiry{freshnessWindowMs,evidenceAsOfMs,builtAtMs,expiresAtMs}} (liveBrain/proposal.ts:27-95); CST TransitionRequest.purpose + intent strings (governedAction.ts:281,305-306)",
+    "AUTHORITY": "Actor{id (deps.actor(), 'local:<id>' for device-local — auth/governedActor.ts:33-45), type:'HUMAN', tenantId}; Approval (9 fields) with approvalId 'appr:<idem>' issuedAt/expiresAt(+15min); ProposalApproval{decidedBy,decidedAt}; BoundDecisionClaim{decisionId,nonce,bindingDigest,issuedAt,expiresAt(+5min)}; ExecutionSession.decisionId/bindingDigest/claimNonce (shared executeEngine.ts:100-123)",
+    "POLICY": "policyVersion 'm365-send-policy-1' | 'm365-action-policy-1' (label; kernel does not branch on it — executionGate.ts:31-45); PolicyStore(actorId -> Set{policyAction}) built per call from connector facts (governedAction.ts:318-321); GovernanceVerdict{requestId,decision,reasons,checks,evaluations,trustScore,risk,decidedAt}; AuthorityRequirement{requiresApproval,governanceStatus,requiredGate 'human-confirm + CST admission',policyVersion}",
+    "ACTION": "actionId; policyAction 'connectors.m365.<actionId>'; idempotencyKey sha256(canonicalJSON{tenantId,connectorId,accountId,actionId,params}); transitionId 'm365-action:<idem>' | 'm365-send:<idem>' (content-addressed, collides for identical params by design); requestId 'req:<idem>:<epoch-ms>'; target{tenantId,resourceType 'm365-write:<domain>',resourceId '<connector>/<account>/<idem>',version 1}",
+    "EXECUTION": "ExecutionSession{id 'exec_<ts>_<seq>',tenantId,kind,label,state,steps[{id,label,state}],currentStep,startedAt,completedAt,durationMs,error,resultSummary,result,correlationId,decisionId?,bindingDigest?,claimNonce?} persisted to execute-engine-sessions (mode 0600, atomic tmp+rename, per-tenant cap 500 — executionStore.ts); TransitionOutcome{transitionId,verdict,reason,claimed,fencingToken,executed,executionId,duplicateSuppressed,observedPostState,verification,deviation,timeline,relationshipAssessment,verificationProposition,outcomeClass} (types.d.ts:143-178); effectCalls (0|1), providerAck",
+    "RESULT": "semanticOutcome; ConnectorWriteResult{ok,message,requiresConfirmation?,data{outcome,...}} (connectors.ts:416-424); platform events execution.started|completed|failed|cancelled with correlationId (executeEngine.ts:188,251-256,329)",
+    "EVIDENCE": "ActionRecord{id 'act_<uuid>',correlationId?,at(record_time),requestId,requestTime(read from requestId, null if unparseable),eventTime,confirmedAt?(verbatim from renderer, evidence only),transitionId,actor(verbatim),tenantId,connectorId,accountId,actionId,recipients{to,cc,bcc},subjectFingerprint,bodyFingerprint (sha256 of normalized text, first 16 hex — evidence/recordFingerprint.ts:49-52; empty stays ''),verdict,executed,outcome (incl. 'NOT_STARTED' for governance-only rows),admissionRef(=transitionId),verification} — append-only, tenant-filtered query, no delete path (actionRecord.ts:115-186, 38-58); governance-class rows with verdict DENY|NOT_EVALUATED (:417-468); bridge audit.log {at,channel,ok,durationMs,error} bounded 5MiB x3 (secureBridge.ts:97-111); DecisionRecord/HoldRecord pairs (raiseHold.ts); store envelope stamp (storage/storeEnvelope)",
+    "VERIFICATION": "ActionRecordVerification{terminal,internetMessageId,at(verification_time),provenance?{source,method,oracle},effectTime?} (actionRecord.ts:69-93); monotonic: settled terminal never overwritten, refusal logged (:561-586); oracle verifyEffect (send-corroboration only, HOLD when absent/unrecognized — constitutionalInvariants.test.ts RULE-006); production reconciler reconciliation/readBackReconciler.ts (present; behaviour DECLARED by test comment constitutionalInvariants.test.ts:485-490, not executed here); every other capability: verifiable:false with needs stated (executionGate.ts:54-66)",
+    "digest_integrity": "bindingDigest and idem are sha256 over canonical JSON; recordFingerprint sha256[:16]; NO signatures/HMAC anywhere on the claim/approval (boundDecisionClaim.ts:17-19) — integrity is in-process by-reference, not cryptographic issuer authentication",
+    "classification": "MEASURED"
+  },
+  "stale_authorization_and_network_not_authorization": {
+    "stale": [
+      "CST Approval expiresAt = issuedAt + 15min -> HOLD APPROVAL_EXPIRED (governedAction.ts:66,294; kernel.js:173)",
+      "BoundDecisionClaim TTL 5min -> Boundary B EXPIRED (workforce/index.ts:108; boundDecisionClaim.ts:112)",
+      "liveBrain proposal expiry enforced at confirm (proposalExecutionBoundary.ts:66-68; RULE-004 10-min window test constitutionalInvariants.test.ts:241-251)",
+      "state-hash drift refused (:70-72)",
+      "EVIDENCE_STALE / STALE_RESOURCE_VERSION / STALE_POLICY reason codes exist in kernel vocabulary (types.d.ts:43)",
+      "single-use decision consumption survives restart (executeEngine.ts:338-349; durableConsumption.test.ts:65)"
+    ],
+    "network_not_authorization": [
+      "governedAction grants policy only if hasActor && ownsAccount && scopesOk && token !== null — a valid token alone is insufficient (governedAction.ts:270-273)",
+      "system:backendReachability is public but returns only {reachable,checkedAt,lastError} and 'grants no reach' (runtimeAuthz.ts:1221-1263)",
+      "RULE-002: connector certified != action certified (constitutionalInvariants.test.ts:168-198)"
+    ],
+    "classification": "MEASURED"
+  },
+  "historical_context": {
+    "handoff": "HANDOFF-2026-09-12.md §4: HD-19-CLASS 'execution authorization' OPEN (human decision); AUTHORIZATION_ISSUED = FALSE; first blocking gate GATE-INTENDED-USE. §5 traps: do not build from symlinked worktree; do not mutate R3 baseline f0ba0e8f.",
+    "gate_status_board": "certification/pilot-gate-closure/GATE-STATUS-BOARD.md:33 'MG-01 execution authorization (HD-19-CLASS) — three execution records now exist; formal closure is a human determination'; :49-54 PUBLIC_LAUNCH_STATUS/PRODUCTION_STATUS/COMMERCIAL_STATUS NOT_ESTABLISHED, AUTHORIZATION_ISSUED FALSE",
+    "np_b_016": "NP-B-016-AUTHORITY-INTAKE-RESULT.json concerns the BACKEND pilot route POST /pilot/decision (apps/backend/src/pilot/service.ts:121-131 human_decision_required -> 403); backend is outside this subsystem map.",
+    "classification": "DECLARED"
+  },
+  "gate_assessments": [
+    {
+      "gate": "AUTHORIZATION-ENFORCEMENT",
+      "status": "PASS",
+      "reason": "Every invokable channel must be RBAC/auth-gated or explicitly allowlisted; composition root THROWS at boot otherwise (runtimeCore.ts:4105-4117; runtimeAuthz.ts:1311-1328); bridge re-checks auth+permission per call with actor resolved server-side (secureBridge.ts:149-157; enterprise/authzGate.ts:242+); typed AuthorizationError crosses as a closed denial-code set. Evidence is source-read plus named test pins; suites were not executed in this pass."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY",
+      "status": "PASS",
+      "reason": "AI cannot be the authority: MODEL_SELF_AUTHORIZATION blocked in kernel; capability approvalRequired is derived and unweakenable; live-brain admission is ASK-only with re-derivation (RULE-001/003/007 pinned); workforce approvals bind decidedBy to the authenticated principal and fail closed on null; assistant needsApproval always true for side-effect steps; no autonomous decision creation (single IPC caller). Caveat recorded as a gap: on the direct M365 path the human-confirmation predicate (`confirmed`) is renderer-supplied and main does not independently prove the gesture; assistant stamps decidedBy='user' literal."
+    },
+    {
+      "gate": "STOP/FAIL-CLOSED (fail-closed half)",
+      "status": "PASS",
+      "reason": "Deny-by-default at every layer (boot throw, bridge, RBAC resolver, kernel DENY/HOLD, capability NOT_FOUND, terminal 'unresolved'); interrupted sessions never rerun; crash-orphaned commands become HOLD; UNKNOWN -> durable hold, effect at most once; governed persist failure refuses execution."
+    },
+    {
+      "gate": "STOP/FAIL-CLOSED (stop half)",
+      "status": "MEASURABLE",
+      "reason": "User can cancel a live ExecuteEngine session (state-only, cooperative, no AbortSignal), disable/pause connectors per workspace, stop app runtimes, cancel assistant requests and package ops. No global emergency stop-all exists (serviceManager.stopAll has no IPC); an in-flight CST effect is not abortable by design."
+    },
+    {
+      "gate": "TOOL-AUTHORIZATION",
+      "status": "MEASURABLE",
+      "reason": "No unified registry with TOOL_ID/RISK_LEVEL/REQUIRED_AUTHORITY/REQUIRED_CONFIRMATION/SIDE_EFFECT_CLASS/EVIDENCE_REQUIREMENT/ROLLBACK_CAPABILITY. Present per action: id, mutates, scopes, consequence (uniform C3), reversibility, policyVersion, approval TTL, idempotency identity; all 29 M365 mutating actions are CST-governed (measured). Absent per action: risk level, rollback capability, evidence requirement, differentiated required authority (all writes = connectors:manage)."
+    },
+    {
+      "gate": "POLICY-ENFORCEMENT",
+      "status": "PASS",
+      "reason": "Single kernel verdict for every M365 write, data import and journal post; approval is action- and scope-specific (APPROVAL_SCOPE_VIOLATION pinned); stale approval/claim/proposal/state rejected with explicit TTLs; connector facts folded into one policy grant; network/token alone never authorizes. Caveats: policyVersion is a recorded label not an input; workforce policy set is unversioned (no per-decision policy provenance); send-path CST stores are process-lifetime (m365SendPorts in-memory) while action-path idempotency is durable (DurableIdempotencyStore, connectors/index.ts:419-420)."
+    },
+    {
+      "gate": "USER-VISIBLE STATE",
+      "status": "MEASURABLE",
+      "reason": "Honest state vocabularies exist and refuse to fabricate VERIFIED_SUCCESS (operatorConsole.ts, m365Outcome.ts), denial codes are typed and parity-tested, hold reasons have labels. But the requested canonical labels (REQUESTED/AUTHORIZED/EXECUTED/DECISION_REQUIRED/NOT_PERMITTED/STOPPED/DEGRADED/OFFLINE) do not exist in packages/shared (0 hits); there is no single shared action-state enum across surfaces; the two renderer state mappers have no dedicated tests; DecisionSetStatus lets a renderer mark a decision 'completed' without any execution; the named honesty tests (appTabContentHonesty, productOpsHonesty) are absent."
+    }
+  ],
+  "gaps": [
+    "No unified consequential-action registry with the seven requested fields; authority is spread across channel RBAC, CST cohorts, capability catalog, workforce verdicts and store-scope declarations.",
+    "Direct M365 write path: `confirmed` (the C3 approval predicate) and `confirmedAt` are renderer-supplied; main cannot distinguish a human click from a scripted trusted frame (contracts.ts:470; connectors/index.ts:625,669).",
+    "Assistant plan approval records decidedBy='user' literal rather than the authenticated principal (assistantService.ts:656).",
+    "Decision Center: renderer may set ExecutiveDecision.status='completed' with no execution linkage; decision-from-recommendation history stamps actor 'system' on a human-initiated act.",
+    "No global emergency stop / kill-all execution path; ExecuteEngine.cancel is state-only and cooperative (no AbortSignal).",
+    "No per-action RISK_LEVEL, ROLLBACK_CAPABILITY, or EVIDENCE_REQUIREMENT; only mail.send has a verification oracle; all other M365 writes are Profile A (VERIFIED structurally unreachable).",
+    "policyVersion is a label, not an enforcement input; workforce governance policy set is unversioned (no per-decision policy provenance).",
+    "BoundDecisionClaim/Approval are unsigned in-process objects (no issuer authentication) — integrity is representational only.",
+    "mail.send CST ports are in-memory (process-lifetime) — restart-durable single-use not claimed for send; governedAction path uses DurableIdempotencyStore.",
+    "Requested state-label vocabulary absent from shared types; renderer state mappers (operatorConsole.ts, m365Outcome.ts) lack dedicated tests; appTabContentHonesty/productOpsHonesty tests do not exist.",
+    "Tests were not executed in this pass (background revalidation running); all 'PASS' assessments are from source reading and test names, not measured runs."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Add dedicated unit tests for renderer state mappers classifyExecutionSession (operatorConsole.ts) and m365Outcome mapping, pinning that no input yields a VERIFIED/success label stronger than ACKNOWLEDGED and that UNKNOWN is never success/failure.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/renderer/src/understanding/operatorConsole.ts",
+        "apps/desktop/src/renderer/src/connectors/m365Outcome.ts"
+      ],
+      "risk": "None to runtime; test-only."
+    },
+    {
+      "action": "Record the authenticated principal (deps.actor()) instead of the literal 'user' on assistant step decisions; fail closed on null like resolveAuthoritativeApprover.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/assistant/assistantService.ts",
+        "apps/desktop/src/main/assistant/index.ts"
+      ],
+      "risk": "assistant/ is not frozen; changes an evidence field only."
+    },
+    {
+      "action": "Emit a generated, read-only consequential-action register (JSON) from existing sources: M365 cohorts + ACTION_REVERSIBILITY + connector scopes + channel permission + oracle availability, with a test asserting every mutates:true action appears with consequence/reversibility/authority/verification fields.",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/capabilities/",
+        "apps/desktop/src/main/cst/governedAction.ts (read-only import)"
+      ],
+      "risk": "cst/ is frozen — import only, do not edit; register is descriptive, adds no authority."
+    },
+    {
+      "action": "Add an AbortSignal/cancellation token to ExecutionExecutor ctx so cancel() can interrupt cooperative executors (automation/worker) before dispatch; document that CST effects remain at-most-once and non-abortable.",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/executeEngine.ts",
+        "apps/desktop/src/main/workforce/execution/workforceActionExecutor.ts"
+      ],
+      "risk": "executeEngine.ts is not frozen; must not change governed admission ordering."
+    },
+    {
+      "action": "Link ExecutiveDecision status transitions to 'completed' with an executionId or a human note, and stamp the human actor (not 'system') on decision-from-recommendation creation.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/enterprise/decisionStore.ts",
+        "apps/desktop/src/main/enterprise/decisionSubsystem.ts"
+      ],
+      "risk": "Label/evidence honesty only; no authority change."
+    }
+  ],
+  "human_decisions_required": [
+    "Whether renderer-asserted `confirmed` on the direct M365 path is acceptable as the human-consent predicate for launch, or whether a main-side consent proof (e.g. main-issued short-lived confirmation nonce bound to the idempotency key) is required — touches FROZEN packages/shared contracts and connectors/index.ts (FG gate).",
+    "HD-19-CLASS execution authorization (GATE-STATUS-BOARD.md:33) remains a human determination; nothing in this map closes it.",
+    "Whether a global emergency stop is a launch requirement (none exists) and which authority may invoke it.",
+    "Whether uniform C3 for all 28 governed non-send M365 actions (e.g. mail.markRead at the same consequence tier as drive.share) is the intended risk model or whether per-action RISK_LEVEL must be introduced before public launch.",
+    "Acceptance of Profile A (VERIFIED unreachable) for every M365 write except mail.send as the launch verification posture."
+  ]
+}

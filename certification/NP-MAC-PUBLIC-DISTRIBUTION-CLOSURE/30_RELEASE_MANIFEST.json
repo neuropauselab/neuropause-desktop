@@ -1,0 +1,123 @@
+{
+  "ARTIFACT": "30_RELEASE_MANIFEST",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "schema": "np.mac.release/v1",
+  "product": "NeuroPause",
+  "version": "1.0.0-rc.30",
+  "channel": "beta",
+  "release_id": "NP-OS-1.0.0-rc.30-8331185ba41f",
+  "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+  "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+  "branch": "pilot/public-launch",
+  "build_info": {
+    "backendUrl": "https://api.neuropause033.com",
+    "releaseNotes": "## [1.0.0-rc.30] — the pilot decision gate gets a thrower, and the gates get exercised (2026-09-12)\n\nVersion bumped from `1.0.0-rc.29` via the sanctioned tool (`npm run version:bump`), five fields in\nsync. `v1.0.0-rc.29` is tagged and bound to `f0ba0e8`; a version is spent once a tag exists for it,\nso this work ships as rc.30 rather than producing a second binary under the rc.29 label — the\n`da36851` failure class Gate 27 exists to prevent. Gate 27 caught this bump itself: it failed on the\nfirst full-suite run of this work and named the remedy, which is what was then done.\n\n**The orphaned refusal path is closed.** `PilotErrorCode` declared six codes and the router mapped\n`human_decision_required` to HTTP 403, but at `f0ba0e8` nothing in the module ever threw it:\n`DECLARED_MINUS_THROWN = ['human_decision_required']`. The 403 was unreachable.\n`apps/backend/src/pilot/authority.ts` supplies the missing thrower — a deny-by-default decision\nauthority evaluator — and after this change the set difference is empty. An enforcement code with no\nthrower is a mapping that looks like a control and is not one.\n\n**The enforcement gates are exercised rather than merely implemented.** `router.enforcement.test.ts`\npins refusal at the consequential consumer: every outcome state (`CONTINUE`,\n`PAID_PENDING_HUMAN_DECISION`, `INSTITUTIONAL_PENDING`, `EXTENDED`, `STOPPED`, `COMPLETED`) is refused\nfor a self-issued decision and writes nothing, an unauthenticated caller is rejected before the\nservice, and `actor !== subject` is refused identically so the path cannot serve as a state-name\noracle. `service.test.ts` adds the `NP-ENF-015-*` series, including `-016` (an evaluator injected via\n`Object.prototype` is refused with no write), `-026a/b/c` (`NO_AUTHORITY_CONFIGURED` answers UNKNOWN\nfor every context, and the coercion withholds every non-ALLOW/DENY answer), and `-027`, a positive\ncontrol proving the guard is not merely always-denying. 32 pilot tests, 450 backend tests, 53\nworkspaces typechecking clean.\n\n**Certification artifacts.** Adds the SLSA-style supply-chain audit and the FG16 / IPC-ENV execution\nevidence under `certification/`, plus `certification/pilot-gate-closure/` carrying a state snapshot\nobject, a pilot claim register, a test-to-artifact binding for every execution record, a regulatory\nreviewer briefing pack, and a gate status board.\n\nNo authorization is created by this release. `GATE-INTENDED-USE` remains `NOT_ESTABLISHED`, no\nbaseline is designated, no pilot claim is adopted, and no classification is assigned.",
+    "connectorClientIds": {},
+    "version": "1.0.0-rc.30",
+    "channel": "beta",
+    "commit": "8331185",
+    "branch": "pilot/public-launch",
+    "dirty": false,
+    "buildTime": "2026-09-13T03:49:54.958Z"
+  },
+  "bundle_id": "com.neuropause.desktop",
+  "minimum_macos": "12.0",
+  "architecture": [
+    "x86_64",
+    "arm64"
+  ],
+  "app_bundle_digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+  "app_bundle_file_count": 314,
+  "artifacts": [
+    {
+      "artifact_type": "installer",
+      "filename": "NeuroPause-universal.dmg",
+      "size": 232533468,
+      "sha256": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+      "sha512_base64": "iMnGU5RpzyXY3ltTLbknwBENKQu1ztrn2Ha/9I3Pj3RfLQEe8V8b/umVLVEOxjUua5wemDXxAYPlRZV0KVstdQ==",
+      "architecture": "universal",
+      "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d"
+    },
+    {
+      "artifact_type": "update-payload",
+      "filename": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "size": 231627130,
+      "sha256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+      "sha512_base64": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==",
+      "architecture": "universal",
+      "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d"
+    }
+  ],
+  "feed": {
+    "filename": "beta-mac.yml",
+    "sha256": "15b7f421a97f67a4aa7f2787a0d38c3db3ca1dde785f937b46398d9a39734f9d",
+    "version": "1.0.0-rc.30",
+    "path": "NeuroPause-1.0.0-rc.30-universal-mac.zip"
+  },
+  "signing": {
+    "signed": true,
+    "identifier": "com.neuropause.desktop",
+    "team_id": "J3G89MY3QG",
+    "authority_chain": [
+      "Developer ID Application: Dishant Dobariya (J3G89MY3QG)",
+      "Developer ID Certification Authority",
+      "Apple Root CA"
+    ],
+    "hardened_runtime": true,
+    "codesign_verify_deep_strict": true
+  },
+  "notarization": {
+    "status_marker": {
+      "state": "skipped",
+      "notarized": false,
+      "version": "1.0.0-rc.30",
+      "reason": "one or more Apple credentials are absent",
+      "at": "2026-09-13T03:56:36.641Z"
+    },
+    "stapler_validate_exit": 65,
+    "spctl_assess_exit": 3,
+    "spctl_output": "/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app: rejected\nsource=Unnotarized Developer ID"
+  },
+  "build_environment": {
+    "node": "v20.20.2",
+    "os": "darwin 25.5.0",
+    "arch": "arm64",
+    "electron": "42.8.1",
+    "electron_builder": "26.15.3"
+  },
+  "generated_at": "2026-09-13T03:58:16.533Z",
+  "dependency_manifest_sha256": "1a7e23b8c4e1384191e15c413430240df4549daa66bdf2de6f5b39c266c9e565",
+  "third_party_notices_sha256": "6f7b8933a7d38ae09513db76147b8eb2286f4a6aa51fb94ffce9f969f5141e3d",
+  "tests": {
+    "typecheck": 0,
+    "backend": 0,
+    "desktop": 0
+  },
+  "update_feed": {
+    "version": "1.0.0-rc.30",
+    "path": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+    "sha512": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==",
+    "files": [
+      {
+        "url": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+        "sha512": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==",
+        "size": 231627130
+      },
+      {
+        "url": "NeuroPause-universal.dmg",
+        "sha512": "iMnGU5RpzyXY3ltTLbknwBENKQu1ztrn2Ha/9I3Pj3RfLQEe8V8b/umVLVEOxjUua5wemDXxAYPlRZV0KVstdQ==",
+        "size": 232533468
+      }
+    ]
+  },
+  "public_distribution": "BLOCKED"
+}

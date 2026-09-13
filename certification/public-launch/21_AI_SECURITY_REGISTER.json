@@ -1,0 +1,58 @@
+{
+  "ARTIFACT": "21_AI_SECURITY_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "adversarial_tests": [
+    {
+      "test": "AI output claiming authorized in arguments",
+      "file": "apps/backend/src/ai/gateway.test.ts",
+      "result": "PASS (data, not authority)"
+    },
+    {
+      "test": "gateway response carrying authority claim rejected",
+      "file": "apps/backend/src/ai/gateway.test.ts",
+      "result": "PASS"
+    },
+    {
+      "test": "unknown tool default deny",
+      "file": "apps/desktop/src/main/ai/gatewayAgentLoop.test.ts",
+      "result": "PASS"
+    },
+    {
+      "test": "tool output SYSTEM/ADMIN/HUMAN AUTHORITY/AUTHORIZATION_GRANTED injection",
+      "file": "gatewayAgentLoop.test.ts + live run 3",
+      "result": "PASS (write never executed)"
+    },
+    {
+      "test": "confirmation ≠ authority; decision bound to one proposal",
+      "file": "gatewayAgentLoop.test.ts",
+      "result": "PASS"
+    },
+    {
+      "test": "loop bounds (turns, tool calls, stop, gateway failure)",
+      "file": "gatewayAgentLoop.test.ts",
+      "result": "PASS"
+    },
+    {
+      "test": "gateway auth + per-user rate limit + bounds",
+      "file": "gateway.test.ts + live journey",
+      "result": "PASS"
+    }
+  ],
+  "absent": [
+    "renderer prompt-injection regression on legacy assistant lanes",
+    "system-prompt extraction tests",
+    "cross-user/cross-device request tests through AI"
+  ],
+  "ai_outage": "gateway 503 ai_unavailable (measured unit); desktop deterministic fallback with reason (aiEngine)"
+}

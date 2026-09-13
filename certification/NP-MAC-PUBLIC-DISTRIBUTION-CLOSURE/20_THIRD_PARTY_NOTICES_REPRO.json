@@ -1,0 +1,19 @@
+{
+  "ARTIFACT": "20_THIRD_PARTY_NOTICES_REPRO",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "generator": "apps/desktop/scripts/generate-notices.cjs (npm ls --omit=dev --all --json)",
+  "clean_install_packages": 67,
+  "committed_packages": 67,
+  "digest_match": "regenerated file byte-identical to committed (git status clean after packaging)",
+  "symlinked_worktree_result": "868 packages (inflated; not committed)",
+  "determinism": "depends on lockfile + real node_modules; verified for one clean install (second independent install not performed: NOT_MEASURED)"
+}

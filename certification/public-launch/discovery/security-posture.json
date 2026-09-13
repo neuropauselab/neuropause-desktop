@@ -1,0 +1,839 @@
+{
+  "key": "security-posture",
+  "repo": "/Users/saurabhpatel/Desktop/np-public-launch",
+  "branch": "pilot/public-launch",
+  "head": "cec399f",
+  "version": "1.0.0-rc.30",
+  "generated": "2026-09-12",
+  "method": "Read-only static review: file reads, grep/awk counts, package-lock version lookup, git log. No test suites, builds, npm audit, or network calls executed. Classification: MEASURED = I read/executed it; DECLARED = a doc/comment asserts it; DERIVED = computed from measured facts; INFERRED = judgement; ABSENT = searched and not found.",
+  "architecture_invariant_assessment": {
+    "ai_never_authorization_authority": {
+      "status": "MEASURED (code) + DECLARED (tests)",
+      "evidence": [
+        "apps/backend/src/pilot/authority.ts:46-102 — NO_AUTHORITY_CONFIGURED answers UNKNOWN; resolveAuthority requires own-property 'evaluate' (hasOwnProperty at :69); ownAuthority() ignores prototype chain (:102)",
+        "apps/backend/src/pilot/service.test.ts:204 NP-ENF-015-016 refuses an evaluator injected via Object.prototype with no write; :231 NP-ENF-015-027 positive control (dev-only injected ALLOW)",
+        "apps/desktop/src/main/securityRegressionGate24.test.ts:47 class j 'AI output is untrusted data' pinned to constitutionalInvariants.test.ts RULE-00 marker",
+        "apps/desktop/src/main/capabilities/capabilityCatalog.test.ts:197 hostile action label does not change authority classification"
+      ]
+    },
+    "client_never_final_authority": {
+      "status": "MEASURED (code)",
+      "evidence": [
+        "apps/desktop/src/main/ipc/secureBridge.ts:144-167 runSecureHandler: requireAuth -> authorize(permission) -> zod -> timeout; renderer supplies payload only",
+        "apps/desktop/src/main/runtimeCore.ts:4105-4116 startup THROWS if any runtime channel is neither gated nor on PUBLIC_CHANNELS",
+        "apps/desktop/src/main/securityRegressionGate24.test.ts:39-40 class d 'hostile renderer — forged claim/actor/tenant/confirmed' and 'approval(A) for action(B)' pinned"
+      ]
+    },
+    "network_connection_not_authorization": {
+      "status": "MEASURED (code)",
+      "evidence": [
+        "apps/desktop/src/main/companion/gatewayServer.ts:2-20 LAN 0.0.0.0 bind but every payload sealed to a paired X25519 key; /pair requires a one-time 32-byte token (packages/companion-protocol/src/pairing.ts:65) with 5-minute TTL (gatewayServer.ts:57); disabled by default (companion/deviceRegistryStore.ts:149 enabled ?? false)",
+        "apps/backend/src/auth/requireAuth.ts:13-27 every protected router requires a Bearer HS256 JWT (app.ts:112-203)"
+      ]
+    },
+    "stale_authorization_rejected": {
+      "status": "MEASURED (code) — partial",
+      "evidence": [
+        "apps/backend/src/auth/session.ts:47-91 refresh rotation with reuse detection revokes family ('refresh_reused')",
+        "apps/backend/src/auth/jwt.ts:15-29 access tokens carry expiresIn, issuer, audience; algorithms pinned ['HS256']",
+        "apps/backend/src/auth/router.ts (OAuth) state stored in Redis with EX FLOW_TTL and deleted on first use (one-time)",
+        "apps/desktop/src/main/securityRegressionGate24.test.ts:44 class h 'replay / single-use decision consumption' pinned to executeEngine.durableConsumption.test.ts"
+      ]
+    }
+  },
+  "backend": {
+    "helmet": {
+      "fact": "helmet() with defaults applied globally",
+      "evidence": "apps/backend/src/app.ts:54",
+      "classification": "MEASURED"
+    },
+    "cors": {
+      "fact": "CORS origin allowlist is loopback-only regex /^http:\\/\\/(127\\.0\\.0\\.1|localhost)(:\\d+)?$/ with credentials:false; desktop main process sends no Origin so it is unaffected; no browser-origin consumer found in website/ or apps/web (grep for api.neuropause033/PUBLIC_BACKEND_URL returned nothing)",
+      "evidence": "apps/backend/src/app.ts:48-53; docs/guides/SECURITY-GUIDE.md:156",
+      "classification": "MEASURED"
+    },
+    "body_limits": {
+      "fact": "express.json limit 256kb; urlencoded 256kb extended:false; /billing/webhook raw 1mb mounted before JSON parser for signature verification",
+      "evidence": "apps/backend/src/app.ts:57-66",
+      "classification": "MEASURED"
+    },
+    "rate_limits": {
+      "fact": "Per-IP fixed-window limiter (Redis INCR/EXPIRE) with in-process fallback when Redis is down (TD-3). Buckets: login 20/900s, register 10/3600s, password_reset 5/3600s, semantic_health 30/60s. No global limiter; /auth/token, /auth/token/refresh, /auth/logout, OAuth start/callback, /store, /organizations, /devices, /billing, /license, /sync, /memory/semantic search+backfill are NOT rate-limited.",
+      "evidence": "apps/backend/src/middleware/rateLimit.ts:76-111; apps/backend/src/app.ts:115-118,193-196; apps/backend/src/auth/router.ts:170-187",
+      "classification": "MEASURED"
+    },
+    "trust_proxy": {
+      "fact": "No app.set('trust proxy') anywhere in apps/backend/src (grep 'trust proxy' -> 0 hits; grep x-forwarded-for|x-real-ip -> 0 hits). Caddy edge proxies with header_up X-Real-IP and the edge compose removes the backend's published port, so in the public deployment req.ip is the Caddy container address for every client.",
+      "evidence": "grep apps/backend/src (0 hits); Caddyfile:14-17; docker-compose.edge.yml:30-33",
+      "classification": "ABSENT",
+      "derived_consequence": "DERIVED: all per-IP rate-limit buckets collapse into one shared key behind Caddy (one abuser exhausts login/register/reset budget for all users; brute-force protection is global not per-attacker); audit_log.ip (middleware/audit.ts:16) records the proxy IP."
+    },
+    "metrics_exposure": {
+      "fact": "GET /metrics has no auth; Caddyfile has no path restriction; comment says 'Network-restrict in prod' (intent only)",
+      "evidence": "apps/backend/src/app.ts:104-109; Caddyfile:10-25",
+      "classification": "DERIVED (publicly reachable at api.neuropause033.com/metrics if deployed as configured)"
+    },
+    "authn": {
+      "jwt": {
+        "fact": "HS256 pinned on sign and verify, issuer+audience enforced, JWT_ACCESS_SECRET min 32 chars",
+        "evidence": "apps/backend/src/auth/jwt.ts:16-29; apps/backend/src/config/env.ts:31",
+        "classification": "MEASURED"
+      },
+      "refresh": {
+        "fact": "Rotation with reuse detection; reuse revokes sessions (401 refresh_reused)",
+        "evidence": "apps/backend/src/auth/session.ts:47-91",
+        "classification": "MEASURED"
+      },
+      "oauth": {
+        "fact": "state stored in Redis with TTL and deleted on use; redirect_uri must be loopback; Apple id_token RS256 JWKS-verified (per guide)",
+        "evidence": "apps/backend/src/auth/router.ts:77-150 (grep offsets 7-38); docs/guides/SECURITY-GUIDE.md:196-200; apps/backend/src/auth/providers/apple.test.ts",
+        "classification": "MEASURED (router) / DECLARED (apple)"
+      },
+      "passwords": {
+        "fact": "Argon2id per guide",
+        "evidence": "docs/guides/SECURITY-GUIDE.md:111",
+        "classification": "DECLARED"
+      }
+    },
+    "input_validation": {
+      "fact": "validateBody(zod) wrapper replaces req.body with parsed result; ZodError -> 400 with path/message only. Per-router mutating routes vs validateBody: organizations 9/7, auth 6/5(+5 parse), accountRouter 4/3, pilot 4/3, billing 2/1, devices 4/3, store 7/3(+3 parse), sync 1/1, semantic 1/0(+1 parse), backfill 1/0(+1 parse). Routes lacking validateBody are DELETE/bookmark/launch-style routes with path params only (sample: store/router.ts:129,135,162,168).",
+      "evidence": "apps/backend/src/middleware/validate.ts:9-15; apps/backend/src/middleware/error.ts:96-106; per-file grep counts",
+      "classification": "MEASURED (counts) / INFERRED (that the uncovered routes carry no body)"
+    },
+    "sql_injection": {
+      "fact": "No template-literal query construction with ${} found in backend non-test source (grep query(` with ${ -> 0)",
+      "evidence": "grep apps/backend/src",
+      "classification": "ABSENT"
+    },
+    "ssrf": {
+      "fact": "Backend fetch() targets are fixed provider constants (github/google/microsoft userinfo), provider token endpoints, and env-configured Qdrant/embedding URLs; no user-supplied URL is fetched",
+      "evidence": "apps/backend/src/auth/providers/github.ts:48,60; microsoft.ts:47; google.ts:47; providers/types.ts:39 (postForm url from provider config); app.ts:162-165",
+      "classification": "MEASURED"
+    },
+    "command_injection": {
+      "fact": "No child_process / exec / spawn in apps/backend/src",
+      "evidence": "grep apps/backend/src -> 0 non-regex hits",
+      "classification": "ABSENT"
+    },
+    "path_traversal": {
+      "fact": "Only fs users are db/migrate.ts (readdir/readFile of bundled migrations) and db/seed.ts (readFile of bundled seed); no user path reaches fs",
+      "evidence": "apps/backend/src/db/migrate.ts:2; apps/backend/src/db/seed.ts:2",
+      "classification": "MEASURED"
+    },
+    "error_handling": {
+      "fact": "500s return generic message; AppError expose flag; requestId echoed; stack never sent",
+      "evidence": "apps/backend/src/middleware/error.ts:95-130",
+      "classification": "MEASURED"
+    },
+    "request_id": {
+      "fact": "Incoming x-request-id (<=128 chars) is trusted verbatim into logs and response header",
+      "evidence": "apps/backend/src/middleware/requestId.ts:12-14",
+      "classification": "MEASURED"
+    },
+    "container": {
+      "fact": "node:20-bookworm-slim multi-stage; USER neuropause; EXPOSE 4000; prod compose binds 127.0.0.1:${BACKEND_PORT}:4000; edge compose publishes 80/443(+udp) via Caddy and resets backend ports to []",
+      "evidence": "apps/backend/Dockerfile:12,57,78,79; docker-compose.prod.yml:62-63; docker-compose.edge.yml:15-33",
+      "classification": "MEASURED"
+    },
+    "csrf": {
+      "fact": "API is Bearer-token only (no cookies), CORS credentials:false, OAuth uses one-time Redis state; classic CSRF not applicable. packages/security CSRF-token module (security.ts:61-70) is imported only by test files in apps (no production consumer)",
+      "evidence": "apps/backend/src/auth/requireAuth.ts:14-20; app.ts:51; packages/security/src/security.ts:61-70; grep '@neuropause/security' in apps -> 4 test files only",
+      "classification": "DERIVED"
+    }
+  },
+  "desktop_electron": {
+    "window_flags": {
+      "fact": "contextIsolation:true, nodeIntegration:false, sandbox:true, webSecurity:true, spellcheck:false; the only new BrowserWindow( in main",
+      "evidence": "apps/desktop/src/main/window.ts:26-33; grep 'new BrowserWindow(' -> 1 site",
+      "classification": "MEASURED"
+    },
+    "navigation": {
+      "fact": "setWindowOpenHandler denies all and opens http(s) externally; will-navigate blocks non-file:// (dev server excepted); app-level web-contents-created denies window.open",
+      "evidence": "apps/desktop/src/main/window.ts:45-59; apps/desktop/src/main/index.ts:346-348",
+      "classification": "MEASURED"
+    },
+    "csp": {
+      "fact": "Packaged: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'. Dev adds unsafe-inline/unsafe-eval and localhost connect. Injected via session.defaultSession.webRequest.onHeadersReceived",
+      "evidence": "apps/desktop/src/main/security/csp.ts:12-49; installed at index.ts:121",
+      "classification": "MEASURED (code); runtime header presence on file:// loads NOT verified here"
+    },
+    "preload": {
+      "fact": "contextBridge exposes exactly {invoke, subscribe}; both check ALL_INVOKABLE_CHANNELS / ALL_SUBSCRIBABLE_CHANNELS; no Node/Electron objects leak",
+      "evidence": "apps/desktop/src/preload/index.ts:15-34",
+      "classification": "MEASURED"
+    },
+    "ipc_allowlist_size": {
+      "fact": "INVOKABLE_CHANNELS=20, RUNTIME_INVOKABLE_CHANNELS=726 => ALL_INVOKABLE_CHANNELS=746; SUBSCRIBABLE_CHANNELS=5, RUNTIME_BROADCAST_CHANNELS=26 => ALL_SUBSCRIBABLE_CHANNELS=31; IpcChannel enum has 776 members",
+      "evidence": "packages/shared/src/ipc/channels.ts:1181,1205,2038,2043 (awk counts of IpcChannel.* rows); grep -c on enum",
+      "classification": "MEASURED (awk counts) / DERIVED (sums)"
+    },
+    "secure_bridge_pipeline": {
+      "fact": "sender-trust -> requireAuth -> RBAC permission (fails closed if authorize dep absent) -> zod safeParse -> 30s timeout -> bounded audit.log (5MiB x3) -> denial code stamping; ipcMain.removeHandler before handle (idempotent)",
+      "evidence": "apps/desktop/src/main/ipc/secureBridge.ts:27,108,144-225",
+      "classification": "MEASURED"
+    },
+    "sender_trust": {
+      "fact": "isTrustedSender accepts ANY senderFrame url starting with file:// (packaged) or the dev origin",
+      "evidence": "apps/desktop/src/main/ipc/router.ts:128-133",
+      "classification": "MEASURED",
+      "note": "INFERRED: acceptable given will-navigate blocks off-app navigation and no other windows/webviews are created; no will-attach-webview guard exists (ABSENT)"
+    },
+    "runtime_authz": {
+      "fact": "RUNTIME_CHANNEL_PERMISSIONS has 191 channel->permission rows; PUBLIC_CHANNELS has 63 rows; withRuntimeAuthz stamps requireAuth:true + permission and throws on unclassified; composition root applies it to every def lacking permission and then assertAllChannelsClassified throws at startup if any channel is neither gated nor public",
+      "evidence": "apps/desktop/src/main/ipc/runtimeAuthz.ts:50-828 (191 rows), 829-842, 882-1281 (63 rows), 1311; apps/desktop/src/main/runtimeCore.ts:3328-3336, 4105-4116",
+      "classification": "MEASURED (code + counts)"
+    },
+    "handler_def_flags_pre_stamp": {
+      "fact": "554 'channel: IpcChannel.*' defs, 246 requireAuth:true, 104 permission:, 193 audit:true in non-test main source (before withRuntimeAuthz stamping)",
+      "evidence": "grep counts over apps/desktop/src/main",
+      "classification": "MEASURED"
+    },
+    "require_auth_only": {
+      "fact": "6 channels are requireAuth-only without a static permission (CatalogBookmarks, CatalogToggleBookmark, CatalogSubmitReview, CatalogRecommendations, CatalogCheckUpdate, PlatformCommandDispatch)",
+      "evidence": "apps/desktop/src/main/ipc/runtimeAuthz.test.ts:252-268",
+      "classification": "MEASURED"
+    },
+    "registry_import_to_spawn": {
+      "fact": "registry:import JSON.parse()s a <=5MB string and spread-merges incoming.entries with no per-entry schema; entry.config.entryCommand/entryArgs/entryCwd feed spawn(command,args) (no shell) when runtime:launch runs. Gates: RegistryImport -> cloud:operate, RuntimeLaunch/RuntimeRestart -> operations:manage, NpsInstall/NpsUninstall -> cloud:operate.",
+      "evidence": "apps/desktop/src/main/registry/registry.ts:651-668; apps/desktop/src/main/runtime/adapters/processAdapter.ts:26-33,55-59; packages/shared/src/ipc/contracts.ts:293-295; apps/desktop/src/main/ipc/runtimeAuthz.ts:423,427,469,470,498,499",
+      "classification": "MEASURED",
+      "derived": "DERIVED: arbitrary local command execution is reachable by a principal holding cloud:operate AND operations:manage via a crafted import; not reachable from an unauthenticated renderer. Deserialization of the import payload is unvalidated (INFERRED gap: no zod schema for RegistryFile entries)."
+    },
+    "child_process_sites": [
+      {
+        "file": "apps/desktop/src/main/plugins/pluginHost.ts",
+        "line": 138,
+        "api": "fork(shim)",
+        "input": "plugin manifest.main under pluginRoot; permission-gated messages (:234)",
+        "user_controlled": "indirect (installed plugin)"
+      },
+      {
+        "file": "apps/desktop/src/main/runtime/adapters/processAdapter.ts",
+        "line": 55,
+        "api": "spawn(entry.command, entry.args, {cwd})",
+        "input": "registry entry config (entryCommand/entryArgs/entryCwd)",
+        "user_controlled": "yes via registry:import (cloud:operate) / package install; no shell:true"
+      },
+      {
+        "file": "apps/desktop/src/main/ai/aiConfigIpc.ts",
+        "line": 257,
+        "api": "execFile('ollama', ['--version'])",
+        "input": "fixed",
+        "user_controlled": "no"
+      },
+      {
+        "file": "apps/desktop/src/main/diagnostics/signingStatus.ts",
+        "line": 46,
+        "api": "execFile('codesign', [..., target])",
+        "input": "bundlePath() app-derived",
+        "user_controlled": "no"
+      },
+      {
+        "file": "apps/desktop/src/main/diagnostics/signingStatus.ts",
+        "line": 62,
+        "api": "execFile('spctl', [..., target])",
+        "input": "bundlePath() app-derived",
+        "user_controlled": "no"
+      }
+    ],
+    "fs_sinks": {
+      "fact": "95 non-test files in apps/backend/src + apps/desktop/src/main reference fs read/write/rm/mkdir/stream or dialog APIs; IPC contracts expose only ONE filesystem-path-like field (NpsInstall.installLocation, max 512) — the other two 'path' fields (EnterpriseApiRequest, EcosystemGatewayRequest) are HTTP route paths; no handler pattern readFile(r.path|p.path|args.path) found; 2 dialog.show*Dialog sites; installLocation is used only for verifyFileHash on the stored entry",
+      "evidence": "grep counts; packages/shared/src/ipc/contracts.ts:302,1483,1901; apps/desktop/src/main/nps/packageService.ts:162,353-356",
+      "classification": "MEASURED (counts/schema) / INFERRED (low traversal exposure; the 95 files were not individually traced)"
+    },
+    "ssrf_guard": {
+      "fact": "Webhook egress guard: https only, rejects embedded credentials, localhost/.local/.internal/etc suffixes, RFC1918/loopback/link-local/CGNAT/multicast IPv4, ::1/ULA/link-local/IPv4-mapped IPv6; applied at registration (webhookStore) and re-checked before each POST (webhookDispatcher); DNS-rebinding documented as residual",
+      "evidence": "apps/desktop/src/main/webhooks/urlGuard.ts:1-70; webhookStore.ts:26; webhookDispatcher.ts:22; urlGuard.test.ts",
+      "classification": "MEASURED"
+    },
+    "ssrf_other_egress": {
+      "fact": "AI provider destination (ollamaUrl/provider/credential) moved off the public allowlist and RBAC-gated (P13C Round 4 comment); connector base URLs (m365/entra/sap/atlassian/aws/gcp/vmware adapters) were not audited for a private-range guard",
+      "evidence": "apps/desktop/src/main/ipc/runtimeAuthz.ts:52-66",
+      "classification": "DECLARED (AI) / gap not measured (connectors)"
+    },
+    "network_listeners": [
+      {
+        "file": "apps/desktop/src/main/auth/loopbackServer.ts",
+        "line": 101,
+        "bind": "127.0.0.1 ephemeral",
+        "purpose": "RFC 8252 OAuth redirect",
+        "auth": "state match at authService.ts:327"
+      },
+      {
+        "file": "apps/desktop/src/main/companion/gatewayServer.ts",
+        "line": 398,
+        "bind": "0.0.0.0:<port>",
+        "purpose": "Companion phone gateway (HTTP /pair /rpc /health + WS upgrade)",
+        "auth": "sealed X25519 envelopes; 32-byte one-time pairing token, 5-min TTL; /health unauthenticated; disabled by default (deviceRegistryStore.ts:149); enable + QR mint gated org:manage (runtimeAuthz.ts:450,452)"
+      }
+    ],
+    "xss": {
+      "fact": "0 dangerouslySetInnerHTML / .innerHTML= / insertAdjacentHTML in apps/desktop/src/renderer; packaged CSP script-src 'self'",
+      "evidence": "grep -> 0; csp.ts:15",
+      "classification": "ABSENT (sinks) / MEASURED (CSP)"
+    },
+    "permission_handlers": {
+      "fact": "No session.setPermissionRequestHandler / setPermissionCheckHandler / will-attach-webview in main",
+      "evidence": "grep apps/desktop/src/main -> 0",
+      "classification": "ABSENT"
+    },
+    "eval": {
+      "fact": "No eval( / new Function( in main or backend (one comment says 'Deliberately NOT eval()')",
+      "evidence": "grep -> 0 code hits; assistant/deterministicAnswers.ts:67 comment",
+      "classification": "ABSENT"
+    },
+    "electron_fuses": {
+      "fact": "No @electron/fuses / FuseV1Options / EnableEmbeddedAsarIntegrityValidation / OnlyLoadAppFromAsar / RunAsNode configuration in desktop scripts, package.json or electron-builder.yml",
+      "evidence": "grep apps/desktop/scripts apps/desktop/package.json apps/desktop/electron-builder.yml -> 0",
+      "classification": "ABSENT"
+    },
+    "entitlements": {
+      "fact": "hardenedRuntime:true but entitlements grant allow-jit, allow-unsigned-executable-memory, disable-library-validation, allow-dyld-environment-variables (all true) plus network.client/server",
+      "evidence": "apps/desktop/electron-builder.yml:66-70; apps/desktop/resources/entitlements.mac.plist:6-19",
+      "classification": "MEASURED",
+      "note": "INFERRED: disable-library-validation + allow-dyld-environment-variables materially weaken hardened runtime once the app is signed"
+    },
+    "updater": {
+      "fact": "generic provider https://neuropause033.com/updates; autoDownload:false, autoInstallOnAppQuit:false, allowDowngrade:false; channel-driven allowPrerelease; update:installOnQuit is an RBAC-gated channel; no publisherName / verifyUpdateCodeSignature config",
+      "evidence": "apps/desktop/electron-builder.yml:43-44; apps/desktop/src/main/services/appUpdater.ts:87-91; apps/desktop/src/main/ipc/runtimeAuthz.ts:1190",
+      "classification": "MEASURED / ABSENT (Windows publisher pin)"
+    },
+    "code_signing": {
+      "fact": "macOS workflow fails OPEN to unsigned when APPLE_CSC_LINK is absent (CSC_IDENTITY_AUTO_DISCOVERY=false); notarize:false with afterSign scripts/notarize.cjs no-op; Windows signs only when WIN_CSC_LINK present",
+      "evidence": ".github/workflows/macos-release.yml:85-116; apps/desktop/electron-builder.yml:34,70; .github/workflows/windows-release.yml:81-102; HANDOFF-2026-09-12.md §4",
+      "classification": "MEASURED (workflow text)"
+    }
+  },
+  "secret_handling": {
+    "secure_store": {
+      "fact": "TokenStore + CredentialStore use Electron safeStorage only; refuse to persist when isEncryptionAvailable() is false (never plaintext); vault.bin written mode 0o600 via temp+rename; undecryptable entries dropped",
+      "evidence": "apps/desktop/src/main/security/secureStore.ts:7-11,57,66-87,128-149",
+      "classification": "MEASURED"
+    },
+    "api_key_guard": {
+      "fact": "isHeaderSafeApiKey rejects C0/C1 control chars before any Request is built (prevents Headers.append TypeError echoing the key); redactProviderError scrubs provider errors as second layer",
+      "evidence": "apps/desktop/src/main/ai/apiKeyGuard.ts:44-94",
+      "classification": "MEASURED"
+    },
+    "logger_redaction": {
+      "fact": "Credential redaction enforced at the single emit boundary for BOTH console and file sinks: JWT/eyJ runs, Bearer values, keyword key/value pairs (env+JSON forms), sk-/xoxb/ghp/AKIA/ya29 tokens; secret-classified keys lose entire value; PII redaction deliberately source-side",
+      "evidence": "apps/desktop/src/main/logger.ts:4-25,49-53,60,128-148",
+      "classification": "MEASURED"
+    },
+    "logger_redaction_tests": {
+      "fact": "10 cases incl. truncated JWTs, provider prefixes, key/value forms, W-7 email-predicate pin, deep payload scrub, normalized Error scrub, no over-redaction, console+file parity",
+      "evidence": "apps/desktop/src/main/logger.redaction.test.ts:26-112",
+      "classification": "MEASURED (source read; not executed)"
+    },
+    "other_credential_tests": [
+      "apps/desktop/src/main/connectors/connectorVault.redaction.test.ts",
+      "apps/desktop/src/main/connectors/rule009CredentialBoundary.test.ts",
+      "apps/desktop/src/main/connectors/credentials.test.ts",
+      "apps/desktop/src/main/security/secureStore.test.ts",
+      "apps/desktop/src/main/integrationCredential.test.ts"
+    ],
+    "backend_env": {
+      "fact": "zod env schema: JWT_ACCESS_SECRET min 32; DATABASE_URL/REDIS_URL url(); RAZORPAY_WEBHOOK_SECRET optional (webhook handler receives null when unset)",
+      "evidence": "apps/backend/src/config/env.ts:28-31,62; app.ts:62",
+      "classification": "MEASURED"
+    },
+    "keychain_real_proof": {
+      "fact": "Real macOS keychain (safeStorage) certification is OPERATOR-PENDING; Linux CI cannot exercise it",
+      "evidence": "certification/SESSION116-KEYCHAIN-SECURITY-CONVERGENCE.md:3-9",
+      "classification": "DECLARED"
+    },
+    "registry_backup_mode": {
+      "fact": "registry backups written mode 0o600",
+      "evidence": "apps/desktop/src/main/registry/registry.ts:677",
+      "classification": "MEASURED"
+    }
+  },
+  "tooling": {
+    "secret_scanning": {
+      "fact": "No gitleaks / trufflehog / secretlint / detect-secrets reference in any package.json, .github/workflows, scripts/, tools/, .husky, or pre-commit config; no .gitleaks.toml / .secretlintrc",
+      "evidence": "grep across package.json files, .github, scripts, tools -> 0",
+      "classification": "ABSENT"
+    },
+    "sast": {
+      "fact": "ESLint plugins are only @typescript-eslint, react, react-hooks; no eslint-plugin-security, semgrep, CodeQL, snyk",
+      "evidence": ".eslintrc.cjs:15-20; grep -> 0",
+      "classification": "ABSENT"
+    },
+    "dependency_scan": {
+      "fact": "desktop-ci.yml runs `npm audit --audit-level=info || true` and `npm audit --omit=dev --audit-level=high || true` — REPORT-ONLY, never fails CI (rationale recorded in comments); backend-ci.yml has no audit step; Dependabot weekly for npm + github-actions",
+      "evidence": ".github/workflows/desktop-ci.yml:107-125; .github/workflows/backend-ci.yml (grep audit -> 0); .github/dependabot.yml",
+      "classification": "MEASURED"
+    },
+    "audit_json_snapshot": {
+      "fact": "Root audit.json (last committed 6d585ae 2026-07-06, unchanged in worktree) lists 11 vulns: critical 1 (vitest <=3.2.5), high 7 (electron <=39.8.4 ASAR-integrity/AppleScript advisories, electron-builder/app-builder-lib/dmg-builder/squirrel 23.0.7-26.5.0, tar <=7.5.15, vite <=6.4.2), moderate 3 (esbuild, electron-vite, vite-node). package-lock.json (817f975 2026-09-12) has electron 42.8.1, electron-builder 26.15.3, tar 7.5.22 (above flagged ranges) but vite 5.4.21 and vitest 1.6.1 remain inside flagged ranges (dev toolchain). S132 (2026-09-06) reported 15 advisories incl. qs moderate via express 4.22.2 -> body-parser 1.20.6, remediation BLOCKED on decision.",
+      "evidence": "audit.json; git log -- audit.json; package-lock.json root entries; certification/SESSION132-BACKEND-DEP-SECURITY-WORKFLOW-HARDENING-CERTIFICATION.md:4-9",
+      "classification": "MEASURED (versions) / DERIVED (audit.json is stale vs lock) / DECLARED (S132 counts)"
+    },
+    "sbom": {
+      "fact": "desktop-ci.yml runs `npm run verify:sbom -w @neuropause/desktop` (CycloneDX fold over lockfile) and uploads dist-sbom; apps/desktop package.json has sbom script",
+      "evidence": ".github/workflows/desktop-ci.yml:88-105; apps/desktop/package.json:24",
+      "classification": "MEASURED (workflow/script text; not executed)"
+    },
+    "workflow_least_privilege": {
+      "fact": "All 6 workflows declare top-level permissions (contents: read; release workflows contents: write); scripts/verify-workflow-permissions.cjs fails closed on missing/broad scopes; unit test release/workflowPermissions.test.ts; certification-freeze.yml runs check-workflows.sh + verify-freeze.sh + verify-freeze.test.sh",
+      "evidence": ".github/workflows/*.yml permissions lines 14-56; scripts/verify-workflow-permissions.cjs:1-12; .github/workflows/certification-freeze.yml:57-66",
+      "classification": "MEASURED"
+    },
+    "dast": {
+      "fact": "No ZAP/nuclei/nikto/burp/DAST reference in .github or package.json files",
+      "evidence": "grep -> 0",
+      "classification": "ABSENT"
+    },
+    "security_md": {
+      "fact": "SECURITY.md declares supported version 1.0.0-rc.1 while repo is 1.0.0-rc.30; provides no contact address (says 'Contact the NeuroPause security team')",
+      "evidence": "SECURITY.md:5,11",
+      "classification": "MEASURED (stale)"
+    }
+  },
+  "prior_audits": [
+    {
+      "doc": "certification/GATE10-SECURITY-EVIDENCE.md",
+      "date": "2026-08-29 (GREEN round 53, 2026-08-30)",
+      "base": "9bb49b9 on cert/data-import-cst-integration",
+      "verdict": "YELLOW -> GREEN; four residuals closed with 75/75 regression tests (router allowlist, role-aware device revoke fail-closed, etc.); explicitly excludes a running-app red-team pass (line 104)",
+      "classification": "DECLARED"
+    },
+    {
+      "doc": "certification/D6-AUTHORIZATION-ERROR-CONTRACT-EVIDENCE.md",
+      "date": "2026-08-31",
+      "base": "f1dbb0e",
+      "verdict": "CODE-COMPLETE · TEST-VERIFIED (typed denial codes across IPC; 20/20)",
+      "classification": "DECLARED"
+    },
+    {
+      "doc": "certification/D7-SILENT-WRITE-PATHS-EVIDENCE.md",
+      "date": "2026-08-31",
+      "base": "17d4798 / 43ba6c7",
+      "verdict": "six silent-refusal write paths closed; negative controls NC-D7-A..D each fail when the fix is removed",
+      "classification": "DECLARED"
+    },
+    {
+      "doc": "certification/SLSA-STYLE-SUPPLY-CHAIN-AUDIT-2026-09-05.md",
+      "date": "2026-09-05",
+      "base": "c65d76e (S126)",
+      "verdict": "Build ~L1 partial; L2/L3 not met; artifact signing/notarization MISSING (operator-gated); SBOM MISSING and vuln scanning UNPROVEN at that time (both since added in S131 as report-only/verify:sbom); distribution E0",
+      "classification": "DECLARED (partly superseded)"
+    },
+    {
+      "doc": "certification/SESSION116-KEYCHAIN-SECURITY-CONVERGENCE.md",
+      "date": "2026-09-04",
+      "verdict": "TEST-VERIFIED (Linux); real macOS keychain proof OPERATOR-PENDING; 123 focused security tests passed; delegation/JIT/impersonation grants BLOCKED-POLICY",
+      "classification": "DECLARED"
+    },
+    {
+      "doc": "certification/SESSION132-BACKEND-DEP-SECURITY-WORKFLOW-HARDENING-CERTIFICATION.md",
+      "date": "2026-09-06",
+      "verdict": "YELLOW — workflow least-privilege GREEN; qs advisory remediation BLOCKED on decision",
+      "classification": "DECLARED"
+    },
+    {
+      "doc": "certification/gates.2b5c1a0c3d72.json",
+      "date": "2026-08-13 runs",
+      "base": "5a1fd65",
+      "verdict": "Program 13C: G0,G0b-G0f PASS, G3 BLOCKED, G5 PASS; no gate named security/credential",
+      "classification": "MEASURED (JSON read)"
+    },
+    {
+      "doc": "docs/guides/SECURITY-GUIDE.md backlog",
+      "verdict": "Items 1 & 3 RESOLVED 2026-07-24; items 2 (rate-limit fails open), 5 (audit logs not hash-chained), 6 (no log rotation) are STALE vs code: rateLimit.ts now has in-process fallback (TD-3), secureBridge audit.log and app.log are bounded/rotated, signedAuditChain.ts exists (consumed by workforce/governance/auditLog.ts) though the IPC audit.log itself is still not hash-chained; item 4 (FNV-1a memory chain) still open",
+      "classification": "DERIVED"
+    }
+  ],
+  "security_tests_inventory": {
+    "count_name_matched": 118,
+    "method": "find *.test.ts(x) in apps/ packages/ (excluding node_modules) filtered by security-related name tokens; presence only, not executed",
+    "by_required_class": {
+      "SAST": {
+        "status": "ABSENT",
+        "evidence": ".eslintrc.cjs:15-20 (no security plugin); no semgrep/codeql"
+      },
+      "dependency_scan": {
+        "status": "MEASURED (report-only, non-gating)",
+        "files": [
+          ".github/workflows/desktop-ci.yml:122,125",
+          ".github/dependabot.yml"
+        ]
+      },
+      "secret_scan": {
+        "status": "ABSENT",
+        "evidence": "no gitleaks/trufflehog/secretlint anywhere"
+      },
+      "DAST": {
+        "status": "ABSENT",
+        "evidence": "no ZAP/nuclei/etc; GATE10 line 104 says red-team pass not part of gate"
+      },
+      "authn_authz": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/backend/src/auth/jwt.test.ts",
+          "apps/backend/src/auth/pkce.test.ts",
+          "apps/backend/src/auth/providers/apple.test.ts",
+          "apps/backend/src/__integration__/auth.test.ts",
+          "apps/backend/src/pilot/router.enforcement.test.ts",
+          "apps/backend/src/pilot/service.test.ts",
+          "apps/desktop/src/main/ipc/runtimeAuthz.test.ts",
+          "apps/desktop/src/main/ipc/routerClassification.test.ts",
+          "apps/desktop/src/main/enterprise/authzGate.test.ts",
+          "apps/desktop/src/main/workforce/authzGate.test.ts",
+          "apps/desktop/src/main/security/abac.test.ts",
+          "apps/desktop/src/main/auth/governedActor.test.ts",
+          "apps/desktop/src/main/ecosystem/auth/jwt.test.ts",
+          "+ ~15 per-domain *Authz.test.ts"
+        ]
+      },
+      "tenant_isolation": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/desktop/src/main/tenancy/crossTenant.test.ts",
+          "apps/desktop/src/main/tenancy/round10OrgOwnership.test.ts",
+          "apps/desktop/src/main/tenancy/round11PublicChannelClosure.test.ts",
+          "apps/desktop/src/main/tenancy/round12AllowlistSweep.test.ts",
+          "apps/desktop/src/main/tenancy/e2e/twoTenantCertification.test.ts",
+          "apps/desktop/src/main/tenancy/webhookEgressTenancy.test.ts",
+          "apps/desktop/src/main/tenancy/companionEgressTenancy.test.ts",
+          "apps/desktop/src/main/liveBrain/s4TenantUnification.test.ts"
+        ]
+      },
+      "CSRF": {
+        "status": "DERIVED not-applicable for API (Bearer, no cookies); OAuth state checks present",
+        "files": [
+          "apps/desktop/src/main/auth/authService.ts:327 (state match)",
+          "apps/backend/src/auth/router.ts (one-time Redis state)"
+        ],
+        "dedicated_test": "ABSENT"
+      },
+      "CORS": {
+        "status": "MEASURED config; dedicated header test ABSENT",
+        "evidence": "apps/backend/src/app.ts:48-53; grep backend tests for cors/helmet -> 0"
+      },
+      "SSRF": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/desktop/src/main/webhooks/urlGuard.test.ts",
+          "apps/desktop/src/main/tenancy/webhookEgressTenancy.test.ts"
+        ]
+      },
+      "injection_sql": {
+        "status": "ABSENT dedicated test; parameterized queries measured",
+        "evidence": "grep template-literal query -> 0"
+      },
+      "XSS": {
+        "status": "ABSENT dedicated test; renderer sinks ABSENT; CSP measured"
+      },
+      "command_injection": {
+        "status": "ABSENT dedicated test",
+        "evidence": "no processAdapter.test.ts / pluginHost.test.ts"
+      },
+      "path_traversal": {
+        "status": "ABSENT dedicated test",
+        "evidence": "grep 'traversal' in tests -> incidental hits only"
+      },
+      "upload_install_integrity": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/desktop/src/main/nps/signature.test.ts (sha256 + Ed25519 fail-closed)",
+          "apps/desktop/src/main/webhooks/signing.test.ts"
+        ]
+      },
+      "deserialization": {
+        "status": "ABSENT dedicated test",
+        "evidence": "registry.ts:651-668 JSON.parse without schema; no hostile-import test found"
+      },
+      "prototype_pollution": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/backend/src/pilot/service.test.ts:204 NP-ENF-015-016",
+          "apps/backend/src/pilot/service.test.ts:231 NP-ENF-015-027 positive control"
+        ]
+      },
+      "prompt_injection": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/desktop/src/main/capabilities/capabilityCatalog.test.ts:186-197",
+          "apps/desktop/src/main/capabilities/m365ActionProposal.test.ts:158",
+          "apps/desktop/src/main/capabilities/assistantMailIntent.test.ts (HOSTILE_SYNCED)",
+          "apps/desktop/src/main/securityRegressionGate24.test.ts:42"
+        ]
+      },
+      "tool_injection": {
+        "status": "PARTIAL",
+        "files": [
+          "apps/desktop/src/main/securityRegressionGate24.test.ts:39-40 (hostile renderer forged claim; approval(A) for action(B))",
+          "apps/desktop/src/main/workforce/execution/router.governedTransport.test.ts",
+          "apps/desktop/src/main/approvalActionBinding.test.ts"
+        ]
+      },
+      "credential_exposure": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/desktop/src/main/logger.redaction.test.ts",
+          "apps/desktop/src/main/connectors/connectorVault.redaction.test.ts",
+          "apps/desktop/src/main/connectors/rule009CredentialBoundary.test.ts",
+          "apps/desktop/src/main/security/secureStore.test.ts",
+          "apps/desktop/src/main/security/envelopeCrypto.test.ts"
+        ]
+      },
+      "replay": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/desktop/src/main/executeEngine.durableConsumption.test.ts",
+          "apps/backend/src/auth/session.ts reuse detection (test: __integration__/auth.test.ts not verified)"
+        ]
+      },
+      "rate_limit": {
+        "status": "MEASURED (present)",
+        "files": [
+          "apps/backend/src/middleware/rateLimit.test.ts"
+        ]
+      }
+    }
+  },
+  "gates": {
+    "SECURITY-TEST": {
+      "status": "MEASURABLE",
+      "measured": [
+        "Gate-24 a–j regression map file present with markers",
+        "118 security-named test files present",
+        "prototype-pollution NP-ENF-015-016/027 present",
+        "prompt-injection tests present",
+        "SSRF guard tests present",
+        "tenant-isolation suites present",
+        "rateLimit tests present",
+        "dependency audit runs in CI (report-only)",
+        "SBOM verify step in CI",
+        "workflow least-privilege verifier in CI"
+      ],
+      "declared_only": [
+        "GATE10 GREEN 75/75 (2026-08-30)",
+        "S116 123 focused tests passed (2026-09-04)",
+        "GATE-STATUS-BOARD 32/32 pilot tests",
+        "SLSA audit grades"
+      ],
+      "absent": [
+        "SAST tooling",
+        "secret scanning",
+        "DAST / running-app red-team",
+        "CORS/helmet header tests",
+        "XSS dedicated test",
+        "command-injection test for processAdapter/pluginHost",
+        "path-traversal test",
+        "deserialization test for registry:import",
+        "gating (non-report-only) dependency threshold"
+      ],
+      "reason": "Substantial application-level security regression suite exists in source, but none of it was executed by this mapper (background revalidation owns that); no SAST/secret-scan/DAST layer exists at all."
+    },
+    "CREDENTIAL-PROTECTION": {
+      "status": "MEASURABLE",
+      "measured": [
+        "safeStorage-only vault refusing plaintext",
+        "0o600 vault/backup files",
+        "apiKeyGuard control-char refusal + provider-error redaction",
+        "logger boundary redaction for console+file with tests",
+        "HS256-pinned JWT with >=32-char secret",
+        "refresh rotation + reuse detection",
+        "OAuth one-time state in Redis",
+        "Electron sandbox/contextIsolation with preload allowlist",
+        "CSP connect-src 'self' (renderer cannot exfiltrate)"
+      ],
+      "declared_only": [
+        "Real macOS keychain proof (OPERATOR-PENDING per S116)",
+        "Apple id_token JWKS verification tests"
+      ],
+      "absent": [
+        "Repository secret scanning (gitleaks/trufflehog/secretlint)",
+        "Electron fuses (RunAsNode off, ASAR integrity)",
+        "Windows update publisher pin",
+        "Signed/notarized release (fails open to unsigned)"
+      ],
+      "reason": "Runtime credential handling is strong and tested in source; the repository/supply-chain side (secret scanning, fuses, signing) is absent or operator-blocked."
+    }
+  },
+  "top_findings_ranked": [
+    {
+      "id": "SEC-1",
+      "severity": "HIGH",
+      "title": "Backend never sets trust proxy while public deployment sits behind Caddy",
+      "effect": "All per-IP rate-limit buckets (login/register/password_reset/semantic_health) key on the Caddy container IP; one client can exhaust limits for everyone and per-attacker brute-force protection does not exist; audit_log.ip is the proxy IP",
+      "evidence": "grep 'trust proxy' apps/backend/src -> 0; Caddyfile:14-17; docker-compose.edge.yml:33; rateLimit.ts:78-79",
+      "classification": "ABSENT + DERIVED"
+    },
+    {
+      "id": "SEC-2",
+      "severity": "HIGH",
+      "title": "Release artifacts fail open to unsigned/un-notarized",
+      "evidence": ".github/workflows/macos-release.yml:85-116; electron-builder.yml:70 notarize:false; HANDOFF §4",
+      "classification": "MEASURED (workflow) / DECLARED (handoff)"
+    },
+    {
+      "id": "SEC-3",
+      "severity": "MEDIUM",
+      "title": "No secret scanning, no SAST, no DAST anywhere in the toolchain; dependency audit is report-only (|| true)",
+      "evidence": "grep -> 0; desktop-ci.yml:122,125",
+      "classification": "ABSENT / MEASURED"
+    },
+    {
+      "id": "SEC-4",
+      "severity": "MEDIUM",
+      "title": "/metrics unauthenticated and unrestricted at the edge",
+      "evidence": "app.ts:104-109; Caddyfile",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "SEC-5",
+      "severity": "MEDIUM",
+      "title": "registry:import deserializes an unvalidated 5MB JSON into registry entries whose config.entryCommand is later spawn()ed",
+      "mitigation": "gated cloud:operate + operations:manage; no shell",
+      "evidence": "registry.ts:651-668; processAdapter.ts:26-59; runtimeAuthz.ts:423,469",
+      "classification": "MEASURED / DERIVED"
+    },
+    {
+      "id": "SEC-6",
+      "severity": "MEDIUM",
+      "title": "Hardened-runtime entitlements include disable-library-validation and allow-dyld-environment-variables; no Electron fuses",
+      "evidence": "entitlements.mac.plist:6-14; grep fuses -> 0",
+      "classification": "MEASURED / ABSENT"
+    },
+    {
+      "id": "SEC-7",
+      "severity": "LOW",
+      "title": "Stale security artifacts: audit.json from 2026-07-06; SECURITY.md says rc.1; SECURITY-GUIDE backlog items 2/5/6 no longer match code",
+      "evidence": "git log -- audit.json; SECURITY.md:5; rateLimit.ts:16-27; secureBridge.ts:103-108",
+      "classification": "MEASURED / DERIVED"
+    },
+    {
+      "id": "SEC-8",
+      "severity": "LOW",
+      "title": "CORS is loopback-only — correct for the desktop client, but any future browser consumer of api.neuropause033.com would be blocked; no header test pins it",
+      "evidence": "app.ts:48-53",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "SEC-9",
+      "severity": "LOW",
+      "title": "Companion gateway binds 0.0.0.0 with unauthenticated /health; mitigated by default-off, org:manage enable gate, sealed envelopes, 32-byte one-time pairing token",
+      "evidence": "gatewayServer.ts:17,57,398; deviceRegistryStore.ts:149; runtimeAuthz.ts:450,452",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "SEC-10",
+      "severity": "LOW",
+      "title": "Dev toolchain advisories remain (vite 5.4.21 in <=6.4.2 range; vitest 1.6.1 in <=3.2.5 critical range) and backend qs moderate via express 4.22.2 unresolved (blocked on decision)",
+      "evidence": "package-lock.json; audit.json; S132 cert",
+      "classification": "MEASURED / DECLARED"
+    }
+  ],
+  "gaps": [
+    "No test suites were executed by this mapper; every 'tests present' fact is source presence, not a pass result.",
+    "CSP header presence on packaged file:// loads was not verified at runtime.",
+    "The 95 fs-using main-process files were not individually traced for user-controlled paths.",
+    "Connector adapter base URLs (m365/entra/sap/atlassian/aws/gcp/vmware) were not audited for a private-range egress guard.",
+    "Real macOS keychain behaviour (safeStorage) remains OPERATOR-PENDING per S116; not measured here.",
+    "npm audit was not re-run (network POST); staleness of audit.json was derived from package-lock versions only.",
+    "GATE10 residual #1 and #4 wording was not extracted (grep found #2 and #3 headings only).",
+    "Enterprise REST API gateway (EnterpriseApiRequest) API-key storage/hash policy not audited beyond timingSafeEqual use in ecosystem/auth/jwt.ts:43."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Add app.set('trust proxy', 1) (or loopback/uniquelocal) in createApp so req.ip honours X-Forwarded-For from Caddy; add a rateLimit test asserting per-client keys behind a proxy",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/app.ts",
+        "apps/backend/src/middleware/rateLimit.test.ts"
+      ],
+      "risk": "Must match Caddy hop count; wrong value lets clients spoof IP"
+    },
+    {
+      "action": "Restrict /metrics: require METRICS_TOKEN bearer or bind to a separate internal port; or add a Caddy `@metrics path /metrics` respond 403 block",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/app.ts",
+        "Caddyfile"
+      ],
+      "risk": "Prometheus scrape config must be updated"
+    },
+    {
+      "action": "Add gitleaks (or secretlint) job to backend-ci.yml/desktop-ci.yml and a scripts/verify-secrets.cjs guard; baseline current tree",
+      "effort": "S",
+      "files": [
+        ".github/workflows/backend-ci.yml",
+        ".github/workflows/desktop-ci.yml"
+      ],
+      "risk": "Initial false positives on certification evidence files"
+    },
+    {
+      "action": "Add eslint-plugin-security (and no-unsanitized) to .eslintrc.cjs with --max-warnings 0 already enforced",
+      "effort": "M",
+      "files": [
+        ".eslintrc.cjs"
+      ],
+      "risk": "Lint noise across 10k+ tests; may need targeted disables"
+    },
+    {
+      "action": "Add a zod schema for RegistryFile entries (slug/appType/config with explicit entryCommand allowlist or absolute-path check) in registry.import()",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/registry/registry.ts",
+        "packages/shared/src/ipc/contracts.ts"
+      ],
+      "risk": "Backups from older versions must still restore"
+    },
+    {
+      "action": "Configure @electron/fuses in afterPack (RunAsNode=false, EnableNodeCliInspectArguments=false, OnlyLoadAppFromAsar=true, EnableEmbeddedAsarIntegrityValidation=true) and add verify step",
+      "effort": "M",
+      "files": [
+        "apps/desktop/electron-builder.yml",
+        "apps/desktop/scripts"
+      ],
+      "risk": "ASAR integrity requires signed builds to be meaningful; verify with existing verify-universal guard"
+    },
+    {
+      "action": "Regenerate/commit audit.json from the current lock (or delete it) and bump SECURITY.md supported version to 1.0.0-rc.30; refresh SECURITY-GUIDE backlog items 2/5/6",
+      "effort": "S",
+      "files": [
+        "audit.json",
+        "SECURITY.md",
+        "docs/guides/SECURITY-GUIDE.md"
+      ],
+      "risk": "None"
+    },
+    {
+      "action": "Add helmet/CORS supertest in apps/backend asserting X-Frame-Options/HSTS presence and that a non-loopback Origin is rejected",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/app.test.ts (new)"
+      ],
+      "risk": "None"
+    },
+    {
+      "action": "Add processAdapter.test.ts asserting spawn is called without shell and that a config lacking entryCommand refuses; add pluginHost permission-denial test",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/runtime/adapters/processAdapter.test.ts",
+        "apps/desktop/src/main/plugins/pluginHost.test.ts"
+      ],
+      "risk": "None"
+    },
+    {
+      "action": "Make the prod-deps high+ npm audit step gating (remove || true) scoped per workspace, per S131's own recommended follow-up",
+      "effort": "S",
+      "files": [
+        ".github/workflows/desktop-ci.yml",
+        ".github/workflows/backend-ci.yml"
+      ],
+      "risk": "Will fail today on vite/vitest/qs until bumped or allowlisted"
+    }
+  ],
+  "human_decisions_required": [
+    "Provide APPLE_CSC_LINK/APPLE_CSC_KEY_PASSWORD/APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID and WIN_CSC_* secrets and flip notarize:true — unsigned builds are Gatekeeper-rejected (HANDOFF §4; SLSA §4).",
+    "Decide the dependency-vulnerability gating policy (severity threshold, per-workspace scoping) — S132 explicitly declined to invent it; qs/express remediation blocked on this.",
+    "Decide whether the hardened-runtime entitlements disable-library-validation and allow-dyld-environment-variables are required (native modules) or can be dropped for the signed build.",
+    "Confirm whether api.neuropause033.com will ever serve a browser origin (website login) — if so the loopback-only CORS policy must be revised deliberately.",
+    "Authorize a running-app security red-team/DAST pass, which GATE10 explicitly excluded (line 104).",
+    "Operator must execute the real-macOS keychain proof (S116 OPERATOR-PENDING)."
+  ]
+}

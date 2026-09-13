@@ -5,7 +5,7 @@
   "MACHINE": "COMPUTER_B",
   "CUSTODY": "COMPUTER_B",
   "AUTHORED_BY": "MACHINE",
-  "RECORDED_AT": "2026-09-13T03:17:32.392Z",
+  "RECORDED_AT": "2026-09-13T04:00:11.970Z",
   "PRINCIPLE": "Historical evidence is preserved, not regenerated. R3 must keep reproducing f0ba0e8f / 16 / 27302b87. Launch work is isolated on pilot/public-launch.",
   "baseline_R3": {
     "role": "R3 — certified NP-B evidence baseline (IMMUTABLE)",
@@ -46,8 +46,8 @@
     "source_head_at_creation": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
     "source_tree_at_creation": "ed84f9e6d21c64a7aca0f2dc4d1df6a9035c85c9",
     "describe_at_creation": "v1.0.0-rc.29-5-gcec399f",
-    "head_now": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
-    "porcelain_count_now": 8,
+    "head_now": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "porcelain_count_now": 0,
     "upstream": "NONE (not pushed)",
     "node_modules_is_symlink": false,
     "install": {
@@ -192,5 +192,5 @@
     "rc30_release_state": "version 1.0.0-rc.30 on pilot/gate-closure @ cec399f; NOT tagged, NOT pushed, NOT published",
     "verify_freeze_sh_on_cec399f": "FREEZE BROKEN (certified source moved since CERT-40616b9; classified in CLAUDE.md §1 as baseline lagging landed work) — read-only observation"
   },
-  "SNAPSHOT_DIGEST": "a7dd50e2480c94b87531ef96c06ca32ea2f99562755d222b3763d28e707a2e02"
+  "SNAPSHOT_DIGEST": "eda5f9ba6ab66e684c2271f80a1a3e2701035e1ece3d12ee15531c7e69161e3d"
 }

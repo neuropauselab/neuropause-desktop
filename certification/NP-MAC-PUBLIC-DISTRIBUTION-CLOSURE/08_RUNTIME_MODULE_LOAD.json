@@ -1,0 +1,48 @@
+{
+  "ARTIFACT": "08_RUNTIME_MODULE_LOAD",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "mechanism": "process.mainModule.require",
+  "results": [
+    {
+      "module": "@neuropause/cst/dist/src/kernel.js",
+      "load_status": "PASS",
+      "resolution": null,
+      "export_type": "object"
+    },
+    {
+      "module": "@neuropause/cst/dist/src/stores.js",
+      "load_status": "PASS",
+      "resolution": null,
+      "export_type": "object"
+    },
+    {
+      "module": "@neuropause/cst/dist/src/types.js",
+      "load_status": "PASS",
+      "resolution": null,
+      "export_type": "object"
+    },
+    {
+      "module": "electron-updater",
+      "load_status": "PASS",
+      "resolution": null,
+      "export_type": "object"
+    },
+    {
+      "module": "ws",
+      "load_status": "PASS",
+      "resolution": null,
+      "export_type": "function"
+    }
+  ],
+  "module_source": "parsed 5 bare specifiers from the asar main/preload bundles",
+  "classification": "MEASURED"
+}

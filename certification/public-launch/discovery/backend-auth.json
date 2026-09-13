@@ -1,0 +1,797 @@
+{
+  "key": "backend-auth",
+  "generated_at": "2026-09-12",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "head_short": "cec399f",
+    "version": "1.0.0-rc.30",
+    "classification": "MEASURED",
+    "evidence": "git rev-parse --short HEAD; git branch --show-current; node -e require('./package.json').version"
+  },
+  "operating_notes": {
+    "read_only": true,
+    "commands_executed": [
+      "cat -n / sed -n / rg / grep / find / wc / ls over apps/backend/src/{auth,users,middleware,config,db/migrations,__integration__,cache,app.ts,index.ts}, apps/desktop/src/main/{auth,security,ipc/handlers/auth.ts}, packages/shared/src/{ipc/contracts.ts,types/auth.ts,types/user.ts}, docs/AUTHENTICATION.md, docs/operations/COMPLIANCE-OPERATIONS.md, .github/workflows/backend-ci.yml, vitest configs",
+      "git log (auth dirs, app.ts, docs/AUTHENTICATION.md); node -e for installed dependency versions",
+      "curl -s -m 3 GET http://127.0.0.1:4000/health and /auth/providers (local, read-only)",
+      "npx vitest run src/auth/providers/apple.test.ts src/auth/accountRouter.test.ts (2 small files, permitted max 2)"
+    ],
+    "not_executed": [
+      "apps/backend test:integration (requires disposable Postgres; suite TRUNCATEs tables) — NOT run",
+      "desktop vitest files — NOT run",
+      "full suites/builds — NOT run (background revalidation in progress)"
+    ],
+    "secrets_policy": "No secret values read or printed. Only env-var NAMES reported."
+  },
+  "prior_verdict_context": [
+    {
+      "fact": "Prior B-side closure recorded gate 11 AUTHENTICATION = PARTIAL ('Real implementations on both computers, neither reaching an approval') and gate 10 HUMAN IDENTITY = NOT_ESTABLISHED ('Unverified self-declared strings at the kernel on both computers').",
+      "evidence": "/Users/saurabhpatel/neuropause-desktop/NP-G0-H17-B/NP-G0-H17-B-FINAL-CLOSURE-RESULT.json:161-171",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Prior matrix states Computer-A's authentication/session findings were measured against a DIFFERENT codebase (/root/lab platform/app/auth.mjs), and that B's apps/backend/src/auth 'is different code and was not the subject of A's measurements'.",
+      "evidence": "/Users/saurabhpatel/neuropause-desktop/NP-G0-H17-B/NP-G0-H17-B-MISSING-EVIDENCE-MATRIX.json:62-68",
+      "classification": "DECLARED"
+    }
+  ],
+  "surface_map": {
+    "backend_routes": [
+      {
+        "method": "GET",
+        "path": "/auth/providers",
+        "auth": "public",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/router.ts:72-74"
+      },
+      {
+        "method": "GET",
+        "path": "/auth/:provider/start",
+        "auth": "public",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/router.ts:77-98"
+      },
+      {
+        "method": "GET|POST",
+        "path": "/auth/:provider/callback",
+        "auth": "public (provider redirect / Apple form_post)",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/router.ts:101-148"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/token",
+        "auth": "one-time code + PKCE verifier",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/router.ts:151-167"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/email/register",
+        "auth": "public",
+        "rate_limit": "bucket=register 10/3600s per req.ip",
+        "evidence": "apps/backend/src/auth/router.ts:170-181"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/email/login",
+        "auth": "public",
+        "rate_limit": "bucket=login 20/900s per req.ip",
+        "evidence": "apps/backend/src/auth/router.ts:184-195"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/token/refresh",
+        "auth": "refresh token in body",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/router.ts:198-202"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/logout",
+        "auth": "refresh token in body",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/router.ts:205-210"
+      },
+      {
+        "method": "GET",
+        "path": "/auth/me",
+        "auth": "requireAuth (Bearer JWT)",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/router.ts:213-217"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/request-verification",
+        "auth": "requireAuth mounted at app.ts:114",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/accountRouter.ts:50-57; apps/backend/src/app.ts:114"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/verify-email",
+        "auth": "public (token in body)",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/accountRouter.ts:59-66"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/request-password-reset",
+        "auth": "public",
+        "rate_limit": "bucket=password_reset 5/3600s per req.ip (app.ts:115-118)",
+        "evidence": "apps/backend/src/auth/accountRouter.ts:68-76; apps/backend/src/app.ts:115-118"
+      },
+      {
+        "method": "POST",
+        "path": "/auth/reset-password",
+        "auth": "public (token in body)",
+        "rate_limit": "none",
+        "evidence": "apps/backend/src/auth/accountRouter.ts:78-85"
+      }
+    ],
+    "requireAuth_mounts": "app.ts:112 /pilot, :114 /auth/request-verification, :134 /organizations, :136-139 /devices, :141-149 /billing, :150-154 /license, :155-159 /sync, :167-203 /memory/semantic (x3). /store router applies requireAuth per-route (store/router.ts:135).",
+    "desktop_ipc": [
+      {
+        "channel": "auth:registerEmail",
+        "evidence": "packages/shared/src/ipc/channels.ts:32; apps/desktop/src/main/ipc/handlers/auth.ts:53-55; apps/desktop/src/renderer/src/screens/LoginScreen.tsx:41"
+      },
+      {
+        "channel": "auth:loginEmail/loginOAuth/logout/getStatus/getProviders",
+        "evidence": "apps/desktop/src/main/ipc/handlers/auth.ts:28-59"
+      }
+    ]
+  },
+  "facts": [
+    {
+      "area": "registration",
+      "fact": "Email registration route POST /auth/email/register: rateLimit(register,3600s,max 10) -> validateBody(EmailCredentialsRequest) -> registerEmailUser -> audit('auth.email.register') -> issueTokens -> 201 {user,tokens}. A session is issued immediately on registration with no email verification step.",
+      "evidence": "apps/backend/src/auth/router.ts:170-181",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "registration",
+      "fact": "EmailCredentialsRequest: email z.string().email().max(320); password z.string().min(8).max(200). No complexity, breach-list or lockout policy.",
+      "evidence": "packages/shared/src/ipc/contracts.ts:22-25",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "registration",
+      "fact": "registerEmailUser: findUserByEmail -> 409 conflict 'email_taken' if exists; argon2 hash; INSERT users(email,password_hash,display_name).",
+      "evidence": "apps/backend/src/users/service.ts:16-21; apps/backend/src/users/repository.ts:49-60",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "registration",
+      "fact": "Password hashing is Argon2id via @node-rs/argon2 1.8.3 with memoryCost 19456 KiB, timeCost 2, parallelism 1; verify errors are swallowed to false.",
+      "evidence": "apps/backend/src/auth/passwords.ts:4-16; node -e require('.../@node-rs/argon2/package.json').version = 1.8.3",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "registration",
+      "fact": "users.email is CITEXT with a UNIQUE index (case-insensitive uniqueness); password_hash nullable for OAuth-only accounts; updated_at trigger.",
+      "evidence": "apps/backend/src/db/migrations/0001_init.sql:4,7-17,62-72",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "registration",
+      "fact": "Migration 0004 adds users.email_verified BOOLEAN NOT NULL DEFAULT FALSE and table auth_tokens(kind CHECK IN ('email_verify','password_reset'), token_hash UNIQUE, expires_at, consumed_at).",
+      "evidence": "apps/backend/src/db/migrations/0004_auth_hardening.sql:5-17",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "registration",
+      "fact": "email_verified is NEVER read by login, requireAuth, or any authorization path; the only readers are accountRepository.ts (verification flow) — an unverified account has identical capabilities to a verified one.",
+      "evidence": "rg 'email_verified|emailVerified' apps/backend/src (non-test): only auth/providers/apple.ts:40,72-74, auth/providers/google.ts:54,60, auth/accountRepository.ts, auth/accountService.ts",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "registration",
+      "fact": "Desktop exposes registration end-to-end: LoginScreen.tsx -> AuthProvider.registerEmail -> ipc.auth.registerEmail (IpcChannel.AuthRegisterEmail) -> handlers/auth.ts registerEmail -> authService.registerEmail -> backendClient POST /auth/email/register.",
+      "evidence": "apps/desktop/src/renderer/src/screens/LoginScreen.tsx:41; apps/desktop/src/renderer/src/providers/AuthProvider.tsx:55-56; apps/desktop/src/renderer/src/lib/ipc.ts:386-387; apps/desktop/src/main/ipc/handlers/auth.ts:53-55; apps/desktop/src/main/auth/authService.ts:356-364; apps/desktop/src/main/auth/backendClient.ts:79-81",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-email",
+      "fact": "POST /auth/email/login: rateLimit(login,900s,max 20) -> validateBody -> authenticateEmailUser -> audit('auth.email.login') -> issueTokens -> 200 {user,tokens}.",
+      "evidence": "apps/backend/src/auth/router.ts:184-195",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-email",
+      "fact": "authenticateEmailUser runs a dummy argon2 verify against a fixed digest when the email is unknown or has no password_hash (timing uniformity), then throws 401 invalid_credentials; wrong password also 401 invalid_credentials.",
+      "evidence": "apps/backend/src/users/service.ts:24-34",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-email",
+      "fact": "Failed login attempts are NOT written to audit_log: audit() is called only after authenticateEmailUser returns (throw happens first). Only successful register/login/oauth/logout events are audited.",
+      "evidence": "apps/backend/src/auth/router.ts:190-191 (audit after await authenticateEmailUser); middleware/audit.ts:9-26",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "login-email",
+      "fact": "Audit writes never fail the request (errors logged+swallowed); audit_log is append-only with user_id ON DELETE SET NULL and ip INET.",
+      "evidence": "apps/backend/src/middleware/audit.ts:15-25; apps/backend/src/db/migrations/0001_init.sql:49-60",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Four OAuth providers registered: google, github, microsoft, apple; each enabled only when its env credentials are present (GOOGLE_CLIENT_ID+SECRET; GITHUB_CLIENT_ID+SECRET; MICROSOFT_CLIENT_ID+SECRET; APPLE_CLIENT_ID+TEAM_ID+KEY_ID+PRIVATE_KEY).",
+      "evidence": "apps/backend/src/auth/providers/registry.ts:7-21; google.ts:12-15; github.ts:14-17; microsoft.ts:15-18; apple.ts:98-103; config/env.ts:39-49",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "A backend is running locally on 127.0.0.1:4000 (GET /health -> 200) and GET /auth/providers returns {\"providers\":[]} — zero OAuth providers configured on that instance. (Which build that process runs was not verified.)",
+      "evidence": "curl -s -m 3 http://127.0.0.1:4000/health -> 200; curl http://127.0.0.1:4000/auth/providers -> {\"providers\":[]}",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "RFC 8252 native flow: GET /auth/:provider/start validates redirect_uri (must be http://127.0.0.1 or localhost), state (8-256), code_challenge (20-256), code_challenge_method literal 'S256'; stores {provider, desktopRedirectUri, desktopState, codeChallenge} in Redis key oauthflow:<24-byte random> EX 600s; redirects to provider with backend callback URL.",
+      "evidence": "apps/backend/src/auth/router.ts:23,42-59,77-98",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Callback (GET and POST for Apple form_post): state is looked up then DELETED (single-use) before any exchange; provider error/no code redirects back with error; on success exchangeCode -> fetchProfile -> resolveOAuthUser -> audit -> mints one-time code (24 random bytes) in Redis oauthcode:<code> EX 120s bound to the desktop's codeChallenge; redirects to desktop loopback with code+desktopState. Exchange failures are logged server-side and returned as 'exchange_failed'.",
+      "evidence": "apps/backend/src/auth/router.ts:24,101-148",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "POST /auth/token: one-time code deleted on read (single-use); PKCE check sha256Base64url(code_verifier) === payload.codeChallenge else 400 pkce_mismatch; user must still exist; issueTokens. Comparison is a plain string !== (not constant-time); pkce.ts verifyPkce (also plain ===, comment says 'constant-time-ish') is not used by the router.",
+      "evidence": "apps/backend/src/auth/router.ts:12,151-167; apps/backend/src/auth/pkce.ts:18-21",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Provider client secrets are used only server-side (exchangeCode posts client_secret from env); the desktop never receives provider credentials.",
+      "evidence": "apps/backend/src/auth/providers/types.ts:21-25; google.ts:36-37; github.ts:34-35; microsoft.ts:36-37; apple.ts:120-123",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Apple: id_token verified with jose jwtVerify against Apple's remote JWKS (https://appleid.apple.com/auth/keys), algorithms pinned ['RS256'], issuer https://appleid.apple.com, audience = APPLE_CLIENT_ID; subject required; client_secret is a 10-minute ES256 JWT signed with APPLE_PRIVATE_KEY (keyid APPLE_KEY_ID). JWKS is created lazily (no import-time I/O).",
+      "evidence": "apps/backend/src/auth/providers/apple.ts:20-35,50-92,118-128",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Apple fetchProfile computes identity.emailVerified but IGNORES it — passes identity.email to the profile regardless of the verified flag.",
+      "evidence": "apps/backend/src/auth/providers/apple.ts:73-74,135-141",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Google passes email only when email_verified is true. GitHub uses the /user profile 'email' field directly if present (no 'verified' check on that path); only the fallback /user/emails path filters primary&&verified. Microsoft uses mail ?? userPrincipalName with no verified check.",
+      "evidence": "apps/backend/src/auth/providers/google.ts:60; github.ts:58-67; microsoft.ts:59",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "resolveOAuthUser links a NEW federated identity to an EXISTING user row whose email equals profile.email (SELECT id FROM users WHERE email=$1), with no email-verified precondition at this layer; otherwise inserts a new user; providers with no email get a synthetic '<provider>_<id>@users.neuropause.local' address. Identity link is ON CONFLICT DO NOTHING.",
+      "evidence": "apps/backend/src/users/service.ts:41-82; apps/backend/src/users/repository.ts:84-97",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Because github (profile-email path), microsoft and apple do not gate on a verified email, an OAuth identity carrying an unverified email equal to an existing account's email would be auto-linked to that account (account-linking-by-email pre-takeover class). Google is protected by its email_verified gate. Practical exploitability depends on each IdP's guarantees (GitHub public email verification, Apple always-verified relay) which were NOT verified here.",
+      "evidence": "apps/backend/src/users/service.ts:52-58 + provider facts above",
+      "classification": "INFERRED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Desktop OAuth: PKCE verifier = 32 random bytes base64url (43 chars), S256 challenge; desktopState = 24 random bytes; loopback server bound to 127.0.0.1 on an OS-assigned port with a random 16-byte hex callback path, single settle, 404 for other paths; shell.openExternal to backend /auth/<provider>/start; state mismatch -> rejected; timeout config.oauthTimeoutMs; loopback closed in finally.",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:28-37,308-344; apps/desktop/src/main/auth/loopbackServer.ts:50-128",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "login-oauth",
+      "fact": "Desktop only offers OAuth buttons the backend reports as enabled (GET /auth/providers); on lookup failure it offers none and falls back to email (P13C F-8).",
+      "evidence": "apps/desktop/src/main/ipc/handlers/auth.ts:10-39",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "jwt",
+      "fact": "Access token: jsonwebtoken 9.0.3 HS256 with JWT_ACCESS_SECRET; claims {sub: userId, email}; issuer 'neuropause'; audience 'neuropause-desktop'; expiresIn JWT_ACCESS_TTL (default 900s = 15 min). Verify pins algorithms ['HS256'] + issuer + audience. No jti claim.",
+      "evidence": "apps/backend/src/auth/jwt.ts:11-33; apps/backend/src/config/env.ts:31-32; installed jsonwebtoken=9.0.3",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "jwt",
+      "fact": "JWT_ACCESS_SECRET is required (no default) and must be >=32 chars; the server refuses to boot on invalid env. Single secret — no key id / rotation mechanism.",
+      "evidence": "apps/backend/src/config/env.ts:31,72-83",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "jwt",
+      "fact": "requireAuth: reads Authorization 'Bearer <jwt>', verifyAccessToken, sets req.userId/req.userEmail; 401 missing_token / invalid_token. It does NOT consult auth_sessions or any denylist.",
+      "evidence": "apps/backend/src/auth/requireAuth.ts:13-27",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "jwt",
+      "fact": "No access-token revocation exists: no jti/denylist/blacklist anywhere in backend src. Consequence: after logout or a refresh_reused chain burn, an already-issued access token remains accepted until its exp (<= JWT_ACCESS_TTL, default 15 min).",
+      "evidence": "rg -i 'jti|denylist|blacklist|revokedAccess' apps/backend/src -> no matches; requireAuth.ts:13-27; jwt.ts:25-33",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "refresh",
+      "fact": "Refresh token: 48 random bytes base64url; only SHA-256 hex hash persisted in auth_sessions with user_agent and expires_at = now + JWT_REFRESH_TTL (default 2,592,000s = 30 days). Plaintext returned to client exactly once.",
+      "evidence": "apps/backend/src/auth/session.ts:22-43; apps/backend/src/auth/pkce.ts:23-29; apps/backend/src/config/env.ts:33-37; migrations/0001_init.sql:32-47",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "refresh",
+      "fact": "rotateTokens runs in a transaction with SELECT ... FOR UPDATE on token_hash; unknown -> 401 invalid_refresh; if revoked_at OR rotated_to already set -> revokes ALL of that user's un-revoked sessions and throws 401 refresh_reused (reuse detection burns the chain); expired -> 401 refresh_expired; else inserts new session row, marks old rotated_to=new.id and revoked_at=now(), returns new pair.",
+      "evidence": "apps/backend/src/auth/session.ts:50-102",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "refresh",
+      "fact": "The reuse check (revoked/rotated) is evaluated BEFORE the expiry check, so replay of an expired-but-rotated token still burns the chain; replay of an expired never-rotated token returns refresh_expired without burning.",
+      "evidence": "apps/backend/src/auth/session.ts:66-78",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "refresh",
+      "fact": "No purge/cleanup of expired or revoked auth_sessions rows exists (no DELETE FROM auth_sessions; no scheduled job).",
+      "evidence": "rg 'DELETE FROM auth_sessions|purge' apps/backend/src -> no matches; migrations/0001_init.sql:47 index on expires_at exists",
+      "classification": "ABSENT"
+    },
+    {
+      "area": "refresh",
+      "fact": "Desktop refresh is single-flight (refreshInFlight) and restore is single-flight (restoreInFlight), explicitly to avoid re-POSTing a rotating token into the backend's reuse detector; restoreSession retries only me() after a successful rotation; a network error (BackendError.status===0) keeps the vault, a genuine rejection clears it.",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:72-96,150-158,227-305,386-433",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "logout",
+      "fact": "POST /auth/logout revokes exactly ONE refresh token (UPDATE auth_sessions SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL), audits 'auth.logout' with a 12-hex-char prefix of the token hash, returns 204. No authentication required beyond possession of the refresh token.",
+      "evidence": "apps/backend/src/auth/router.ts:205-210; apps/backend/src/auth/session.ts:104-112",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "logout",
+      "fact": "No 'logout everywhere' / revoke-all-sessions endpoint or list-sessions endpoint exists; the only whole-chain revocation is the reuse-detection side effect.",
+      "evidence": "rg 'revokeAll|logout.?all|sessions/revoke' apps/backend/src apps/desktop/src packages/shared/src -> no matches",
+      "classification": "ABSENT"
+    },
+    {
+      "area": "logout",
+      "fact": "Desktop logout: reads stored refresh token, best-effort POST /auth/logout (failure logged, not fatal), then clears in-memory access token and deletes vault.bin, sets status unauthenticated.",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:366-379,125-129; apps/desktop/src/main/security/secureStore.ts:93-102",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "password-reset",
+      "fact": "Opaque single-use tokens: 32 random bytes base64url, SHA-256 hex stored; TTL email_verify 24h, password_reset 1h.",
+      "evidence": "apps/backend/src/auth/tokens.ts:8-29",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "password-reset",
+      "fact": "requestPasswordReset lower-cases+trims the email, returns silently for unknown emails (no enumeration), invalidates prior active reset tokens, creates a token, mails '<appUrl>/auth/reset-password?token=...'. resetPassword enforces MIN_PASSWORD_LENGTH 8 BEFORE consuming the token, then consumes atomically and updates the hash.",
+      "evidence": "apps/backend/src/auth/accountService.ts:24,95-131",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "password-reset",
+      "fact": "Postgres consumeToken is an atomic conditional UPDATE (token_hash AND kind AND consumed_at IS NULL AND expires_at > now() RETURNING user_id) — cannot be redeemed twice under concurrency.",
+      "evidence": "apps/backend/src/auth/accountRepository.ts:40-48",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "password-reset",
+      "fact": "Password reset does NOT revoke existing auth_sessions for the user (updatePasswordHash only); an attacker holding a refresh token retains access after the victim resets their password.",
+      "evidence": "apps/backend/src/auth/accountService.ts:126-130; apps/backend/src/auth/accountRepository.ts:31-33 (no session revocation)",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "password-reset",
+      "fact": "ResetPasswordBody validates password z.string().min(1) (length policy is in the service); no max length on reset password other than the 256kb body limit. Reset/verify endpoints have no rate limit (only request-password-reset does).",
+      "evidence": "apps/backend/src/auth/accountRouter.ts:26-28,59-85; apps/backend/src/app.ts:65,114-127",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "password-reset",
+      "fact": "PRODUCTION DELIVERY IS NON-FUNCTIONAL: app.ts wires createLoggingMailer(logger), which by its own header 'does NOT send email — it logs the link'; when NODE_ENV==='production' the link is REDACTED from the log ('[redacted]'). Therefore in production no user can ever receive a verification or reset link, and the operator cannot read it from logs either.",
+      "evidence": "apps/backend/src/app.ts:34,120-127 (createLoggingMailer wired); apps/backend/src/auth/mailer.ts:4-7,18-43 (exposeLink = NODE_ENV !== 'production')",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "password-reset",
+      "fact": "No provider Mailer implementation (SES/Postmark/SMTP) exists in apps/backend/src/auth; the only implementation is createLoggingMailer. No mail-related env var exists in config/env.ts.",
+      "evidence": "find apps/backend/src/auth -type f (23 files, only mailer.ts implements Mailer); apps/backend/src/config/env.ts:7-66 (no SMTP/SES/POSTMARK keys)",
+      "classification": "ABSENT"
+    },
+    {
+      "area": "password-reset",
+      "fact": "docs/AUTHENTICATION.md sections 5 and 6 state 'Email verification & password reset — not implemented yet' / 'still needs: email verification, password-reset flows' while the code (migration 0004, accountService, accountRouter, wired at app.ts:120) implements both flows. The doc was last touched 2026-07-24 (13c1c09); the code dates from 2026-07-03 (a4da551). The doc is stale/contradictory.",
+      "evidence": "docs/AUTHENTICATION.md:196-230; git log -1 -- docs/AUTHENTICATION.md = 13c1c09 2026-07-24; git log -1 -- apps/backend/src/auth/accountService.ts = a4da551 2026-07-03",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "account-deletion",
+      "fact": "No account-deletion endpoint exists (no DELETE on /users, /auth/me, or any 'deleteAccount'/'DELETE FROM users' in backend src; desktop has no delete-account IPC).",
+      "evidence": "rg -i 'delete.*(user|account|me\\b)|router\\.delete|deleteUser|deleteAccount|DELETE FROM users' apps/backend/src -> only bookmarks/devices/orgs/connector deletes; rg -i 'delete.?account|deleteAccount' apps/desktop/src -> none",
+      "classification": "ABSENT"
+    },
+    {
+      "area": "account-deletion",
+      "fact": "Schema supports erasure by cascade: auth_identities, auth_sessions, auth_tokens, devices rows cascade on users delete; audit_log.user_id SET NULL.",
+      "evidence": "migrations/0001_init.sql:22,37,52; 0004_auth_hardening.sql:9; 0010_devices.sql:10",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "account-deletion",
+      "fact": "Operator docs present erasure as a MANUAL SQL runbook ('DELETE FROM users WHERE id = :subject') and state 'no DSR tooling/UI, no consent management' — 'presented so an operator can adopt it, not as a delivered capability'.",
+      "evidence": "docs/operations/COMPLIANCE-OPERATIONS.md:170,176,186-188",
+      "classification": "DECLARED"
+    },
+    {
+      "area": "account-deletion",
+      "fact": "Desktop capability registry marks 'privacy.consent-retention' (Consent, retention & account deletion) as state 'hidden' with note 'No production data-governance mutators exist.'",
+      "evidence": "apps/desktop/src/renderer/src/capability/capabilityRegistry.ts:96",
+      "classification": "DECLARED"
+    },
+    {
+      "area": "new-device",
+      "fact": "No new-device / unknown-device detection or notification exists in the auth path. auth_sessions.user_agent is recorded at issue/rotate but never compared, listed, or surfaced.",
+      "evidence": "rg -i 'new.?device|unknown.?device|device.*(detect|first.?seen|notify)' apps/backend/src apps/desktop/src/main -> only devices/service.ts membership/not_found errors; session.ts:31-35,84-88 (user_agent write only)",
+      "classification": "ABSENT"
+    },
+    {
+      "area": "new-device",
+      "fact": "The 'devices' module (migration 0010) is an ORG-scoped trusted-device registry (PK org_id+device_id, trust_status trusted|blocked|revoked) requiring org membership; it is not consulted by requireAuth or token issuance and is not login-device detection.",
+      "evidence": "apps/backend/src/db/migrations/0010_devices.sql:1-26; apps/backend/src/devices/service.ts:1-52; app.ts:135-139",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "client-storage",
+      "fact": "Desktop refresh token is stored as Electron safeStorage ciphertext (base64) in <userData>/vault.bin, written mode 0600 via tmp+rename; setRefreshToken REFUSES to persist when safeStorage.isEncryptionAvailable() is false (never plaintext); getRefreshToken returns null when encryption unavailable; a decrypt failure clears the vault; an unreadable vault is QUARANTINED (bytes preserved) rather than reset.",
+      "evidence": "apps/desktop/src/main/security/secureStore.ts:6-11,29-31,33-59,61-103",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "client-storage",
+      "fact": "Access token is held only in main-process memory (AuthService.accessToken) and never sent to the renderer; the renderer observes AuthStatus whose Session carries {user, accessTokenExpiresAt} only. backendClient is the only network path and runs in main.",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:5-8,70-71,119-123; packages/shared/src/types/auth.ts:8-18; apps/desktop/src/main/auth/backendClient.ts:1-5",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "client-storage",
+      "fact": "Docs declare safeStorage is Keychain-backed on macOS and that Windows/Linux backends 'are weaker and will need review'. Not measured on those platforms.",
+      "evidence": "docs/AUTHENTICATION.md:222-224",
+      "classification": "DECLARED"
+    },
+    {
+      "area": "client-storage",
+      "fact": "Local-first mode (S17/FG-6): with no stored token, or when the backend stays unreachable after 5 retries, the desktop enters state 'local' with a device-local principal that holds NO token; RBAC dispatch gate hasActivePrincipal accepts only 'authenticated' or 'local' (deny-by-default); governed actor for local is 'local:<id>', and a cloud-authenticated id that forges the 'local:' namespace is DENIED.",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:138-142,228-236,276-297; apps/desktop/src/main/auth/governedActor.ts:19-43; apps/desktop/src/main/auth/localNamespace.ts:18-50",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "rate-limit",
+      "fact": "rateLimit middleware: fixed window in Redis (INCR + EXPIRE) keyed 'rl:<bucket>:<req.ip>'; sets x-ratelimit-limit/remaining; 429 rate_limited over max. On Redis error it falls back to an in-process per-instance fixed window (capped 50,000 keys), sets x-ratelimit-mode: fallback, emits neuropause_ratelimit_fallback_total metric and a throttled warning (TD-3 — does not fail open).",
+      "evidence": "apps/backend/src/middleware/rateLimit.ts:28-111",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "rate-limit",
+      "fact": "Buckets applied: register 10/3600s; login 20/900s; password_reset 5/3600s (mounted app-level); semantic_health 30/60s. NOT rate-limited: /auth/:provider/start, /auth/:provider/callback, /auth/token, /auth/token/refresh, /auth/logout, /auth/me, /auth/verify-email, /auth/reset-password, /auth/request-verification.",
+      "evidence": "apps/backend/src/auth/router.ts:172,186; apps/backend/src/app.ts:115-118,193-196; router.ts:77,101,151,198,205,213; accountRouter.ts:50-85",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "rate-limit",
+      "fact": "Express 'trust proxy' is NOT set anywhere (no app.set(...)), so req.ip is the TCP peer address. Deployment docs and Helm/K8s manifests place an nginx ingress / TLS-terminating reverse proxy in front of the backend. Behind that proxy ALL clients share the proxy's IP: the login budget becomes 20 attempts per 15 min GLOBALLY, registration 10/hour GLOBALLY, password-reset 5/hour GLOBALLY, and audit_log.ip records the proxy address.",
+      "evidence": "rg 'trust proxy|app\\.set\\(' apps/backend/src -> none; apps/backend/src/middleware/rateLimit.ts:78-79; docs/DEPLOYMENT.md:164; deploy/helm/neuropause-backend/values.yaml:59-61; deploy/kubernetes/optional.yaml:4,37-39",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "rate-limit",
+      "fact": "docs/AUTHENTICATION.md declares 'the thresholds are development defaults' for the limiter.",
+      "evidence": "docs/AUTHENTICATION.md:218-219",
+      "classification": "DECLARED"
+    },
+    {
+      "area": "rate-limit",
+      "fact": "Redis client: ioredis 5.11.1, maxRetriesPerRequest 2, retryStrategy min(times*200, 2000)ms — a Redis outage surfaces as a thrown error to the limiter (triggering fallback) rather than hanging indefinitely.",
+      "evidence": "apps/backend/src/cache/redis.ts:7-11; installed ioredis=5.11.1",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "helmet-cors",
+      "fact": "CORS: origin allowlist regex /^http:\\/\\/(127\\.0\\.0\\.1|localhost)(:\\d+)?$/ only, credentials:false (cors 2.8.6). helmet() with library defaults (helmet 7.2.0). express.json limit 256kb; express.urlencoded extended:false limit 256kb (Apple form_post); /billing/webhook raw 1mb mounted before JSON parser. express-async-errors loaded first.",
+      "evidence": "apps/backend/src/app.ts:1-4,48-66; installed cors=2.8.6 helmet=7.2.0 express=4.22.2",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "helmet-cors",
+      "fact": "Because CORS allows only loopback origins and the desktop main process sends no Origin, browser-based web clients from any public origin cannot call the auth API; this is consistent with a desktop-only client model.",
+      "evidence": "apps/backend/src/app.ts:45-53",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "logging",
+      "fact": "pino logger redacts req.headers.authorization, password, *.password, refreshToken, accessToken with '[redacted]'; pino-http logs every request except /health. The mailer additionally redacts token-bearing URLs in production because they are embedded in a string pino's redact cannot reach.",
+      "evidence": "apps/backend/src/config/logger.ts:6-15; apps/backend/src/app.ts:68-74; apps/backend/src/auth/mailer.ts:20-26",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "errors",
+      "fact": "Central errorHandler: ZodError -> 400 validation_error with per-field issues; AppError -> its status/code (message masked when expose=false); unknown -> 500 internal_error; 5xx logged with requestId. Auth errors used: 401 missing_token/invalid_token/invalid_credentials/invalid_refresh/refresh_reused/refresh_expired; 400 invalid_code/pkce_mismatch/bad_redirect/missing_state/unknown_state/auth_invalid/auth_weak_password; 404 provider_disabled/user_not_found; 409 email_taken; 429 rate_limited.",
+      "evidence": "apps/backend/src/middleware/error.ts:74-130; router.ts, session.ts, accountRouter.ts, users/service.ts (codes as cited above)",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "env",
+      "fact": "Auth-relevant env NAMES: NODE_ENV, PORT, PUBLIC_BACKEND_URL (default http://127.0.0.1:4000; used to build OAuth callback and reset/verify links), DATABASE_URL, REDIS_URL, JWT_ACCESS_SECRET (required, >=32), JWT_ACCESS_TTL (900), JWT_REFRESH_TTL (2592000), GOOGLE_CLIENT_ID/SECRET, GITHUB_CLIENT_ID/SECRET, MICROSOFT_CLIENT_ID/SECRET/TENANT('common'), APPLE_CLIENT_ID/TEAM_ID/KEY_ID/PRIVATE_KEY. Deploy manifests reference JWT_ACCESS_SECRET from a Secret and set NODE_ENV/PUBLIC_BACKEND_URL/SEED_STORE_ON_BOOT (values not inspected).",
+      "evidence": "apps/backend/src/config/env.ts:7-49; apps/backend/src/auth/router.ts:38-40; app.ts:125; deploy/helm/neuropause-backend/values.yaml:16-33; deploy/kubernetes/backend.yaml:34-41; deploy/kubernetes/secret.example.yaml:9,23",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "env",
+      "fact": "index.ts logs at boot which OAuth providers are enabled, or 'none — set provider credentials'; migrations run on boot unless RUN_MIGRATIONS_ON_BOOT=false; migration runner is forward-only, filename-ordered, transactional, recorded in schema_migrations.",
+      "evidence": "apps/backend/src/index.ts:24-44,59-64; apps/backend/src/db/migrate.ts:7-56",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "tests",
+      "fact": "Backend auth unit tests (infra-free, gated in backend-ci.yml job 'test'): jwt.test.ts 2 cases (round-trip; tampered token rejected); pkce.test.ts 4 (S256 match; mismatch; url-safe; deterministic hash); accountService.test.ts 11 (verify link+confirm; already-verified no-op; unknown token; reused token; expired token; unknown user; reset flow; no enumeration; weak password does not consume token; unknown reset token; new request invalidates prior token); accountRouter.test.ts 10 (HTTP 202/401/200/400 paths incl. no-enumeration and auth_weak_password); providers/apple.test.ts 8 (accepts valid; REJECTS forged key, wrong aud, wrong iss, expired, no sub, non-RS256 alg; honest email_verified=false); middleware/rateLimit.test.ts 8 (normal path + TD-3 fallback: blocks during outage, per-IP, metric, window recovery, resumes Redis); middleware/error.test.ts 15.",
+      "evidence": "grep -cE '^\\s*(it|test)\\(' per file; .github/workflows/backend-ci.yml:39-40; apps/backend/vitest.config.ts:15-18",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "tests",
+      "fact": "EXECUTED HERE: apple.test.ts (8) + accountRouter.test.ts (10) -> 2 files passed, 18/18 tests passed (vitest 1.6.1, 303ms) at HEAD cec399f.",
+      "evidence": "npx vitest run src/auth/providers/apple.test.ts src/auth/accountRouter.test.ts (cwd apps/backend) — output: 'Test Files 2 passed (2) / Tests 18 passed (18)'",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "tests",
+      "fact": "Integration suite __integration__/auth.test.ts (6 cases) runs migrations against a REAL Postgres+Redis, TRUNCATEs auth tables between tests, and proves: register retrievable by id; duplicate -> email_taken; correct password authenticates and wrong rejects; unknown email rejects; rotate invalidates the consumed token (second rotate throws); revokeToken prevents rotation. It calls service functions directly (registerEmailUser/authenticateEmailUser/issueTokens/rotateTokens/revokeToken), NOT the Express routes.",
+      "evidence": "apps/backend/src/__integration__/auth.test.ts:1-80; apps/backend/vitest.integration.config.ts:14-45",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "tests",
+      "fact": "The integration suite is gated in CI as a separate job 'integration' with postgres:16 and redis:7 service containers, TEST_DATABASE_URL and REDIS_URL set, running 'npm run test:integration -w @neuropause/backend'. A workflow comment DECLARES it 'passes 17/17' (auth + organizations). Whether this job has run green at cec399f was NOT verified (no CI logs consulted). The suite was NOT executed locally by this mapper.",
+      "evidence": ".github/workflows/backend-ci.yml:44-99 (comment :53-54)",
+      "classification": "DECLARED"
+    },
+    {
+      "area": "tests",
+      "fact": "Integration test asserts a reused refresh token is rejected but does NOT assert that the user's OTHER sessions are revoked (the 'burn the chain' behaviour at session.ts:66-74 is untested).",
+      "evidence": "apps/backend/src/__integration__/auth.test.ts:60-72 vs apps/backend/src/auth/session.ts:66-74",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "tests",
+      "fact": "ABSENT tests: no test file for auth/router.ts (OAuth /start, /callback, /token, PKCE mismatch, loopback-redirect validation, email routes at HTTP level with rate limiting); no test for users/service.ts (resolveOAuthUser email-linking); no direct test for requireAuth.ts; no tests for providers/google.ts, github.ts, microsoft.ts; no test for mailer.ts; no test for session.ts other than via the integration suite.",
+      "evidence": "find apps/backend/src/auth apps/backend/src/users -name '*.test.ts' -> only accountRouter, accountService, jwt, pkce, providers/apple",
+      "classification": "ABSENT"
+    },
+    {
+      "area": "tests",
+      "fact": "Desktop auth tests (not executed here): authService.test.ts 19 (network failure keeps vault; genuine rejection clears; restore never re-sends consumed token; refresh single-flight; local-mode entry; P13C gate 1 no sign-in dead end; P13C gate 2 re-restore on reachability, single-flight, no-op cases); loopbackServer.test.ts 3 (random path; fixed path; code/state resolution + 404); governedActor.test.ts 7 (local actor; cloud id; forged local DENIED; deny-by-default; blank id denies; correlation; hasActivePrincipal); localIdentity 5; localNamespace 5; localPrincipalStore 3; security/secureStore.test.ts 13 (round-trip; refuses plaintext when encryption unavailable; corrupt entry isolation; quarantine preserves bytes; first-run empty not quarantined). authService.test.ts mocks electron, secureStore, backendClient, loopbackServer and localPrincipalStore at module boundary; service under test is real.",
+      "evidence": "grep -cE per file; apps/desktop/src/main/auth/authService.test.ts:1-117 (mocks); grep -n 'it(' listings",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "invariant",
+      "fact": "Authentication authority is the backend: tokens are minted and verified server-side with a server-held secret (HS256, iss/aud pinned); the client cannot self-issue or self-validate a session. Refresh tokens are validated against server state under row lock. Consistent with 'the client must never be the final authorization authority'.",
+      "evidence": "apps/backend/src/auth/jwt.ts:14-33; session.ts:56-63; requireAuth.ts:13-27",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "invariant",
+      "fact": "Stale/replayed authorization is rejected at the refresh layer (rotated or revoked token -> 401 + chain burn; expired -> 401). At the access-token layer staleness is bounded only by exp (default 15 min) — no server-side check.",
+      "evidence": "apps/backend/src/auth/session.ts:64-78; requireAuth.ts:19-26",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "invariant",
+      "fact": "A network connection does not imply authorization on the desktop: local mode holds no token; cloud clients fail closed without an access token (deviceClient throws 401 not_authenticated when no token); RBAC dispatch is deny-by-default.",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:132-137; apps/desktop/src/main/devices/deviceClient.ts:36; apps/desktop/src/main/auth/governedActor.ts:19-21",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "invariant",
+      "fact": "No AI component participates in authentication: the auth/users/middleware directories contain no LLM/AI provider calls; the only outbound HTTP is to OAuth provider endpoints.",
+      "evidence": "rg -i 'openai|anthropic|claude|embedding|llm' apps/backend/src/auth apps/backend/src/users apps/backend/src/middleware -> no matches (providers call Google/GitHub/Microsoft/Apple endpoints only)",
+      "classification": "MEASURED"
+    },
+    {
+      "area": "invariant",
+      "fact": "Human identity carried by the access token is {sub: users.id, email}; email is self-declared at registration and never verified before use (email_verified unenforced; verification link undeliverable in production). This matches the prior gate-10 finding 'unverified self-declared strings'.",
+      "evidence": "apps/backend/src/auth/jwt.ts:6-9; facts 'registration' above; NP-G0-H17-B-FINAL-CLOSURE-RESULT.json:161-165",
+      "classification": "DERIVED"
+    },
+    {
+      "area": "docs",
+      "fact": "docs/AUTHENTICATION.md token-model table matches code (access 15 min in main-process memory; refresh 30 days in Keychain via safeStorage in userData/vault.bin mode 0600; SHA-256 hashed sessions; rotation with reuse detection). Sections 5/6 are stale regarding verification/reset (see password-reset facts).",
+      "evidence": "docs/AUTHENTICATION.md:92-110 vs jwt.ts/session.ts/secureStore.ts",
+      "classification": "DECLARED"
+    }
+  ],
+  "gate_assessments": [
+    {
+      "gate": "AUTHENTICATION",
+      "status": "MEASURABLE",
+      "reason": "Email/password + refresh-rotation mechanisms are implemented server-side with argon2id, HS256 (iss/aud/alg pinned), hashed rotating refresh tokens with reuse-detection, loopback-only PKCE S256 OAuth, encrypted client vault. Unit evidence measured here: 18/18 (apple id_token verification + account router). Integration proof of register/login/rotate/revoke exists and is CI-gated but was only DECLARED green (not executed here). Not PASS because: (1) zero HTTP-level tests for the OAuth endpoints and resolveOAuthUser; (2) the running local backend has 0 providers configured; (3) OAuth email auto-linking lacks a verified-email precondition for github/microsoft/apple; (4) no 'trust proxy' so per-IP brute-force limits collapse to one global bucket behind the documented nginx ingress; (5) access tokens are unrevocable for up to 15 min after logout/compromise; (6) password reset does not revoke sessions."
+    },
+    {
+      "gate": "AUTHENTICATION/email-password",
+      "status": "MEASURABLE",
+      "reason": "Route + service + argon2id + timing-uniform failure measured in code; integration test covers register/login/wrong-password/unknown-email (declared green in CI, not run here)."
+    },
+    {
+      "gate": "AUTHENTICATION/oauth-providers",
+      "status": "WAITING_FOR_OPERATOR_SECRET",
+      "reason": "Flow is implemented and Apple id_token verification is measured (8/8), but every provider is disabled until GOOGLE_/GITHUB_/MICROSOFT_/APPLE_* credentials are set; local backend reports providers=[]; no automated test exercises /start, /callback, /token."
+    },
+    {
+      "gate": "AUTHENTICATION/session-rotation-revocation",
+      "status": "MEASURABLE",
+      "reason": "Rotation, reuse-detection chain burn, single-token logout implemented under FOR UPDATE; integration test proves rotate-invalidates and revoke-prevents-rotation (declared); chain-burn of other sessions and access-token post-logout validity are untested/absent."
+    },
+    {
+      "gate": "USER-REGISTRATION",
+      "status": "MEASURABLE",
+      "reason": "Registration works end-to-end (desktop LoginScreen -> IPC -> POST /auth/email/register -> argon2id -> 201 with tokens) and is integration-tested (declared). However the surrounding lifecycle a public launch implies is not deliverable: email-verification and password-reset links are NEVER sent and are REDACTED in production (logging mailer wired at app.ts:123; no provider mailer exists), no account-deletion endpoint exists (manual SQL runbook only), email_verified is never enforced, and registration/login/reset per-IP limits become global behind the documented reverse proxy. Whether these are gate-blocking is a human decision."
+    },
+    {
+      "gate": "USER-REGISTRATION/email-verification-delivery",
+      "status": "FAIL",
+      "reason": "createLoggingMailer is the only Mailer and is the one wired; it does not send and redacts the link when NODE_ENV=production (mailer.ts:29-40; app.ts:123)."
+    },
+    {
+      "gate": "USER-REGISTRATION/password-reset-delivery",
+      "status": "FAIL",
+      "reason": "Same mailer: reset link is neither sent nor visible in production logs; a user who forgets their password has no recovery path. Reset also leaves existing sessions valid."
+    },
+    {
+      "gate": "USER-REGISTRATION/account-deletion",
+      "status": "FAIL",
+      "reason": "No endpoint or UI; docs and capability registry both declare it absent (COMPLIANCE-OPERATIONS.md:186; capabilityRegistry.ts:96). Schema cascade supports a manual DELETE."
+    },
+    {
+      "gate": "USER-REGISTRATION/new-device-detection",
+      "status": "NOT_APPLICABLE",
+      "reason": "Not implemented and not claimed anywhere in docs; user_agent is stored but unused. Listed for completeness, not as a failure of a stated requirement."
+    }
+  ],
+  "gaps": [
+    "Integration suite (__integration__/auth.test.ts) not executed here — requires a disposable Postgres (it TRUNCATEs); its green status is DECLARED by a CI comment only; CI run status at cec399f not checked.",
+    "Desktop vitest files (authService, secureStore, loopbackServer, governedActor, local*) not executed here.",
+    "The locally running backend on :4000 was probed only via GET /health and /auth/providers; which commit it runs was not determined.",
+    "helmet() default header set not enumerated; Windows/Linux safeStorage behaviour not measured.",
+    "GitHub/Microsoft/Apple IdP guarantees about email verification (which determine exploitability of the email auto-link) were not verified.",
+    "pilot/authority.ts linkage of req.userId to human-decision records is outside this subsystem and was not inspected.",
+    "No measurement of actual rate-limit behaviour behind a proxy (derived from code + deploy manifests)."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Set Express 'trust proxy' to the ingress hop count/CIDR (not bare true) so req.ip is the client IP for rate limiting and audit_log.ip",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/app.ts"
+      ],
+      "risk": "Setting trust proxy=true unconditionally lets clients spoof X-Forwarded-For; must be scoped to the ingress."
+    },
+    {
+      "action": "Require a verified email before linking an OAuth identity to an existing user by email (use identity.emailVerified in apple.ts; check 'verified' on GitHub profile-email path; treat Microsoft mail/UPN as unverified) — otherwise create a separate account or require sign-in",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/users/service.ts",
+        "apps/backend/src/auth/providers/apple.ts",
+        "apps/backend/src/auth/providers/github.ts",
+        "apps/backend/src/auth/providers/microsoft.ts"
+      ],
+      "risk": "Users whose IdP email is unverified get a new account instead of being merged."
+    },
+    {
+      "action": "Revoke all auth_sessions for the user inside resetPassword (and optionally on email change)",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/auth/accountService.ts",
+        "apps/backend/src/auth/accountRepository.ts"
+      ],
+      "risk": "Logs the user out on every device after a reset (expected behaviour)."
+    },
+    {
+      "action": "Add rate limits to /auth/token, /auth/token/refresh, /auth/logout, /auth/verify-email, /auth/reset-password, /auth/:provider/start",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/auth/router.ts",
+        "apps/backend/src/app.ts"
+      ],
+      "risk": "Too-low limits could throttle legitimate desktop refresh bursts; single-flight on the desktop mitigates."
+    },
+    {
+      "action": "Add an integration assertion that refresh_reused revokes the user's OTHER sessions (chain burn)",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/__integration__/auth.test.ts"
+      ],
+      "risk": "None."
+    },
+    {
+      "action": "Add HTTP-level tests for auth/router.ts OAuth flow (mock provider + mock Redis): loopback-redirect rejection, state single-use, PKCE mismatch, one-time code expiry",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/auth/router.test.ts (new)"
+      ],
+      "risk": "None."
+    },
+    {
+      "action": "Add a 'revoke all sessions' endpoint (POST /auth/logout-all, requireAuth) and optional session listing",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/auth/router.ts",
+        "apps/backend/src/auth/session.ts"
+      ],
+      "risk": "None."
+    },
+    {
+      "action": "Add a periodic purge of expired/revoked auth_sessions and consumed/expired auth_tokens",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/auth/session.ts",
+        "apps/backend/src/index.ts"
+      ],
+      "risk": "Deleting rotated rows removes forensic linkage (rotated_to); keep a retention window."
+    },
+    {
+      "action": "Use crypto.timingSafeEqual for the PKCE challenge comparison and route through verifyPkce",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/auth/router.ts",
+        "apps/backend/src/auth/pkce.ts"
+      ],
+      "risk": "None."
+    },
+    {
+      "action": "Correct docs/AUTHENTICATION.md sections 5-6 (verification/reset ARE implemented but undeliverable; limiter thresholds; trust-proxy requirement)",
+      "effort": "S",
+      "files": [
+        "docs/AUTHENTICATION.md"
+      ],
+      "risk": "None."
+    },
+    {
+      "action": "Implement a provider Mailer (SMTP/SES/Postmark) behind the existing Mailer interface with env-selected wiring and a boot log stating which mailer is active",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/auth/mailer.ts",
+        "apps/backend/src/app.ts",
+        "apps/backend/src/config/env.ts"
+      ],
+      "risk": "Requires operator mail credentials (WAITING_FOR_OPERATOR_SECRET) and a sending domain; without them the flows stay non-functional."
+    },
+    {
+      "action": "Add DELETE /auth/me (requireAuth, password or fresh re-auth) performing the documented cascade delete + audit entry",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/auth/router.ts",
+        "apps/backend/src/users/repository.ts"
+      ],
+      "risk": "Audit-retention vs erasure policy is a controller decision (COMPLIANCE-OPERATIONS.md:179-185); needs human sign-off before shipping."
+    }
+  ],
+  "human_decisions_required": [
+    "Does the public launch require functional email verification and password reset? If yes, a provider mailer plus mail credentials/domain are prerequisites (currently non-functional in production by construction).",
+    "Is OAuth sign-in in scope for launch (requires operator-held GOOGLE_/GITHUB_/MICROSOFT_/APPLE_* secrets) or is email/password-only acceptable? The local backend currently advertises zero providers.",
+    "Is an unverified self-declared email an acceptable human identity for the launch (email_verified is never enforced)? This bears directly on prior gate 10 HUMAN IDENTITY = NOT_ESTABLISHED.",
+    "Accept or reject the current OAuth auto-link-by-email policy for providers that do not assert a verified email.",
+    "Accept the bounded stale-authorization window (access token valid up to JWT_ACCESS_TTL=15 min after logout/reuse-burn) or require server-side access-token revocation / a shorter TTL.",
+    "Is account deletion (self-service) a launch requirement, or is the manual DSR SQL runbook acceptable? Includes the audit-retention vs erasure policy choice.",
+    "Approve the reverse-proxy trust configuration (hop count/CIDR) so per-IP rate limits and audit IPs are meaningful in the documented nginx-ingress deployment."
+  ],
+  "report_file": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/backend-auth.json"
+}

@@ -1,0 +1,47 @@
+{
+  "ARTIFACT": "35_INSTRUMENT_AUDIT",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "instruments": [
+    {
+      "name": "verify-mac-artifact.cjs",
+      "positive_control": "PASS|WARN on real dist",
+      "negative_controls": [
+        "NEG-DEP:detected",
+        "NEG-ENTRY:detected",
+        "NEG-ARCH:detected",
+        "NEG-BYTE:detected",
+        "NEG-NAME:detected",
+        "NEG-URL:detected"
+      ]
+    },
+    {
+      "name": "packaged-smoke.cjs",
+      "positive_control": "PASS",
+      "negative_control": "bare require(@neuropause/cst) demonstrably FAILED before exact-specifier census (instrument can fail)"
+    },
+    {
+      "name": "authorship-normalize.cjs",
+      "positive_control": "3/3 A notes recognised",
+      "negative_control": "hyphen-only legacy detector demonstrably misses"
+    },
+    {
+      "name": "live-backend-journey.cjs",
+      "positive_control": "26/26 after fixes",
+      "negative_control": "detected chain-burn rollback and revocation label defects before fixes (10/26, 23/26)"
+    },
+    {
+      "name": "live-agent-loop.ts",
+      "positive_control": "nonce in answer",
+      "negative_control": "write proposals never executed"
+    }
+  ]
+}

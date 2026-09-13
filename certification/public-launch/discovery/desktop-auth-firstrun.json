@@ -1,0 +1,838 @@
+{
+  "key": "desktop-auth-firstrun",
+  "generated_at": "2026-09-12",
+  "mode": "READ-ONLY subsystem map",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399f",
+    "version_root": "1.0.0-rc.30",
+    "version_desktop": "1.0.0-rc.30",
+    "porcelain_dirty_lines": 0,
+    "classification": "MEASURED (git rev-parse / git status / node -e on package.json)"
+  },
+  "classification_legend": {
+    "MEASURED": "executed or observed by this mapper",
+    "DECLARED": "asserted by a doc/comment/config",
+    "DERIVED": "computed from measured facts + code reading",
+    "INFERRED": "mapper judgement",
+    "ABSENT": "looked for and does not exist"
+  },
+  "architecture_invariant_under_audit": "HUMAN -> CONTROL -> COMPUTE -> EVIDENCE -> VERIFICATION -> HUMAN DECISION. AI never authorizes; client never final authority; network != authorization; stale authorization rejected.",
+  "answer_summary": {
+    "first_run_state_machine_exists": "PARTIAL — no single unified first-run state machine. Six independent state surfaces compose the first-launch journey: (1) AuthStatus union [unauthenticated|authenticating|authenticated|local|error] owned by main/auth/authService.ts; (2) RuntimeInitState [starting|ready|failed] owned by main/runtimeReadiness.ts; (3) ExperienceProfile.state [pending|completed|skipped] + renderer FirstRunStep [welcome|processing|workspace|discovery|understanding] owned by main/onboarding/experienceProfileService.ts + renderer/firstRun/experienceModel.ts; (4) OnboardingStatus.firstRun boolean + 6 checklist steps owned by main/onboarding/onboardingService.ts; (5) BackendReachability {reachable,checkedAt,lastError} + BackendState [connected|recovering|disconnected] owned by main/runtimeTelemetry.ts; (6) renderer ConnectionState [connecting|online|slow|degraded|offline] owned by renderer/state/ConnectionProvider.tsx (which measures IPC-to-main, NOT the cloud backend). Canonical states NOT_INSTALLED/INSTALLED/DEVICE_REGISTRATION_REQUIRED/CONSENT_REQUIRED/POLICY_BOOTSTRAP do not exist as gates.",
+    "local_mode_without_backend": "YES — MEASURED at unit level (authService.test.ts 19/19 pass; authStateMachine.test.tsx 6/6 pass) and DECLARED at real-Electron level (certification SLICE-17 evidence: local-mode.spec 5/5 PASS on a plain release build, fresh profile, backend down). A fresh install with no stored token never contacts the backend and enters state 'local' with the full shell + LocalModeBanner.",
+    "backend_unreachable_ux": "Depends on the failure CLASS. Network-level failure (DNS/refused/timeout => BackendError.status 0): fresh install -> local mode (no backend contact at all); returning cloud user -> 5 retries x 1s then local mode, vault kept, auto re-restore on /health recovery edge. HTTP-level failure (any non-2xx, including Cloudflare 52x/530 edge errors): returning cloud user -> treated as GENUINE REJECTION -> vault CLEARED -> state 'unauthenticated' -> escape-less LoginScreen. This second branch is the CURRENT LIVE condition (api.neuropause033.com answers HTTP 530 / Cloudflare error 1033 on /health, /live, /auth/providers — MEASURED 2026-09-12).",
+    "health_check": "EXISTS — GET {backendUrl}/health, 4000ms abort, throttled to 1 probe/15s, driven by RuntimeSupervisor 20s tick via NeuroCore.snapshot(); early IPC handler answers 'not yet probed' before runtime core; LoginScreen notice polls every 15s and Retry forces a probe. The probe result never gates anything except the auth re-restore edge and UI copy; it does NOT gate readiness.",
+    "policy_bootstrap": "ABSENT — no policy fetch/pull/snapshot from the backend at boot; no `human_decision_required` awareness in the desktop tree; 'pilot' is a local opt-in flag file; 'bootstrap' in the codebase refers to workspace-context bootstrap and bootstrap source pins, not policy."
+  },
+  "boot_sequence": [
+    {
+      "step": 1,
+      "what": "process-level uncaughtException/unhandledRejection handlers (local log only, app.quit on uncaught)",
+      "evidence": "apps/desktop/src/main/index.ts:47-65",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 2,
+      "what": "single-instance lock; loser quits",
+      "evidence": "apps/desktop/src/main/index.ts:271-281",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 3,
+      "what": "app.whenReady -> attach rotating app.log sink (5MiB x2) -> bootstrap()",
+      "evidence": "apps/desktop/src/main/index.ts:283-297",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 4,
+      "what": "installContentSecurityPolicy(); setAllowedSenderOrigins(dev origin or [])",
+      "evidence": "apps/desktop/src/main/index.ts:121-125",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 5,
+      "what": "registerIpcHandlers() — BASE router (auth:*, app:*, system:runtimeState, workspaceCtx:*)",
+      "evidence": "apps/desktop/src/main/index.ts:127; apps/desktop/src/main/ipc/router.ts:42-61",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 6,
+      "what": "registerEarlyReachabilityHandler() — system:backendReachability answers {reachable:false, checkedAt:null, lastError:null} until runtime core replaces it",
+      "evidence": "apps/desktop/src/main/index.ts:130; apps/desktop/src/main/ipc/earlyReachability.ts:53-68",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 7,
+      "what": "wireEventBridges(): authService 'statusChanged' -> broadcast auth:statusChanged",
+      "evidence": "apps/desktop/src/main/index.ts:103-114",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 8,
+      "what": "createMainWindow() BEFORE runtime core (deliberate; pinned by bootstrapPins.test.ts)",
+      "evidence": "apps/desktop/src/main/index.ts:133-140; apps/desktop/src/main/bootstrapPins.test.ts:25-31",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 9,
+      "what": "RuntimeService (tray/power/login-at-startup) start",
+      "evidence": "apps/desktop/src/main/index.ts:147-179",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 10,
+      "what": "await authService.restoreSession() — the auth decision point (see auth_state_machine.transitions)",
+      "evidence": "apps/desktop/src/main/index.ts:182",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 11,
+      "what": "onBackendReachable(() => authService.retryCloudRestore()) — re-restore on reachability recovery edge",
+      "evidence": "apps/desktop/src/main/index.ts:190-192; apps/desktop/src/main/backendReachabilityHub.ts:24-38",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 12,
+      "what": "__NP_E2E__ seed principal block — compile-stripped in release (define false unless NP_E2E_BUILD=1)",
+      "evidence": "apps/desktop/src/main/index.ts:199-214; apps/desktop/electron.vite.config.ts:42",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 13,
+      "what": "await initRuntimeCore({broadcast}) -> ~650 secure channels; on success broadcast RuntimeStateChanged ready; on throw window stays up + broadcast failed with sanitized message",
+      "evidence": "apps/desktop/src/main/index.ts:219-240; apps/desktop/src/main/runtimeReadiness.ts:37-46",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 14,
+      "what": "inside initRuntimeCore: initOnboarding() loads onboarding.json + experience-profile.json and logs profile state",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:1561; apps/desktop/src/main/onboarding/index.ts:24-37",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 15,
+      "what": "inside initRuntimeCore: secureBridgeDeps.isAuthenticated = hasActivePrincipal(authService.getStatus()) — 'local' passes the RBAC dispatch gate",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:3340-3346; apps/desktop/src/main/auth/governedActor.ts:19-21",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 16,
+      "what": "inside initRuntimeCore: assertAllChannelsClassified — refuses to start if any runtime channel is neither gated nor on PUBLIC_CHANNELS",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:4105-4117",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 17,
+      "what": "registerSecureHandlers(defs, deps) — replaces the early reachability handler with the sampler-backed one",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:4119; apps/desktop/src/main/ipc/secureBridge.ts:170-175",
+      "class": "MEASURED(read)"
+    },
+    {
+      "step": 18,
+      "what": "will-quit: shutdown flush barrier drains registered store flushes before exit",
+      "evidence": "apps/desktop/src/main/index.ts:325-342",
+      "class": "MEASURED(read)"
+    }
+  ],
+  "auth_state_machine": {
+    "type_definition": "packages/shared/src/types/auth.ts:39-59",
+    "states": [
+      "unauthenticated",
+      "authenticating{provider}",
+      "authenticated{session}",
+      "local{principal}",
+      "error{message,cause?}"
+    ],
+    "AuthErrorCause": {
+      "values": [
+        "unreachable",
+        "rejected",
+        "unknown"
+      ],
+      "evidence": "packages/shared/src/types/auth.ts:68; apps/desktop/src/main/auth/authService.ts:56-61"
+    },
+    "initial_state": {
+      "value": "unauthenticated (in-memory default) until restoreSession settles; renderer shows 'Starting NeuroPause…' spinner while initializing",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:69; apps/desktop/src/renderer/src/providers/AuthProvider.tsx:28-48; apps/desktop/src/renderer/src/App.tsx:74-84"
+    },
+    "transitions": [
+      {
+        "from": "boot",
+        "trigger": "no refresh token in vault",
+        "to": "local",
+        "backend_contacted": false,
+        "evidence": "apps/desktop/src/main/auth/authService.ts:227-235"
+      },
+      {
+        "from": "boot",
+        "trigger": "stored token + refresh+me succeed (<=5 attempts)",
+        "to": "authenticated",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:250-264"
+      },
+      {
+        "from": "boot",
+        "trigger": "stored token + BackendError.status===0 on all 5 attempts (1s apart)",
+        "to": "local (vault KEPT)",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:266-297"
+      },
+      {
+        "from": "boot",
+        "trigger": "stored token + ANY non-network error (BackendError.status!=0 incl. 4xx/5xx/530, or non-BackendError)",
+        "to": "unauthenticated (vault CLEARED)",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:298-302; isNetwork defined at :266 as `err instanceof BackendError && err.status === 0`"
+      },
+      {
+        "from": "local",
+        "trigger": "backend /health transitions to reachable AND a token is stored",
+        "to": "authenticated (on success) | local keep token (network err) | local clear token (rejection)",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:183-225"
+      },
+      {
+        "from": "local|unauthenticated|error",
+        "trigger": "loginOAuth (PKCE S256 + loopback 127.0.0.1 random port/path, 5 min timeout, state check)",
+        "to": "authenticating -> authenticated | error",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:308-344; apps/desktop/src/main/auth/loopbackServer.ts:50-128; apps/desktop/src/main/config.ts:52"
+      },
+      {
+        "from": "local|unauthenticated|error",
+        "trigger": "loginEmail / registerEmail",
+        "to": "authenticating -> authenticated | error",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:346-364"
+      },
+      {
+        "from": "authenticated",
+        "trigger": "logout (best-effort server revoke)",
+        "to": "unauthenticated (vault cleared) — NOT local",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:367-379"
+      },
+      {
+        "from": "authenticated",
+        "trigger": "getValidAccessToken refresh: network error",
+        "to": "authenticated (returns null, vault kept)",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:422-426"
+      },
+      {
+        "from": "authenticated",
+        "trigger": "getValidAccessToken refresh: any non-network error (incl. 5xx edge error)",
+        "to": "unauthenticated (vault cleared) — mid-session logout",
+        "evidence": "apps/desktop/src/main/auth/authService.ts:427-430"
+      }
+    ],
+    "token_handling": {
+      "access_token": "memory only, refresh 60s before expiry (accessTokenRefreshSkewMs), single-flight",
+      "refresh_token": "Electron safeStorage ciphertext in userData/vault.bin (0600); refuses plaintext when encryption unavailable; unreadable vault QUARANTINED not reset; decrypt FAILURE of the refresh token calls clear() which unlinks the whole vault.bin (including provider secrets)",
+      "evidence": "apps/desktop/src/main/security/secureStore.ts:29-103; apps/desktop/src/main/config.ts:55; apps/desktop/src/main/auth/authService.ts:386-400"
+    },
+    "renderer_routing": {
+      "initializing": "spinner 'Starting NeuroPause…'",
+      "authenticated": "<Shell session>",
+      "local": "<Shell session=localDisplaySession(principal) banner=<LocalModeBanner>>; 'connect' -> <LoginScreen onDismiss> ('Keep working locally')",
+      "unauthenticated|authenticating|error": "<LoginScreen> with NO onDismiss (the escape-less wall)",
+      "evidence": "apps/desktop/src/renderer/src/App.tsx:70-106; apps/desktop/src/renderer/src/screens/LoginScreen.tsx:40,249-261"
+    }
+  },
+  "runtime_init_state_machine": {
+    "type": "packages/shared/src/types/systemHealth.ts:81-86",
+    "states": [
+      "starting",
+      "ready",
+      "failed{message}"
+    ],
+    "served_by": "base router system:runtimeState (before window) + broadcast system:runtimeStateChanged",
+    "renderer_effects": [
+      "RuntimeFailureNotice role=alert: 'NeuroPause's runtime failed to start. Sign-in and local settings still work, but workspaces, data, and AI are unavailable this session' (apps/desktop/src/renderer/src/shell/RuntimeFailureNotice.tsx:46-58; rendered AppShell.tsx:582)",
+      "lib/ipc.ts boot-window retry: a 'No handler registered' during starting waits for ready (20s cap) and retries once (apps/desktop/src/renderer/src/lib/ipc.ts:176-227,271-273)",
+      "AppShell re-runs xp:profile.get on ready if it raced boot (apps/desktop/src/renderer/src/shell/AppShell.tsx:348-396)"
+    ],
+    "evidence": "apps/desktop/src/main/runtimeReadiness.ts:29-46; apps/desktop/src/main/ipc/router.ts:61"
+  },
+  "first_run_experience": {
+    "owner_of_truth": "main process experience-profile.json (USER scope, CUSTOMER_DERIVED, 0600) via xp:profile.get/set/reset — these three channels are on PUBLIC_CHANNELS (no auth)",
+    "evidence_owner": "apps/desktop/src/main/onboarding/experienceProfileService.ts:26-78; packages/shared/src/ipc/channels.ts:1985-1987",
+    "default_profile": {
+      "state": "pending",
+      "workspaceType": null,
+      "aiModeChosen": false,
+      "evidence": "packages/shared/src/types/experienceProfile.ts:81-90"
+    },
+    "render_condition": "AppShell renders <FirstRunExperience> as a modal takeover iff experienceProfile.state==='pending' && !signInDetour — i.e. INSIDE the shell, in both 'authenticated' and 'local' branches; never on LoginScreen",
+    "evidence_render": "apps/desktop/src/renderer/src/shell/AppShell.tsx:632-660",
+    "steps": {
+      "order": [
+        "welcome",
+        "processing",
+        "workspace",
+        "discovery",
+        "understanding"
+      ],
+      "resume_rule": "workspaceType!=null -> discovery; aiModeChosen -> workspace; else welcome",
+      "evidence": "apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx:38,54-55; apps/desktop/src/renderer/src/firstRun/experienceModel.ts:409-428"
+    },
+    "welcome_copy": {
+      "headline": "Your AI. Your Data. Your Control.",
+      "primaryCta": "Try Free Locally",
+      "secondaryCta": "Sign In",
+      "skip": "Skip setup for now",
+      "evidence": "apps/desktop/src/renderer/src/firstRun/experienceModel.ts:389-405; apps/desktop/src/renderer/src/localFirst/story.ts:19-30; FirstRunExperience.tsx:358-378"
+    },
+    "processing_step_writes": "ipc.aiConfig.setPreference('private_first'|'local_only') — the AI routing + external-consent decision; persisted immediately; if restrictedByPlatform the step waits",
+    "evidence_processing": "apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx:134-173; apps/desktop/src/main/ai/aiConfigStore.ts:80-89 (externalConsent default false)",
+    "sign_in_from_welcome": "DETOUR not forfeit: hides takeover, navigates to Settings, profile stays pending, resumes when leaving Settings",
+    "evidence_signin": "apps/desktop/src/renderer/src/shell/AppShell.tsx:646-658",
+    "boot_race_fallback": "if xp:profile.get fails during the boot window the shell fails OPEN to a synthetic 'skipped' profile (no takeover) and re-reads on runtime-ready",
+    "evidence_race": "apps/desktop/src/renderer/src/shell/AppShell.tsx:366-396",
+    "onboarding_checklist": {
+      "steps": [
+        "welcome",
+        "legal (EULA + privacy notice review)",
+        "organization",
+        "connectors",
+        "ai_setup",
+        "pilot"
+      ],
+      "gate": "NON-BLOCKING — a persistent 'Getting Started' checklist (WelcomeView); the pop-up wizard was removed (GATE 13 round 58); 'legal' completion only timestamps that docs were marked reviewed",
+      "evidence": "packages/shared/src/types/onboarding.ts:42-76; apps/desktop/src/main/onboarding/onboardingService.ts:74-87; apps/desktop/src/renderer/src/shell/AppShell.tsx:661-669; apps/desktop/src/renderer/src/views/WelcomeView.tsx:1-9"
+    }
+  },
+  "canonical_state_mapping": {
+    "NOT_INSTALLED": {
+      "status": "ABSENT (out of client scope; no client-side representation)",
+      "note": "installation-side mapper owns this"
+    },
+    "INSTALLED": {
+      "status": "ABSENT as a state; DERIVED proxy = absence of userData files (vault.bin, local-principal.json, experience-profile.json, onboarding.json)",
+      "evidence": "apps/desktop/src/main/auth/localPrincipalStore.ts:25,86-88; apps/desktop/src/main/security/secureStore.ts:29-31"
+    },
+    "FIRST_LAUNCH": {
+      "status": "PRESENT (implicit)",
+      "representation": "OnboardingStatus.firstRun = startedAt==null && completedAt==null; ExperienceProfile.state==='pending'; local-principal minted on first loadOrCreate",
+      "evidence": "apps/desktop/src/main/onboarding/onboardingService.ts:81; packages/shared/src/types/experienceProfile.ts:83; apps/desktop/src/main/auth/localPrincipalStore.ts:97-102"
+    },
+    "AUTHENTICATION_REQUIRED": {
+      "status": "PRESENT but NOT REQUIRED on first run",
+      "representation": "AuthStatus 'unauthenticated' -> LoginScreen without dismiss; reached ONLY after a stored session is rejected or after explicit logout — never on a fresh install",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:227-235,298-302,367-379; apps/desktop/src/renderer/src/App.tsx:105"
+    },
+    "DEVICE_REGISTRATION_REQUIRED": {
+      "status": "ABSENT as a gate",
+      "representation": "a per-install device UUID is auto-minted (livesync deviceId, local-principal id); backend /devices registration exists only as an authenticated, org:manage-gated user action (devices:register) — not part of first run",
+      "evidence": "apps/desktop/src/main/cloud/livesync/liveSyncInstance.ts:93-119; apps/desktop/src/main/runtimeCore.ts:2335-2345; apps/desktop/src/main/ipc/runtimeAuthz.ts:445; apps/desktop/src/main/devices/deviceClient.ts:1-40"
+    },
+    "CONSENT_REQUIRED": {
+      "status": "PARTIAL / NOT A GATE",
+      "representation": "AI external-processing consent is a first-run CHOICE (default externalConsent=false, fail-closed); telemetry opt-in default off; crash-report opt-in; 'legal' EULA/privacy is a non-blocking checklist step. No consent screen blocks entry to the product",
+      "evidence": "apps/desktop/src/main/ai/aiConfigStore.ts:80-89; apps/desktop/src/main/services/telemetry.ts:2-40; apps/desktop/src/main/index.ts:40-41; packages/shared/src/types/onboarding.ts:48-55"
+    },
+    "POLICY_BOOTSTRAP": {
+      "status": "ABSENT",
+      "evidence": "grep -rniE 'policy.?bootstrap|bootstrapPolicy|policySnapshot|policy.?fetch|pullPolicy' apps/desktop/src/main -> only securityRegressionGate24.test.ts (0 source hits); grep human_decision_required apps/desktop/src -> 0 files"
+    },
+    "HEALTH_CHECK": {
+      "status": "PRESENT (advisory, non-gating)",
+      "representation": "GET /health 4s timeout, throttle 15s, supervisor tick 20s; F-7 public payload {reachable,checkedAt,lastError}; backend /health returns 200 only if postgres+redis up else 503",
+      "evidence": "apps/desktop/src/main/runtimeTelemetry.ts:117-155,164-171; apps/desktop/src/main/neuroCore.ts:64,72,187-203; apps/desktop/src/main/runtimeSupervisor.ts:71-78; apps/backend/src/app.ts:91-102"
+    },
+    "READY": {
+      "status": "PRESENT",
+      "representation": "RuntimeInitState 'ready' (channels registered) — orthogonal to auth",
+      "evidence": "apps/desktop/src/main/runtimeReadiness.ts:37-40"
+    },
+    "DEGRADED": {
+      "status": "PRESENT (two unrelated meanings)",
+      "representation": "(a) AuthStatus 'local' reached from a valid-but-unreachable cloud session — indistinguishable in the type from genuine local-first (no 'degraded' flag); (b) renderer ConnectionState 'degraded' which measures IPC-to-main latency via app:getInfo, not the cloud",
+      "evidence": "packages/shared/src/types/auth.ts:48; apps/desktop/src/main/auth/authService.ts:279-296; apps/desktop/src/renderer/src/state/ConnectionProvider.tsx:45-59; packages/shared/src/types/uxInfra.ts:114-137"
+    },
+    "BLOCKED": {
+      "status": "PRESENT (two forms)",
+      "representation": "(a) RuntimeInitState 'failed' — window stays up with alert, sign-in still works; (b) AuthStatus 'unauthenticated' wall with no local escape (only after rejection/logout)",
+      "evidence": "apps/desktop/src/main/index.ts:230-240; apps/desktop/src/renderer/src/App.tsx:105"
+    }
+  },
+  "backend_unreachable_scenarios": [
+    {
+      "scenario": "S1 fresh install, backend down (any failure class)",
+      "path": "no vault token -> enterLocalMode() -> full shell + banner 'Working locally — your data stays on this device.' + 'Connect an account to sync'; FirstRunExperience takeover (state pending); backend never contacted by auth",
+      "user_sees": "product, no outage message at all (BackendReachabilityNotice only lives on LoginScreen)",
+      "class": "DERIVED (unit MEASURED: authService.test.ts:266 'F-4 fresh install… reaches local mode' PASS)"
+    },
+    {
+      "scenario": "S2 returning cloud user, network-level failure (DNS/refused/timeout)",
+      "path": "5 x (fetch fail + 1s) ~>=5s -> local mode, vault kept -> auto promote to authenticated on /health recovery edge",
+      "user_sees": "'Starting NeuroPause…' ~5s+, then full shell + local banner; NO indication that a cloud session exists but could not be restored (log-only)",
+      "class": "DERIVED (unit MEASURED: authService.test.ts:224,234,302,315 PASS)"
+    },
+    {
+      "scenario": "S3 returning cloud user, HTTP-level failure (CURRENT LIVE CONDITION: HTTP 530 from Cloudflare edge, error 1033)",
+      "path": "backendClient.request -> res.ok false -> BackendError(530,'request_failed') -> isNetwork false -> clearSession() -> 'unauthenticated' -> LoginScreen with NO dismiss; LoginScreen notice: /health also 530 -> lastError 'http_error' -> 'NeuroPause cannot reach its AI service right now. The service responded, but reported a problem. Sign-in needs the service.'; providers list empty -> email form only; every sign-in attempt -> BackendError(530) -> cause 'rejected' -> red banner 'Request failed with status 530'",
+      "user_sees": "escape-less sign-in wall; stored refresh token DESTROYED; no 'keep working locally' path; local data still on disk but unreachable until a sign-in succeeds",
+      "class": "DERIVED from MEASURED (live 530 + verbatim request() repro yields BackendError status 530 isNetwork:false) + code apps/desktop/src/main/auth/authService.ts:266,298-302"
+    },
+    {
+      "scenario": "S4 authenticated user mid-session, backend flips to HTTP 5xx edge error",
+      "path": "next getValidAccessToken() past skew -> refresh -> BackendError(5xx) -> not network -> clearSession + 'unauthenticated' -> wall",
+      "user_sees": "abrupt sign-out into the wall",
+      "class": "DERIVED (apps/desktop/src/main/auth/authService.ts:402-432)"
+    },
+    {
+      "scenario": "S5 local user (genuine or degraded) opens Organization/Store/Devices/Billing",
+      "path": "useIsLocalMode -> CloudUnavailableLocal '<Feature> is unavailable while working locally' + connect CTA",
+      "class": "MEASURED(read) apps/desktop/src/renderer/src/shell/AppShell.tsx:417-419; CloudUnavailableLocal.tsx:32-37; DECLARED e2e assertion certification/source-update/PHASE-I-A3-...SLICE-17...md:124"
+    },
+    {
+      "scenario": "S6 runtime core init throws",
+      "path": "window up, RuntimeStateChanged failed, RuntimeFailureNotice alert; auth channels (base router) still work; ~650 channels absent",
+      "class": "MEASURED(read) apps/desktop/src/main/index.ts:230-240; RuntimeFailureNotice.tsx:46-58"
+    }
+  ],
+  "live_measurements_2026_09_12": [
+    {
+      "what": "dig +short A api.neuropause033.com",
+      "result": "104.21.22.28, 172.67.202.47 (Cloudflare anycast); AAAA 2606:4700:3032::6815:161c, 2606:4700:3031::ac43:ca2f",
+      "class": "MEASURED"
+    },
+    {
+      "what": "GET https://api.neuropause033.com/live",
+      "result": "HTTP 530",
+      "class": "MEASURED"
+    },
+    {
+      "what": "GET https://api.neuropause033.com/health",
+      "result": "HTTP 530; curl body 'error code: 1033' text/plain 17B; with Accept: application/json + Node fetch: 768B application/json problem document, server: cloudflare, cf-ray present",
+      "class": "MEASURED"
+    },
+    {
+      "what": "GET https://api.neuropause033.com/auth/providers",
+      "result": "HTTP 530 (same body classes)",
+      "class": "MEASURED"
+    },
+    {
+      "what": "verbatim backendClient.request() logic run in Node against /auth/providers and /auth/me",
+      "result": "throws BackendError{status:530, code:'request_failed', message:'Request failed with status 530'}; isNetwork=false",
+      "evidence": "scratchpad/discovery/repro-backendclient-parse.mjs",
+      "class": "MEASURED"
+    },
+    {
+      "what": "meaning of Cloudflare error 1033",
+      "result": "Cloudflare Tunnel (cloudflared) origin not connected — consistent with NeuroPause-Windows-Install-Guide.md:120-123 ('runs on a development machine… if asleep, sign-in… will not work') and the operator's ~/.cloudflared (not read)",
+      "class": "INFERRED"
+    },
+    {
+      "what": "RUN-ORDER.md D2 says the A record 'still points at 134.199.250.188' and must be DNS-only (grey cloud)",
+      "result": "CONTRADICTED by measurement: the hostname currently resolves to Cloudflare proxy/tunnel addresses, not a bare droplet IP",
+      "evidence": "RUN-ORDER.md:128-130",
+      "class": "DERIVED"
+    },
+    {
+      "what": "vitest apps/desktop/src/main/auth/authService.test.ts",
+      "result": "1 file, 19/19 passed, 14.9s",
+      "class": "MEASURED"
+    },
+    {
+      "what": "vitest --config vitest.ui.config.ts ui-tests/authStateMachine.test.tsx",
+      "result": "1 file, 6/6 passed, 1.3s",
+      "class": "MEASURED"
+    },
+    {
+      "what": "apps/desktop/resources/build-info.json (gitignored, present locally)",
+      "result": "{commit:cec399f, backendUrl:'https://api.neuropause033.com', channel:'beta', buildTime:'2026-09-12T17:00:45.102Z'}; connectorClientIds present (values not read)",
+      "class": "MEASURED"
+    },
+    {
+      "what": "apps/desktop/e2e/artifacts/",
+      "result": "absent on this checkout (no local record of a local-mode e2e run)",
+      "class": "ABSENT"
+    }
+  ],
+  "declared_evidence": [
+    {
+      "claim": "local-mode.spec GREEN 5/5 on a plain release build, fresh profile, backend down; extended with Organization honest-absence",
+      "evidence": "certification/source-update/PHASE-I-A3-NEUROPAUSE-OS-WAVE-4-SLICE-17-LOCAL-FIRST-EVIDENCE.md:82-93,124,132-138",
+      "class": "DECLARED"
+    },
+    {
+      "claim": "FG-6 gate: Playwright local-mode.spec fresh profile, networking disabled, no seed -> fully usable",
+      "evidence": "certification/source-update/FG-6-LOCAL-PRINCIPAL-GATE.md:253,272",
+      "class": "DECLARED"
+    },
+    {
+      "claim": "S17 CLOSED; local-mode.spec GREEN 5/5; graceful cloud-absence LANDED",
+      "evidence": "NP_STATE.md:29",
+      "class": "DECLARED"
+    },
+    {
+      "claim": "D-11: local->authenticated is additive-and-safe; local org data not orphaned; cloud backfill deferred to S18+",
+      "evidence": "DECISIONS.md:36-39",
+      "class": "DECLARED"
+    },
+    {
+      "claim": "D-12: local: actor namespace canonical; never stripped",
+      "evidence": "DECISIONS.md:30-31; apps/desktop/src/main/auth/localNamespace.ts:17-35",
+      "class": "DECLARED+MEASURED(read)"
+    },
+    {
+      "claim": "Release workflows bake NEUROPAUSE_BACKEND_URL defaulting to https://api.neuropause033.com",
+      "evidence": ".github/workflows/macos-release.yml:98; .github/workflows/windows-release.yml:80; apps/desktop/scripts/generate-build-info.cjs:60",
+      "class": "MEASURED(read)"
+    },
+    {
+      "claim": "Windows install guide tells users the server 'currently runs on a development machine'",
+      "evidence": "NeuroPause-Windows-Install-Guide.md:120-123",
+      "class": "DECLARED"
+    },
+    {
+      "claim": "desktop-ci runs `npm run test -w @neuropause/desktop` (= vitest run && vitest run --config vitest.ui.config.ts) — ui-tests ARE in CI; Playwright e2e (*.e2e.cjs) are NOT in any workflow",
+      "evidence": ".github/workflows/desktop-ci.yml:82; apps/desktop/package.json scripts.test; grep e2e .github/workflows -> 0 desktop e2e invocations",
+      "class": "MEASURED(read)"
+    },
+    {
+      "claim": "verify-e2e-strip.sh 'run it in the standing regression + the release checklist'",
+      "evidence": "apps/desktop/e2e/README.md:31-35; grep in .github/workflows + package.json -> NOT wired",
+      "class": "DECLARED vs ABSENT"
+    }
+  ],
+  "architecture_invariant_assessment": [
+    {
+      "invariant": "AI never the authorization authority",
+      "finding": "HOLDS in this subsystem — auth transitions are driven by backend responses or the human (sign-in/logout/first-run choices); no AI path writes AuthStatus",
+      "class": "DERIVED"
+    },
+    {
+      "invariant": "client never the FINAL authorization authority",
+      "finding": "VIOLATED BY DESIGN in 'local' mode: hasActivePrincipal('local')===true opens the RBAC dispatch gate; enterprise.authorize resolves against the locally-bound owner row; resolveGovernedActor yields 'local:<id>' as a valid CST admission actor (runtimeCore.ts:528,816; platformCommandIpc.ts:367). With the backend absent, the desktop is the only authority for everything a local principal can do, including governed connector effects (D-9 mode A used a dead backend). Whether that is acceptable for public launch is a HUMAN decision",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:3340-3346; apps/desktop/src/main/auth/governedActor.ts:19-43; DECISIONS.md:48",
+      "class": "DERIVED + INFERRED"
+    },
+    {
+      "invariant": "network connection != authorization",
+      "finding": "HOLDS — reachability (/health) only triggers a token re-restore; authorization comes from a successful /auth/token/refresh + /auth/me. Reachability payload is deliberately auth-free (F-7)",
+      "evidence": "apps/desktop/src/main/runtimeTelemetry.ts:65-71,158-171; apps/desktop/src/main/backendReachability.test.ts:107-124",
+      "class": "DERIVED"
+    },
+    {
+      "invariant": "stale authorization rejected",
+      "finding": "PARTIAL — access token refreshed 60s before expiry on USE only; 'authenticated' status persists in memory indefinitely without re-validation when no authenticated call is made; renderer never inspects accessTokenExpiresAt (App.tsx:33 sets 0 for local). A 'local' principal has no expiry concept at all. Conversely, the client OVER-rejects: any non-network HTTP error (including edge 5xx) is treated as a stale/invalid credential and destroys the vault",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:386-432; apps/desktop/src/renderer/src/App.tsx:33",
+      "class": "DERIVED"
+    },
+    {
+      "invariant": "AI proposes; policy governs; Computer-B executes; Computer-A verifies; human decides",
+      "finding": "The desktop client has NO representation of NeuroPause policy/authority state (no human_decision_required, no policy bootstrap, no server-side gate list); first-run and auth are fully local decisions. Pilot 'authority enforcement' lives only in apps/backend/src/pilot/authority.ts (per HANDOFF §4) behind /pilot requireAuth (apps/backend/src/app.ts:112) — unreachable by a local-mode client",
+      "class": "DERIVED"
+    }
+  ],
+  "facts": [
+    {
+      "fact": "AuthStatus is a 5-member union: unauthenticated | authenticating | authenticated | local | error",
+      "evidence": "packages/shared/src/types/auth.ts:39-59",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "restoreSession with no stored refresh token enters local mode without contacting the backend",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:227-235; authService.test.ts:197,266 (PASS)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "restoreSession retries network failures 5x with 1000ms sleeps then enters local mode keeping the vault",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:250-297",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "isNetwork is defined solely as `err instanceof BackendError && err.status === 0`; every other error class clears the vault and sets unauthenticated",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:266,298-302,422-430",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "backendClient.request throws BackendError(0,'network_error') only when fetch itself rejects; a non-2xx response throws BackendError(res.status, body.error?.code ?? 'request_failed')",
+      "evidence": "apps/desktop/src/main/auth/backendClient.ts:38-62",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "api.neuropause033.com currently returns HTTP 530 (Cloudflare error 1033) for /live, /health, /auth/providers",
+      "evidence": "curl -sS -m 10 https://api.neuropause033.com/{live,health,auth/providers} on 2026-09-12",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Running the verbatim request() logic against the live host yields BackendError{status:530} with isNetwork=false",
+      "evidence": "scratchpad/discovery/repro-backendclient-parse.mjs output",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Under the current live condition a returning cloud user's stored refresh token is cleared at launch and the user lands on the escape-less LoginScreen",
+      "evidence": "authService.ts:298-302 + App.tsx:105 + measured 530",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "No test covers a non-network HTTP failure during restoreSession (all rejection tests use auth-shaped rejections); backendClient.ts has no test file",
+      "evidence": "apps/desktop/src/main/auth/authService.test.ts:118-376; ls apps/desktop/src/main/auth",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "The local principal is a per-install UUID persisted in userData/local-principal.json (INSTALL_GLOBAL, SYSTEM authority); display name is the OS username",
+      "evidence": "apps/desktop/src/main/auth/localPrincipalStore.ts:25-52,59-66,97-113",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "A local principal passes the RBAC dispatch gate (isAuthenticated) and resolves to actor 'local:<id>' for governed admissions",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:3344; apps/desktop/src/main/auth/governedActor.ts:19-43",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "App.tsx routes: initializing->spinner; authenticated->Shell; local->Shell+LocalModeBanner (connect reveals dismissable LoginScreen); else->LoginScreen with no dismiss",
+      "evidence": "apps/desktop/src/renderer/src/App.tsx:70-106; ui-tests/authStateMachine.test.tsx 6/6 PASS",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "LocalModeBanner copy: 'Working locally — your data stays on this device.' / 'Connect an account to sync' — identical for genuine local-first and for a degraded cloud session",
+      "evidence": "apps/desktop/src/renderer/src/localFirst/story.ts:27-29; packages/shared/src/types/auth.ts:48 (no degraded flag)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "BackendReachabilityNotice renders only on LoginScreen; in local mode the shell shows no backend-outage indicator",
+      "evidence": "grep BackendReachabilityNotice renderer -> LoginScreen.tsx:6,155 only",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Health probe: GET {backendUrl}/health, 4000ms abort, min interval 15s, 3 consecutive failures -> 'disconnected'; reachability edge fires once per recovery and drives authService.retryCloudRestore",
+      "evidence": "apps/desktop/src/main/runtimeTelemetry.ts:117-155; neuroCore.ts:64; index.ts:190-192",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Supervisor tick every 20s calls NeuroCore.snapshot which calls probeBackend (throttled)",
+      "evidence": "apps/desktop/src/main/runtimeSupervisor.ts:71-90; neuroCore.ts:69-73",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Backend /health returns 200 'ok' only when postgres AND redis ping; else 503 'degraded'; /live is liveness-only",
+      "evidence": "apps/backend/src/app.ts:87-102",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Early reachability handler answers {reachable:false, checkedAt:null, lastError:null} before runtime core; the notice treats checkedAt:null as 'still checking', not outage",
+      "evidence": "apps/desktop/src/main/ipc/earlyReachability.ts:53-68; renderer/screens/BackendReachabilityNotice.tsx:56-63",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Renderer ConnectionProvider 'backendReachable' measures ipc.app.getInfo() (a local main-process call), not the cloud backend",
+      "evidence": "apps/desktop/src/renderer/src/state/ConnectionProvider.tsx:45-59; apps/desktop/src/main/ipc/handlers/app.ts:6-14",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "First-run experience is a modal takeover inside the shell when experience-profile state is 'pending'; 5 steps; each decision persists immediately; Sign In is a detour",
+      "evidence": "apps/desktop/src/renderer/src/shell/AppShell.tsx:632-660; firstRun/FirstRunExperience.tsx:38-55,109,150,277",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "xp:profile.get/set/reset are on PUBLIC_CHANNELS (no auth, no permission)",
+      "evidence": "packages/shared/src/ipc/channels.ts:1985-1987; experienceProfileService.ts:61-65",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "AI external consent defaults to false; telemetry defaults off; crash reporting is opt-in",
+      "evidence": "apps/desktop/src/main/ai/aiConfigStore.ts:89; services/telemetry.ts:20,38; index.ts:40-41",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Onboarding checklist has 6 steps incl. 'legal' (EULA + privacy notice); it is a non-blocking WelcomeView checklist, not a gate",
+      "evidence": "packages/shared/src/types/onboarding.ts:42-76; AppShell.tsx:661-669",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No policy bootstrap / policy pull / human_decision_required handling exists in the desktop tree",
+      "evidence": "grep -rniE 'policy.?bootstrap|bootstrapPolicy|policySnapshot|policy.?fetch|pullPolicy' apps/desktop/src/main (0 source hits); grep human_decision_required apps/desktop/src (0)",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "Desktop device registration with the backend is an authenticated org:manage action (devices:register), not a first-run step; device id is auto-minted locally",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:2335-2345; ipc/runtimeAuthz.ts:445; cloud/livesync/liveSyncInstance.ts:93-96",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "runtimeIdentity {org,user,device} is set only when authenticated AND an active cloud org is set; cleared otherwise",
+      "evidence": "apps/desktop/src/main/cloud/livesync/liveSyncInstance.ts:108-119",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Packaged builds use the URL baked into build-info.json; dev runs default to http://127.0.0.1:4000; NEUROPAUSE_BACKEND_URL overrides both",
+      "evidence": "apps/desktop/src/main/config.ts:9,42-49; buildInfo.ts:84-87",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Local build-info.json bakes backendUrl https://api.neuropause033.com, channel beta, commit cec399f",
+      "evidence": "apps/desktop/resources/build-info.json (node -e read)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Release workflows default NEUROPAUSE_BACKEND_URL to https://api.neuropause033.com",
+      "evidence": ".github/workflows/macos-release.yml:98; windows-release.yml:80",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "LoginScreen offers OAuth buttons only for providers the server lists; lookup failure -> none -> email/password only",
+      "evidence": "apps/desktop/src/renderer/src/screens/LoginScreen.tsx:26-69; ipc/handlers/auth.ts:28-39",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "OAuth uses PKCE S256 + RFC 8252 loopback on 127.0.0.1 random port + random path; state mismatch rejected; 5-minute timeout",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:313-334; loopbackServer.ts:55,101,105; config.ts:52",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Refresh token stored as safeStorage ciphertext in userData/vault.bin (0600); unreadable vault is quarantined; a refresh-token DECRYPT failure unlinks the whole vault (provider secrets included)",
+      "evidence": "apps/desktop/src/main/security/secureStore.ts:33-59,63-78,94-102",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Runtime init state starting|ready|failed is served by the base router before the window and broadcast on transition; failure renders RuntimeFailureNotice",
+      "evidence": "apps/desktop/src/main/runtimeReadiness.ts:29-46; ipc/router.ts:61; renderer/shell/RuntimeFailureNotice.tsx:46-58",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "E2E seed seam (forged authenticated principal) is compile-stripped: __NP_E2E__ defined from NP_E2E_BUILD==='1'",
+      "evidence": "apps/desktop/electron.vite.config.ts:42; index.ts:199-214",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "verify-e2e-strip.sh exists but is not invoked by any workflow or package script",
+      "evidence": "apps/desktop/scripts/verify-e2e-strip.sh; grep .github/workflows package.json -> 0",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "Playwright e2e specs (localMode.e2e.cjs, freshProfileBootstrap.e2e.cjs) are not run in CI; ui-tests are",
+      "evidence": ".github/workflows/desktop-ci.yml:82; apps/desktop/package.json scripts.test",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Certification evidence declares local-mode.spec PASS 5/5 on a release build with backend down",
+      "evidence": "certification/source-update/PHASE-I-A3-NEUROPAUSE-OS-WAVE-4-SLICE-17-LOCAL-FIRST-EVIDENCE.md:82-93",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Last commits touching auth: ee1ff81 2026-08-30 (Gate 2 re-restore + renderer state machine); f8e6f17/a75c105 2026-08-18 (S17 local); 8c39f48 2026-08-14 (round 33 refresh lifecycle)",
+      "evidence": "git log -5 -- apps/desktop/src/main/auth",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "RUN-ORDER.md asserts the A record points at 134.199.250.188 and must be grey-cloud; live DNS resolves to Cloudflare proxy addresses",
+      "evidence": "RUN-ORDER.md:128-130 vs dig output",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "Windows install guide tells testers the server runs on a development machine and sign-in fails when it is asleep",
+      "evidence": "NeuroPause-Windows-Install-Guide.md:120-123",
+      "classification": "DECLARED"
+    }
+  ],
+  "gate_assessments": [
+    {
+      "gate": "FIRST-RUN",
+      "status": "MEASURABLE",
+      "reason": "First-run journey is fully specified in code and unit/ui-tested (authService 19/19, authStateMachine 6/6 measured here; firstRun.ui/firstRunResume/onboardingConsolidation declared in CI). No unified state machine; NOT_INSTALLED/DEVICE_REGISTRATION/CONSENT/POLICY_BOOTSTRAP gates are absent by design. The real-Electron local-mode e2e is DECLARED green (SLICE-17 evidence) but has no artifact on this checkout and is not in CI. Passable as 'local-first first run' once a human decides that a first run with zero backend/policy contact is the intended launch behaviour."
+    },
+    {
+      "gate": "INSTALLATION (journey side)",
+      "status": "NOT_MEASURED",
+      "reason": "This mapper did not launch a packaged build. Client-side facts: packaged builds bake https://api.neuropause033.com (measured in local build-info.json and release workflows); first launch mints local-principal.json, experience-profile.json, onboarding.json, vault.bin under userData; no installation-state representation exists in the client. Whether Gatekeeper/unsigned issues block launch belongs to the installation mapper."
+    },
+    {
+      "gate": "AUTHENTICATION (client side)",
+      "status": "FAIL",
+      "reason": "Two blocking findings. (1) MEASURED: the baked production backend answers HTTP 530 (Cloudflare tunnel origin down) on /health, /live, /auth/providers — sign-in cannot succeed for any user today. (2) DERIVED from measured: because isNetwork requires BackendError.status===0, a 5xx edge response at launch is classified as a credential rejection: the stored refresh token is destroyed and a returning user is walled on LoginScreen with no 'Keep working locally' escape — exactly the dead end P13C Gate 1 claimed to close, reachable under the current live condition. No test covers the non-network-HTTP-failure branch. Secondary: mid-session refresh on a 5xx logs the user out; a degraded-from-cloud local session is indistinguishable from genuine local-first in the type and the UI."
+    }
+  ],
+  "gaps": [
+    "authService treats every non-status-0 error as a genuine rejection (authService.ts:266,298-302,422-430); Cloudflare/edge 5xx, 502/503 from a restarting backend, and 429 all destroy the vault. No test exercises this branch.",
+    "AuthStatus 'local' carries no 'degradedFromCloud' marker; UI copy 'your data stays on this device' is shown to a user whose vault still holds a cloud session; nothing in the UI says a cloud session exists but could not be restored (log only, authService.ts:291-294).",
+    "BackendReachabilityNotice is mounted only on LoginScreen; a local-mode shell never shows backend outage state; ConnectionProvider's 'backend' axis measures IPC-to-main, so the in-shell 'Connected' badge is true even when the cloud is down.",
+    "No POLICY_BOOTSTRAP: the desktop never fetches NeuroPause policy/authority state; backend authority enforcement (/pilot) is unreachable from local mode, so local-mode governed actions are authorized entirely on-device.",
+    "No CONSENT gate: EULA/privacy 'legal' step is a non-blocking checklist; AI external consent is a first-run choice (fail-closed default) but the first run itself can be skipped.",
+    "No DEVICE_REGISTRATION step: device id auto-minted; backend registration only as an org:manage user action.",
+    "Playwright e2e (localMode, freshProfileBootstrap) not in CI; no artifacts on this checkout; local-mode GREEN is DECLARED only (SLICE-17 evidence).",
+    "verify-e2e-strip.sh (proves the forged-principal seed is absent from release) is not wired into any workflow or release script despite the README instruction.",
+    "secureStore.getRefreshToken decrypt failure unlinks vault.bin including provider secrets (secureStore.ts:73-77) — a keychain/signing-identity change on an unsigned build could silently wipe credentials (INFERRED).",
+    "RUN-ORDER.md D2 DNS statement (bare droplet IP, grey cloud) is stale relative to live DNS (Cloudflare proxy/tunnel).",
+    "Stale-authorization rejection is use-triggered only; an idle 'authenticated' session is never re-validated; renderer ignores accessTokenExpiresAt."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Broaden the transient-failure class in authService: treat BackendError.status in {0, 429, 500, 502, 503, 504, 52x, 530} (and any non-JSON/edge body) as 'unreachable' in doRestoreSession, doRetryCloudRestore and refreshAccessToken so the vault is kept and the app degrades to local instead of walling; add unit tests for a 530 and a 503 at each of the three sites",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/auth/authService.ts",
+        "apps/desktop/src/main/auth/backendClient.ts",
+        "apps/desktop/src/main/auth/authService.test.ts"
+      ],
+      "risk": "Must not mask a genuine 401/403 rejection; keep 4xx auth codes as rejections. Touches the certified auth path — check FG gate status before editing."
+    },
+    {
+      "action": "Add a 'cloudSessionStored: boolean' (or 'origin: genuine|degraded') field to the local AuthStatus member and surface it in LocalModeBanner copy ('A cloud account is saved but the service is unreachable') so degraded-from-cloud is distinguishable",
+      "effort": "M",
+      "files": [
+        "packages/shared/src/types/auth.ts",
+        "apps/desktop/src/main/auth/authService.ts",
+        "apps/desktop/src/renderer/src/shell/LocalModeBanner.tsx",
+        "apps/desktop/src/renderer/src/localFirst/story.ts",
+        "apps/desktop/ui-tests/localFirstStory.test.tsx"
+      ],
+      "risk": "AuthStatus is exhaustively matched (CLAUDE §4 standing rule) — every switch must be updated; story copy is pinned by tests."
+    },
+    {
+      "action": "Mount BackendReachabilityNotice (or a compact variant) in the local-mode shell header so an outage is visible without opening the connect screen",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/renderer/src/App.tsx",
+        "apps/desktop/src/renderer/src/shell/LocalModeBanner.tsx"
+      ],
+      "risk": "Low; must respect the F-7 copy rule (never tell the user to run anything)."
+    },
+    {
+      "action": "Wire scripts/verify-e2e-strip.sh into apps/desktop package.json (e.g. test:release or package:mac/win pre-step) and the release workflows",
+      "effort": "S",
+      "files": [
+        "apps/desktop/package.json",
+        ".github/workflows/macos-release.yml",
+        ".github/workflows/windows-release.yml"
+      ],
+      "risk": "Low; adds a build step."
+    },
+    {
+      "action": "Add a CI job (or release-checklist script) that builds a plain release bundle and runs e2e/localMode.e2e.cjs on a fresh profile with networking blocked, archiving screenshots",
+      "effort": "M",
+      "files": [
+        ".github/workflows/desktop-ci.yml",
+        "apps/desktop/e2e/localMode.e2e.cjs"
+      ],
+      "risk": "Needs Electron + Playwright on the runner; flaky-window timing."
+    },
+    {
+      "action": "Rename ConnectionProvider's 'backendReachable' axis to 'mainProcessReachable' (or feed it the real /health reachability via system:backendReachability) so the in-shell badge does not claim 'Connected' during a cloud outage",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/renderer/src/state/ConnectionProvider.tsx",
+        "packages/shared/src/types/uxInfra.ts"
+      ],
+      "risk": "classifyConnection copy/tests change; decide whether local mode should show 'Offline' at all."
+    },
+    {
+      "action": "Refresh RUN-ORDER.md D2 to reflect the current Cloudflare tunnel/proxy topology (or record that the tunnel is the temporary path) — doc only",
+      "effort": "S",
+      "files": [
+        "RUN-ORDER.md"
+      ],
+      "risk": "None (doc)."
+    }
+  ],
+  "human_decisions_required": [
+    "Is 'local-first with zero backend/policy contact on first run' the INTENDED public-launch behaviour? In that mode the desktop client is the final authorization authority for everything a local principal can do (RBAC + CST admission resolved on-device), which conflicts with the stated invariant 'client must never be the final authorization authority'.",
+    "Is the public backend (api.neuropause033.com, currently HTTP 530 via a Cloudflare tunnel from a development machine) a launch dependency? If yes, launch is blocked until it is reachable from outside; if no, the baked URL and the install guide's 'needs the server' text must change.",
+    "Should the transient-vs-rejection rule in authService be widened (machine action 1)? This touches the certified auth path and may require an FG gate ruling.",
+    "Should EULA/privacy acknowledgement be a blocking consent gate at first run (today it is a non-blocking checklist step)?",
+    "Should a degraded-from-cloud local session be visibly distinguished from genuine local-first (machine action 2), given the banner currently asserts 'your data stays on this device' to both?"
+  ],
+  "not_done_and_why": [
+    "Did not launch a packaged/release build or run Playwright e2e (build/full-suite prohibition).",
+    "Did not read ~/.cloudflared or any secret; connectorClientIds values in build-info.json were not read.",
+    "Did not POST to any backend endpoint (only GET/HEAD)."
+  ]
+}

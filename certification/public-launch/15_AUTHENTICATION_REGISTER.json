@@ -1,0 +1,82 @@
+{
+  "ARTIFACT": "15_AUTHENTICATION_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "measured_live": [
+    {
+      "step": "auth providers list",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "email registration",
+      "status": 201,
+      "ok": true
+    },
+    {
+      "step": "email login",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "/me with bearer",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "/me without bearer",
+      "status": 401,
+      "ok": true
+    },
+    {
+      "step": "refresh rotation",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "refresh REUSE of rotated token detected (chain burn)",
+      "status": 401,
+      "ok": true
+    },
+    {
+      "step": "re-login after chain burn",
+      "status": 200,
+      "ok": true
+    },
+    {
+      "step": "logout",
+      "status": 204,
+      "ok": true
+    },
+    {
+      "step": "refresh after logout refused",
+      "status": 401,
+      "ok": true
+    },
+    {
+      "step": "login for device journey",
+      "status": 200,
+      "ok": true
+    }
+  ],
+  "mechanisms": "argon2id · HS256 JWT (iss/aud pinned, 900 s) · opaque refresh (sha256 at rest, rotation, reuse → chain burn, fixed to commit) · Electron safeStorage vault",
+  "gaps": [
+    "email verification + password reset mail undeliverable (logging mailer)",
+    "no account deletion",
+    "access token unrevocable ≤15 min",
+    "OAuth providers unconfigured (WAITING_FOR_OPERATOR_SECRET)",
+    "OAuth auto-link by email without verified-email precondition",
+    "no new-device detection"
+  ],
+  "mapper": "certification/public-launch/discovery/backend-auth.json"
+}

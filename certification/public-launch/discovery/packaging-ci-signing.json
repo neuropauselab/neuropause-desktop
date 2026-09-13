@@ -1,0 +1,791 @@
+{
+  "key": "packaging-ci-signing",
+  "generated_at_utc": "2026-09-12",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "version": "1.0.0-rc.30",
+    "remote": "https://github.com/neuropauselab/neuropause-desktop.git",
+    "remote_visibility_MEASURED": "public (gh api repos/... .visibility) — contradicts electron-builder.yml:35-36 and website/download.html:233-234 which DECLARE the repo private",
+    "branch_pushed_MEASURED": false,
+    "branch_pushed_evidence": "git ls-remote --heads origin | grep pilot -> no match (90 remote heads, none named pilot/*)",
+    "working_tree_at_measurement": "root package.json modified (+1 script 'neuropause:public-launch:verify'), untracked certification/public-launch/ and scripts/public-launch-verify.cjs — created by the orchestrator/background revalidation, not by this mapper; build-info.json inside the dist app records dirty:false at build time 17:00:45Z"
+  },
+  "classification_legend": "MEASURED = executed/observed by this mapper; DECLARED = asserted by a doc/comment/config; DERIVED = computed from measured facts; INFERRED = judgement; ABSENT = looked for, does not exist",
+  "toolchain": [
+    {
+      "fact": "electron 42.8.1 installed at node_modules/electron",
+      "evidence": "node -e require('./node_modules/electron/package.json').version; apps/desktop/package.json:53 pins \"electron\": \"42.8.1\" (exact)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "electron-builder 26.15.3 and app-builder-lib 26.15.3 installed; apps/desktop/package.json:54 declares ^26.15.3",
+      "evidence": "node -e require('./node_modules/electron-builder/package.json').version",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "@electron/notarize: root node_modules has 2.5.0; apps/desktop/node_modules/@electron/notarize is 3.1.1 (the one notarize.cjs resolves, since it lives in apps/desktop/scripts)",
+      "evidence": "node -e on both package.json files; apps/desktop/package.json:44 declares ^3.1.1",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "docs/release/PACKAGING-SIGNING-NOTARIZATION.md:217 still says @electron/notarize ^2.5.0 'matching electron-builder 24' — stale vs installed 3.1.1 / electron-builder 26",
+      "evidence": "docs/release/PACKAGING-SIGNING-NOTARIZATION.md:215-218",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "electron-updater 6.8.9 installed; @electron/osx-sign 1.3.3 installed",
+      "evidence": "node -e require(...)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Electron's own Electron.app declares LSMinimumSystemVersion 12.0 (CFBundleShortVersionString 42.8.1); the installed electron binary is arm64-only (dev download), the packaged app is universal",
+      "evidence": "PlistBuddy on node_modules/electron/dist/Electron.app/Contents/Info.plist; lipo -archs -> arm64",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Packaged NeuroPause.app declares LSMinimumSystemVersion 12.0, CFBundleShortVersionString 1.0.0-rc.30, CFBundleIdentifier com.neuropause.desktop",
+      "evidence": "PlistBuddy on apps/desktop/dist/mac-universal/NeuroPause.app/Contents/Info.plist",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": ".nvmrc = 20; desktop-ci pins node-version '20'; release workflows use node-version-file .nvmrc",
+      "evidence": ".nvmrc; .github/workflows/desktop-ci.yml:74; macos-release.yml:46",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "GitHub annotation on the rc.29 run: 'Node.js 20 is deprecated ... actions/checkout@v4, actions/setup-node@v4 forced to run on Node.js 24' (action runtime, not the app)",
+      "evidence": "gh run view 34126195486 ANNOTATIONS",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "npm registry dist-tags: latest=26.15.3, v26=26.16.1, next=27.0.0-alpha.8; 26.16.1 published 2026-09-07T18:26:37Z, 26.16.0 published 2026-09-02T03:01:16Z",
+      "evidence": "npm view electron-builder dist-tags --json; npm view electron-builder time --json",
+      "classification": "MEASURED"
+    }
+  ],
+  "electron_builder_config": [
+    {
+      "fact": "appId com.neuropause.desktop, productName NeuroPause, output dist, buildResources resources, asar true, asarUnpack resources/plugin-host.cjs",
+      "evidence": "apps/desktop/electron-builder.yml:1-9",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "files: out/**/*, package.json, !**/*.test.ts",
+      "evidence": "apps/desktop/electron-builder.yml:10-18",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "extraResources: build-info.json, THIRD-PARTY-NOTICES.md, docs/guides, docs/user, docs/legal, docs/THIRD-PARTY-NOTICES.md",
+      "evidence": "apps/desktop/electron-builder.yml:19-33",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "afterSign: scripts/notarize.cjs",
+      "evidence": "apps/desktop/electron-builder.yml:34",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "publish: provider generic, url https://neuropause033.com/updates, channel beta",
+      "evidence": "apps/desktop/electron-builder.yml:42-45; baked into packaged app at Contents/Resources/app-update.yml (provider generic, url https://neuropause033.com/updates, channel beta, updaterCacheDirName '@neuropausedesktop-updater')",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "mac.target: dmg[universal], zip[universal]; hardenedRuntime true; gatekeeperAssess false; entitlements resources/entitlements.mac.plist; entitlementsInherit resources/entitlements.mac.inherit.plist; notarize false",
+      "evidence": "apps/desktop/electron-builder.yml:59-70",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "dmg.artifactName 'NeuroPause-${arch}.${ext}'; nsis.artifactName 'NeuroPause-Setup.${ext}'; win targets nsis/zip/portable x64; no zip artifactName override",
+      "evidence": "apps/desktop/electron-builder.yml:79, 80-99",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "mac.notarize:false makes app-builder-lib log 'skipped macOS notarization (notarize options were set explicitly false)' and return; notarization is therefore performed ONLY by the afterSign hook",
+      "evidence": "node_modules/app-builder-lib/out/mac/MacTargetHelper.js:256-261; electron-builder.yml:34,70",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "hardenedRuntime true flows to osx-sign (hardenedRuntime !== false for non-MAS); entitlements/entitlementsInherit resolved from config",
+      "evidence": "node_modules/app-builder-lib/out/mac/MacTargetHelper.js:148-181",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "gatekeeperAssess:false disables electron-builder's own spctl probe; verify-universal-and-deps.cjs was written because of this",
+      "evidence": "apps/desktop/scripts/verify-universal-and-deps.cjs:6-9 (DECLARED rationale); electron-builder.yml:67",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Entitlements (main): allow-jit, allow-unsigned-executable-memory, disable-library-validation, allow-dyld-environment-variables, network.client, network.server. Inherit plist: the four cs.* only",
+      "evidence": "apps/desktop/resources/entitlements.mac.plist:6-19; entitlements.mac.inherit.plist:15-22",
+      "classification": "MEASURED"
+    }
+  ],
+  "artifact_naming": {
+    "mac_dmg": {
+      "pattern": "NeuroPause-${arch}.${ext} (dmg.artifactName)",
+      "expands_to": "NeuroPause-universal.dmg",
+      "classification": "MEASURED",
+      "evidence": "ls apps/desktop/dist -> NeuroPause-universal.dmg (232,540,739 B, sha256 efdb67ef349c8a8a…); ${arch} for Arch.universal expands to 'universal' per node_modules/app-builder-lib/out/util/macroExpander.js:21-26 and builder-util/out/arch.js:16"
+    },
+    "mac_zip": {
+      "pattern": "default ${productName}-${version}-${arch}-${os}.${ext} (arch suffix present because universal != defaultArch x64)",
+      "expands_to": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "classification": "MEASURED",
+      "evidence": "ls apps/desktop/dist; node_modules/app-builder-lib/out/targets/ArchiveTarget.js:23-30; builder-util/out/arch.js:35-37,55-57"
+    },
+    "mac_blockmaps": {
+      "names": [
+        "NeuroPause-universal.dmg.blockmap",
+        "NeuroPause-1.0.0-rc.30-universal-mac.zip.blockmap"
+      ],
+      "classification": "MEASURED",
+      "evidence": "ls apps/desktop/dist"
+    },
+    "mac_feed": {
+      "name": "beta-mac.yml",
+      "why": "publish.channel=beta -> channel feed name beta-mac.yml; stable would be latest-mac.yml",
+      "classification": "MEASURED",
+      "evidence": "apps/desktop/dist/beta-mac.yml: version 1.0.0-rc.30; files[]: NeuroPause-1.0.0-rc.30-universal-mac.zip (sha512 QXKiZz…, size 231626730) and NeuroPause-universal.dmg (sha512 U6BD74…, size 232540739); path: the zip; releaseDate 2026-09-12T17:06:26.388Z"
+    },
+    "mac_app_dir": {
+      "name": "dist/mac-universal/NeuroPause.app",
+      "classification": "MEASURED",
+      "evidence": "ls; verify-universal-and-deps.cjs:69 expects exactly this path"
+    },
+    "mac_marker": {
+      "name": "dist/notarization-status.json",
+      "classification": "MEASURED",
+      "evidence": "content: state skipped, notarized false, version 1.0.0-rc.30, reason 'one or more Apple credentials are absent', at 2026-09-12T17:06:02Z"
+    },
+    "win_nsis": {
+      "name": "NeuroPause-Setup.exe (+ .blockmap)",
+      "classification": "MEASURED (via GitHub Release assets rc.27/rc.17/rc.16)",
+      "evidence": "gh release view v1.0.0-rc.27 assets"
+    },
+    "win_zip": {
+      "name": "NeuroPause-<version>-win.zip e.g. NeuroPause-1.0.0-rc.27-win.zip",
+      "classification": "MEASURED (release assets)",
+      "evidence": "gh release view v1.0.0-rc.27"
+    },
+    "win_portable": {
+      "name": "NeuroPause.<version>.exe e.g. NeuroPause.1.0.0-rc.27.exe (electron-builder default portable name; note the DOT separator)",
+      "classification": "MEASURED (release assets)",
+      "evidence": "gh release view v1.0.0-rc.27; certification/SESSION-153-WINDOWS-RUN-EVIDENCE.md:59 DECLARES 'NeuroPause-<ver>-portable.exe' which does not match the measured name"
+    },
+    "win_feed": {
+      "name": "beta.yml",
+      "classification": "MEASURED (release assets)",
+      "evidence": "gh release view v1.0.0-rc.27 assets include beta.yml and builder-debug.yml (builder-debug.yml is attached because the release glob is *.yml — a leak of build-config into public assets)"
+    },
+    "published_stable_names": {
+      "mac": "NeuroPause.dmg",
+      "win": "NeuroPause-Setup.exe",
+      "classification": "DECLARED",
+      "evidence": "macos-release.yml:205-208 cp NeuroPause-universal.dmg -> NeuroPause.dmg then scp to /opt/neuropause-site/website/downloads/; windows-release.yml:211-214"
+    }
+  },
+  "artifact_name_consumers": [
+    {
+      "consumer": ".github/workflows/macos-release.yml:151-154 upload-artifact globs *.dmg *.zip *.yml *.blockmap",
+      "status": "consistent with universal names",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": ".github/workflows/macos-release.yml:205-206 cp apps/desktop/dist/NeuroPause-universal.dmg -> NeuroPause.dmg (fallback *.dmg)",
+      "status": "consistent (updated in e7bffd3/cec399f)",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": ".github/workflows/macos-release.yml:247 scp beta*.yml *-mac.zip *.blockmap; :250 cp -f beta-mac.yml latest-mac.yml; :252 curl beta-mac.yml",
+      "status": "consistent",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": ".github/workflows/macos-release.yml:277-281 GitHub Release files *.dmg *.zip *.yml *.blockmap",
+      "status": "consistent; NOTE *.yml also attaches builder-debug.yml (observed on rc.16/rc.27 Windows releases)",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": ".github/workflows/windows-release.yml:151-153,211-214,253-258,272-275",
+      "status": "consistent with NeuroPause-Setup.exe / beta.yml",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "apps/desktop/scripts/verify-release-artifacts.cjs:72-83 PLATFORM_RULES: mac installer *.dmg, payload *-mac.zip, feed *-mac.yml; win installer *.exe, payload *.zip not -mac.zip, feed *.yml not -mac.yml",
+      "status": "arch-agnostic; PASSED 8/8 on the rc.30 dist",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "apps/desktop/scripts/verify-universal-and-deps.cjs:69 dist/mac-universal/NeuroPause.app",
+      "status": "PASSED 12/12 on the rc.30 dist",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "website/download.html:247-248 WIN_EXE=BASE+'NeuroPause-Setup.exe', MAC_DMG=BASE+'NeuroPause.dmg' with BASE https://neuropause033.com/downloads/",
+      "status": "consistent with published names; comment 242-245 explains rename",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "website/DOWNLOAD-SETUP.md:33-34 scp ~/Desktop/neuropause-desktop/apps/desktop/dist/NeuroPause-universal.dmg -> downloads/NeuroPause.dmg",
+      "status": "consistent",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "docs/guides/INSTALLATION.md:7 'universal build (NeuroPause-universal.dmg, published as NeuroPause.dmg)', macOS 12 floor",
+      "status": "consistent",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "website/index.html:778,995,1024 'Intel & Apple Silicon', 'Universal', '12 Monterey or later'",
+      "status": "consistent",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "apps/desktop/src/main/release/verifyReleaseArtifacts.test.ts:22-23 fixtures named NeuroPause-arm64.dmg / NeuroPause-1.0.0-rc.1-arm64-mac.zip",
+      "status": "STALE names but harmless (rules are suffix-based)",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "apps/desktop/e2e/platformCommandLive.e2e.cjs:23,34 default APP_BIN dist/mac-arm64/NeuroPause.app/...; e2e/journalPackaged.e2e.cjs:25 dist-seam-b13/mac-arm64/...",
+      "status": "STALE: universal builds land in dist/mac-universal; the platformCommandLive default path no longer exists (override via NP_APP_BIN)",
+      "classification": "MEASURED"
+    },
+    {
+      "consumer": "docs/release/PACKAGING-SIGNING-NOTARIZATION.md:14,71,95-102,264-267 says 'arm64 DMG', 'electron-builder --mac --arm64', 'dist/mac-arm64/NeuroPause.app', 'NeuroPause-<version>-arm64.dmg', feed 'latest.yml', placeholder publish url https://updates.neuropause.example/desktop, 'hook throws on failure'",
+      "status": "STALE on six counts vs electron-builder.yml and notarize.cjs",
+      "classification": "DECLARED"
+    },
+    {
+      "consumer": "docs/release/RC1-RUNBOOK.md:25,122-123 'NeuroPause-1.0.0-rc.1-arm64.dmg', '…-arm64-mac.zip'",
+      "status": "STALE",
+      "classification": "DECLARED"
+    },
+    {
+      "consumer": "docs/launch/LAUNCH-02-MAC-PACKAGING.md:27 'NeuroPause-1.0.0-rc.1-arm64.dmg'",
+      "status": "STALE",
+      "classification": "DECLARED"
+    },
+    {
+      "consumer": "docs/downloads/DOWNLOAD-CATALOG.md:3,11-12 'macOS (Apple Silicon)', build 1.0.0-rc.15",
+      "status": "STALE (contradicts the universal claim fixed in cec399f 'across 9 files')",
+      "classification": "DECLARED"
+    },
+    {
+      "consumer": "certification/SESSION152-MACOS-RC-CERTIFICATION-FAILCLOSED.md:48,84 NeuroPause-arm64.dmg; SESSION156-RC25-FINAL-PREFLIGHT.md:52",
+      "status": "historical evidence, arm64 era",
+      "classification": "DECLARED"
+    },
+    {
+      "consumer": "MANIFEST.md:21,58 beta-mac.yml + 'placeholder feed URL'",
+      "status": "partially stale",
+      "classification": "DECLARED"
+    }
+  ],
+  "feed_files": {
+    "mac": "beta-mac.yml (aliased to latest-mac.yml on the droplet by macos-release.yml:250)",
+    "win": "beta.yml (aliased to latest.yml by windows-release.yml:256)",
+    "app_channel_mapping": "feedChannel(stable)='latest', beta->'beta', internal->'internal' (internal remapped to beta on read); autoDownload=false, autoInstallOnAppQuit=false, allowDowngrade=false, allowPrerelease=allowsPrerelease(channel); initial channel from build-info channel (beta for -rc)",
+    "evidence": "apps/desktop/src/main/services/updater/updateChannels.ts:25,34-39; apps/desktop/src/main/services/appUpdater.ts:87-91,199-202; apps/desktop/scripts/generate-build-info.cjs:30-34",
+    "classification": "MEASURED",
+    "note": "electron-updater MacUpdater.filterFilesForArch drops any URL containing 'arm64' on x64 Macs (node_modules/electron-updater/out/MacUpdater.js:28-31,80) — the universal names contain no 'arm64' so both slices resolve; this is the DECLARED rationale in verify-universal-and-deps.cjs:10-13 and it is consistent with the installed updater code (MEASURED)."
+  },
+  "package_scripts": [
+    {
+      "script": "package / package:mac / package:mac:universal (identical)",
+      "chain": "generate-notices.cjs && generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && verify:release && verify:universal",
+      "evidence": "apps/desktop/package.json:16,22,28",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "package:win",
+      "chain": "generate-notices && generate-build-info && electron-vite build && electron-builder --win --x64 --publish never && verify:release -- --platform win",
+      "evidence": "apps/desktop/package.json:27",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "package:dir",
+      "chain": "notices + build-info + electron-vite build + electron-builder --dir (no verify)",
+      "evidence": "apps/desktop/package.json:17",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "verify:release / verify:universal / verify:sbom / verify:packaged / sbom",
+      "evidence": "apps/desktop/package.json:23-26,31",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "root typecheck:release / lint:release / test:release / verify:workflow-perms used by the release workflows",
+      "evidence": "package.json:33-39",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "generate-notices.cjs writes THIRD-PARTY-NOTICES.md at repo root AND resources/; today's background build regenerated it with Packages: 67 in both and git shows no diff (HANDOFF trap #2 did not recur in this checkout)",
+      "evidence": "apps/desktop/scripts/generate-notices.cjs:124-128; grep ^Packages: -> 67/67; git status shows THIRD-PARTY-NOTICES.md unmodified",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "generate-build-info.cjs records version/channel/commit/branch/dirty/buildTime/backendUrl/releaseNotes; commit gets -dirty suffix on a dirty tree; NEUROPAUSE_BUILD_COMMIT asserts provenance in CI",
+      "evidence": "apps/desktop/scripts/generate-build-info.cjs:58-118; resources/build-info.json: commit cec399f, branch pilot/public-launch, dirty false, channel beta, backendUrl https://api.neuropause033.com, buildTime 2026-09-12T17:00:45Z",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "generate-sbom.cjs emits CycloneDX 1.5 + provenance.json with attestationLevel SELF_ATTESTED_UNSIGNED; verify-sbom.cjs checks lockfile correspondence; both run in desktop-ci on all three OS legs, upload from ubuntu only",
+      "evidence": "apps/desktop/scripts/generate-sbom.cjs:118-138; .github/workflows/desktop-ci.yml:90-106",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "verify-packaged-content.cjs asserts ABSENCE of test files/env/private keys/.git/cruft/custody/e2e sentinels in out/**; source maps only with --prohibit-source-maps",
+      "evidence": "apps/desktop/scripts/verify-packaged-content.cjs:42-57",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "verify-acceptance-artifact.cjs: content markers in app.asar + build-info dirty check; instrument self-test; not wired into any package script or workflow",
+      "evidence": "apps/desktop/scripts/verify-acceptance-artifact.cjs:63-144; grep in workflows/package.json -> no caller",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "scripts/make-release-manifest.cjs: Windows-only (platform 'win32' hard-coded, PE Authenticode check); no macOS equivalent exists",
+      "evidence": "scripts/make-release-manifest.cjs:112-138",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "scripts/check-workflows.sh: YAML parse (python/ruby) + denylist of secrets./hashFiles in if:; runs first in certification-freeze.yml",
+      "evidence": "scripts/check-workflows.sh:70-118; .github/workflows/certification-freeze.yml:44-57",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "scripts/verify-workflow-permissions.cjs: every workflow must declare permissions; only macos-release.yml/windows-release.yml may hold contents:write",
+      "evidence": "scripts/verify-workflow-permissions.cjs:23-26",
+      "classification": "MEASURED"
+    },
+    {
+      "script": "unit tests exist for notarize.cjs decision (notarizationRequirement.test.ts, 7 cases), verify-release-artifacts (incl. Gate 27 version parity), packagedContent, sbom, workflowPermissions, releaseDiscipline, versionBump",
+      "evidence": "ls apps/desktop/src/main/release/",
+      "classification": "MEASURED"
+    }
+  ],
+  "signing_semantics": {
+    "how_signing_turns_on": [
+      {
+        "fact": "electron-builder signs on macOS when a signing identity is found: either CSC_LINK (+CSC_KEY_PASSWORD) -> temp keychain path, or auto-discovery in the user keychain search list (CSC_IDENTITY_AUTO_DISCOVERY != 'false'), or CSC_KEYCHAIN (used only when CSC_LINK is absent)",
+        "evidence": "node_modules/app-builder-lib/out/macPackager.js:26-49; platformPackager.js:81-88; util/flags.js:13-15",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "macos-release.yml maps APPLE_CSC_LINK/APPLE_CSC_KEY_PASSWORD secrets to CSC_LINK/CSC_KEY_PASSWORD only when APPLE_CSC_LINK is non-empty; otherwise exports CSC_IDENTITY_AUTO_DISCOVERY=false (clean unsigned build)",
+        "evidence": ".github/workflows/macos-release.yml:96-125",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Pull-request builds skip signing unless CSC_FOR_PULL_REQUEST=true",
+        "evidence": "node_modules/app-builder-lib/out/codeSign/macCodeSign.js:28-43",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "The temp keychain sequence in 26.15.3: create-keychain -p <random32B base64> ; unlock-keychain -p <random> ; set-keychain-settings ; list-keychains -d user -s <tmp> <existing...> ; security import <p12> -k <tmp> -T codesign -T productbuild -P <CSC_KEY_PASSWORD> ; security set-key-partition-list -S apple-tool:,apple: -s -k <CSC_KEY_PASSWORD> <tmp>",
+        "evidence": "node_modules/app-builder-lib/out/codeSign/macCodeSign.js:127-169 (line 168 passes `password` = keyPasswords[i] = the P12 password, NOT keychainPassword)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Secrets present in repo Actions secrets (NAMES only): APPLE_APP_SPECIFIC_PASSWORD (2026-08-13), APPLE_CSC_KEY_PASSWORD (2026-08-07), APPLE_CSC_LINK (2026-08-07), APPLE_ID (2026-08-13), APPLE_TEAM_ID (2026-08-13), DEPLOY_SSH_KEY (2026-07-04). ABSENT: WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD. Repo variables: none (PUBLISH_TO_SITE unset, NEUROPAUSE_BACKEND_URL unset -> default https://api.neuropause033.com)",
+        "evidence": "gh secret list; gh variable list (empty)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "HANDOFF-2026-09-12.md §4 'Blocked on credentials only you hold: APPLE_CSC_LINK …' is partially stale: the five APPLE_* secrets EXIST; what blocks is (a) the set-key-partition-list failure on the macOS 26.6 runner and (b) notarytool 401 with the stored APPLE_* notarization credentials",
+        "evidence": "gh secret list vs HANDOFF §4; run logs 34126195486/33753118232",
+        "classification": "DERIVED"
+      }
+    ],
+    "notarize_hook": [
+      {
+        "fact": "notarize.cjs: darwin only; skips (writes dist/notarization-status.json state=skipped) when any of APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID missing; on failure throws only when GITHUB_REF starts with refs/tags/ or NEUROPAUSE_REQUIRE_NOTARIZATION=true, unless NEUROPAUSE_ALLOW_UNNOTARIZED=true; otherwise warns and keeps the signed artifact",
+        "evidence": "apps/desktop/scripts/notarize.cjs:48-59,73-134",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Hook does NOT staple the ticket (no xcrun stapler call) — a notarized DMG would still rely on online ticket lookup at first launch",
+        "evidence": "grep stapler apps/desktop/scripts/notarize.cjs -> none",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "The DMG produced after the hook is not re-signed/notarized as a DMG: the hook notarizes the .app in appOutDir; DMG creation happens after afterSign; nothing signs the dmg container (codesign -dv on NeuroPause-universal.dmg: 'code object is not signed at all')",
+        "evidence": "codesign -dv apps/desktop/dist/NeuroPause-universal.dmg",
+        "classification": "MEASURED"
+      }
+    ]
+  },
+  "rc29_ci_signing_failure": {
+    "log_excerpt_MEASURED": "rc.28 run 34108402347 Package macOS step: 'Signing enabled (APPLE_CSC_LINK present).' → '• electron-builder  version=26.15.3 os=25.6.0' → 'Exit code: 1. Command failed: /usr/bin/security set-key-partition-list -S apple-tool:,apple: -s -k *** /var/folders/…/0507d713…keychain' → 'security: SecKeychainUnlock: The user name or passphrase you entered is not correct.' → ##[error] exit 1. rc.29 run 34126195486 failed at the same step (Package macOS) with Typecheck/Lint/Test green; Verify/Upload/Publish skipped.",
+    "runner_images_MEASURED": [
+      {
+        "run": "31705572317 v1.0.0-rc.16 2026-08-13",
+        "image": "macos-26-arm64/20260728.0273",
+        "os": "25.5.0",
+        "electron_builder": "26.15.3",
+        "signing": "SUCCESS identityName='Developer ID Application: Dishant Dobariya (***)' identityHash=5D6C38F1539107F7649513683B7E413741F8949F",
+        "then": "notarize FAILED after 18s (401)"
+      },
+      {
+        "run": "33753118232 v1.0.0-rc.24 2026-09-03",
+        "image": "macos-26-arm64/20260728.0273",
+        "os": "25.5.0",
+        "electron_builder": "26.15.3",
+        "signing": "SUCCESS (same identityHash)",
+        "then": "notarize FAILED after 18s; hook threw because tag push; status file written (failed)"
+      },
+      {
+        "run": "34108402347 v1.0.0-rc.28 2026-09-07",
+        "image": "macos-26-arm64/20260831.0337",
+        "os": "25.6.0",
+        "electron_builder": "26.15.3",
+        "signing": "FAILED at set-key-partition-list (SecKeychainUnlock)"
+      },
+      {
+        "run": "34126195486 v1.0.0-rc.29 2026-09-07",
+        "image": "macos-26-arm64/20260831.0337 (macOS 26.6.2 25G83 per runner-images release page)",
+        "os": "25.6.0",
+        "electron_builder": "26.15.3",
+        "signing": "FAILED at Package macOS"
+      }
+    ],
+    "attribution": [
+      {
+        "fact": "The P12 password is NOT wrong: `security import … -P <password>` runs immediately before set-key-partition-list in the same loop and did not fail; the same APPLE_CSC_LINK/APPLE_CSC_KEY_PASSWORD secrets (unchanged since 2026-08-07) signed successfully on 13 Aug and 3 Sep on image 20260728.0273",
+        "evidence": "macCodeSign.js:163-169 ordering; gh secret list timestamps; run logs",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "The only variable that changed between the last successful signing (3 Sep) and the failures (7 Sep) is the runner image: 20260728.0273 (Darwin 25.5.0, macOS 26.5.x) -> 20260831.0337 (Darwin 25.6.0, macOS 26.6.2)",
+        "evidence": "run logs 'Image Release' lines; 'os=' lines",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "electron-builder 26.15.3 passes the P12 password (not the keychain's random password) as `-k` to set-key-partition-list. Older Security frameworks accepted a wrong -k on an already-unlocked keychain; newer ones validate it. Upstream issue #10066 (opened 2026-08-07, electron-builder 26.15.3, macOS 27.0 beta, identical error text) and PR #10101 'fix(mac): pass the keychain password to security set-key-partition-list' (merged 2026-08-27) describe exactly this; the v26 backport shipped in electron-builder 26.16.1 on 2026-09-07T18:26Z — about five hours AFTER the rc.29 run (13:13Z)",
+        "evidence": "WebFetch github issue 10066 / PR 10101 / releases tag 26.16.1; npm view time",
+        "classification": "DECLARED (upstream) + MEASURED (npm publish time)"
+      },
+      {
+        "fact": "Local probe on this Mac (macOS 26.5.2, Darwin 25.5.0 — same OS line as the 3 Sep runner): a throwaway keychain created with password A, unlocked, then set-key-partition-list -k <wrong B> produced no SecKeychainUnlock error (only 'item could not be found' because the keychain holds no keys) — i.e. Darwin 25.5.0 does not validate the -k password on an unlocked keychain, consistent with the 13 Aug / 3 Sep successes",
+        "evidence": "security create-keychain/unlock-keychain/set-key-partition-list in the scratchpad; keychain deleted afterwards",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "`npm install electron-builder@latest` would NOT pick up the fix: dist-tag latest=26.15.3; the fix is on dist-tag v26 (26.16.1)",
+        "evidence": "npm view electron-builder dist-tags",
+        "classification": "MEASURED"
+      }
+    ],
+    "smallest_fix_candidates": [
+      {
+        "id": "F1",
+        "change": "Bump apps/desktop devDependency electron-builder to 26.16.1 (exact) and refresh package-lock.json (npm i -w @neuropause/desktop electron-builder@26.16.1). Fix lives in app-builder-lib importCerts (keychain password passed to set-key-partition-list). Keeps macos-latest.",
+        "effort": "S",
+        "risk": "touches package-lock.json (five-field coherence pin in releaseDiscipline/versionBump tests only checks version fields; SBOM/verify:sbom regenerate from the lockfile); other 26.16.x changes: Retain Electron/Chromium license files on macOS, squirrel/win log tweaks, node-module self-dependency recursion fix — low product risk but it is a source change under the certification freeze (SRC_SPEC includes package-lock.json)",
+        "classification": "INFERRED"
+      },
+      {
+        "id": "F2",
+        "change": "Pin runs-on: macos-15 in .github/workflows/macos-release.yml:32 (label available per actions/runner-images README; Darwin 24.x). Zero dependency change.",
+        "effort": "S",
+        "risk": "macos-15 image lifetime is finite (macos-14 already deprecated) and the app's universal build/lipo/notarytool all run fine on 15; still a source change under the freeze (.github is inside SRC_SPEC); does not fix the latent electron-builder bug",
+        "classification": "INFERRED"
+      },
+      {
+        "id": "F3",
+        "change": "Import the certificate with explicit `security` commands in the workflow (create-keychain with a known random password, import -P $CSC_KEY_PASSWORD, set-key-partition-list -k <keychain password>, list-keychains -s) then export CSC_KEYCHAIN=<file> and leave CSC_LINK unset so app-builder-lib takes the `keychainFile: process.env.CSC_KEYCHAIN` path (macPackager.js:30) with auto-discovery; or use apple-actions/import-codesign-certs",
+        "effort": "M",
+        "risk": "more workflow surface carrying the secret; must not set CSC_IDENTITY_AUTO_DISCOVERY=false in that branch; recommended only if F1/F2 are refused",
+        "classification": "INFERRED"
+      },
+      {
+        "id": "F4",
+        "change": "Combine F1 with keeping macos-latest; add `security find-identity -v -p codesigning` on the temp keychain to the log (no values) so a future image regression is diagnosed in one run",
+        "effort": "S",
+        "risk": "none beyond F1",
+        "classification": "INFERRED"
+      }
+    ],
+    "second_independent_blocker": {
+      "fact": "Even after signing is repaired, notarization has failed with HTTP 401 'Invalid credentials' on every run that reached it (13 Aug rc.16, 3 Sep rc.24) — the APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID secrets (last updated 2026-08-13 15:56-17:44Z) were rotated AFTER the 13 Aug run yet the 3 Sep run still got 401. On a tag push the hook throws, so no macOS artifact is ever retained/published.",
+      "evidence": "run 33753118232 [notarize] lines; certification/SESSION71-GITHUB-APPLE-NOTARIZATION-CERTIFICATION.md:56-64; gh secret list timestamps",
+      "classification": "MEASURED + DECLARED"
+    }
+  },
+  "workflows": [
+    {
+      "file": ".github/workflows/macos-release.yml",
+      "triggers": "workflow_dispatch; push tags v*",
+      "runs_on": "macos-latest (= macOS 26 arm64 per runner-images README, MEASURED image macos-26-arm64)",
+      "permissions": "contents: write",
+      "steps": "checkout, setup-node(.nvmrc), tag==version check (tags only), npm ci, typecheck:release, lint:release, test:release, Package macOS (npm run package:mac with env-gated signing), Verify release artifacts (--platform mac), upload-artifact neuropause-macos (14d), Publish installer (if PUBLISH_TO_SITE=='true' && HAS_DEPLOY_KEY, continue-on-error), Publish update feed (same + tag), GitHub Release (tags; prerelease for -rc/-beta; fail_on_unmatched_files false)",
+      "evidence": "lines 19-284",
+      "classification": "MEASURED"
+    },
+    {
+      "file": ".github/workflows/windows-release.yml",
+      "runs_on": "windows-latest",
+      "signing": "WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD from secrets (ABSENT in repo) -> unsigned",
+      "extra": "uploads installer-only artifact neuropause-windows-installer",
+      "evidence": "lines 25,78-107,146-167",
+      "classification": "MEASURED"
+    },
+    {
+      "file": ".github/workflows/desktop-ci.yml",
+      "matrix": "ubuntu/macos/windows-latest; typecheck, eslint, test (both vitest configs), verify:workflow-perms, build, verify:sbom, verify:packaged, SBOM upload (ubuntu), npm audit report-only",
+      "permissions": "contents: read",
+      "evidence": "lines 37-125",
+      "classification": "MEASURED"
+    },
+    {
+      "file": ".github/workflows/certification-freeze.yml",
+      "runs": "check-workflows.sh, certification/verify-freeze.sh, verify-freeze.test.sh on every push/PR",
+      "state": "verify-freeze.sh at HEAD cec399f reports SOURCE FAIL vs baseline 40616b9d (frozen 2026-08-21, branch cert/data-import-cst-integration): 604 files changed; the last three CI runs of this workflow (7 Sep, cert/data-import-cst-integration) all FAILED",
+      "note": "SRC_SPEC excludes only certification/ and seven root .md files — .github/**, package-lock.json and apps/desktop/** are inside the frozen surface, so ANY CI fix (F1/F2/F3) breaks the freeze unless re-frozen",
+      "evidence": "bash certification/verify-freeze.sh; gh run list --workflow certification-freeze.yml; certification/verify-freeze.sh SRC_SPEC line",
+      "classification": "MEASURED"
+    },
+    {
+      "file": "recent CI outcomes",
+      "macos-release": "12/12 listed runs FAILED (rc.16 … rc.29); no macOS artifact has ever been retained or published from CI",
+      "windows-release": "rc.27 SUCCESS (release published with beta.yml, NeuroPause-Setup.exe, win.zip, portable, builder-debug.yml); rc.28/rc.29 FAILED at Test (ui-tests/macosJourney.test.tsx 'P13C Gate 19 — macOS shell chrome' fails on the Windows leg; 1 failed / 97 passed in the UI suite)",
+      "desktop-ci": "SUCCESS on v1.0.0-rc.29, v1.0.0-rc.28 and cert/data-import-cst-integration (7 Sep)",
+      "evidence": "gh run list / gh run view",
+      "classification": "MEASURED"
+    },
+    {
+      "file": "provenance attestation",
+      "fact": "No actions/attest-build-provenance, slsa-github-generator, cosign or sigstore step in any workflow",
+      "evidence": "grep -n attest|slsa|sigstore|cosign .github/workflows/*.yml -> none",
+      "classification": "ABSENT"
+    }
+  ],
+  "local_rc30_build_measurements": [
+    {
+      "fact": "apps/desktop/dist (built 22:30-22:36 local by the background revalidation): mac-universal/NeuroPause.app, NeuroPause-universal.dmg, NeuroPause-1.0.0-rc.30-universal-mac.zip, both .blockmap, beta-mac.yml, builder-debug.yml, notarization-status.json",
+      "evidence": "ls -la apps/desktop/dist",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "NeuroPause.app main binary: Mach-O universal (x86_64 arm64); signature adhoc/linker-signed (flags=0x20002), TeamIdentifier not set, Identifier=Electron; spctl -a: rejected, source=no usable signature; DMG unsigned; stapler: no ticket",
+      "evidence": "lipo -archs; codesign -dv --verbose=2; spctl -a -vv; xcrun stapler validate",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "verify-release-artifacts.cjs --platform mac: 8/8 PASS (incl. feed version parity v1.0.0-rc.30, sha512 of zip and dmg match feed)",
+      "evidence": "node apps/desktop/scripts/verify-release-artifacts.cjs --platform mac",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "verify-universal-and-deps.cjs: 12/12 PASS (both slices; 4959 asar entries; all 8 dependencies packaged incl. electron-updater, @neuropause/cst, qrcode.react, ws)",
+      "evidence": "node apps/desktop/scripts/verify-universal-and-deps.cjs",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "sha256 NeuroPause-universal.dmg efdb67ef349c8a8acd6a9e250bd85f5006956c7933ea831f3f02477ef88e8357 (232,540,739 B); sha256 zip 78ef0fa0265e661925ad7454ba1fc9c7aadf393ca44db34f4539827bf4467093 (231,626,730 B)",
+      "evidence": "shasum -a 256",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Packaged Resources/build-info.json and resources/build-info.json: version 1.0.0-rc.30, commit cec399f, branch pilot/public-launch, dirty false, channel beta, backendUrl https://api.neuropause033.com",
+      "evidence": "cat apps/desktop/resources/build-info.json",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "builder-debug.yml records file patterns for x64 and arm64 slices (universal = both slices packed then merged by @electron/universal)",
+      "evidence": "apps/desktop/dist/builder-debug.yml; node_modules/app-builder-lib/out/macPackager.js:188",
+      "classification": "MEASURED"
+    }
+  ],
+  "distribution_hosting": [
+    {
+      "fact": "neuropause033.com has NO DNS A/AAAA record (dig +short empty); every HTTPS probe to /downloads/NeuroPause.dmg, /updates/beta-mac.yml, /download.html, / returned HTTP 000 (connection never established). api.neuropause033.com resolves to Cloudflare (104.21.22.28, 172.67.202.47)",
+      "evidence": "dig +short; curl -sS -I --connect-timeout 10",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "The update feed URL baked into every build (https://neuropause033.com/updates) and the download page base (https://neuropause033.com/downloads/) therefore cannot be reached by any installed app or visitor at measurement time; certification/SESSION154-UPDATER-N-TO-N1-ROLLBACK-CERTIFICATION.md:13-14 recorded EMPTY responses earlier; RELEASE-CANDIDATE-CERTIFICATION.md:49 lists 'Update feed host unproven (DNS unresolved…)' as R2 High",
+      "evidence": "app-update.yml; website/download.html:236; the two certification docs",
+      "classification": "MEASURED + DECLARED"
+    },
+    {
+      "fact": "GitHub Releases exist only for rc.16, rc.17, rc.27 (+ two Windows test builds) and carry Windows assets only; no .dmg/.zip/beta-mac.yml has ever been attached",
+      "evidence": "gh release list; gh release view <tag> --json assets",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "PUBLISH_TO_SITE variable is unset, so the droplet publish steps are skipped even when DEPLOY_SSH_KEY exists (it does)",
+      "evidence": "gh variable list -> empty; macos-release.yml:192,236",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "website/download.html macSteps tells users the app 'isn't notarized yet' and to right-click → Open; the page ships the unsigned-state narrative",
+      "evidence": "website/download.html:271-276",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "docs/downloads/DOWNLOAD-CATALOG.md declares 'no download links… NOT PUBLISHED' at rc.15 and 'macOS (Apple Silicon)'",
+      "evidence": "docs/downloads/DOWNLOAD-CATALOG.md:3-16",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Historically signed local builds existed: rc.24 .app SIGNED with Developer ID Application (Team J3G89MY3QG), hardened runtime, NOT notarized (S48/S51/S56/S64/S65/S68)",
+      "evidence": "certification/SESSION51-PRODUCTION-PACKAGED-ACCEPTANCE.md:37; SESSION65-DISTRIBUTION-TRUST-CLOSURE.md:26,116",
+      "classification": "DECLARED"
+    }
+  ],
+  "architecture_invariant_observations": [
+    {
+      "fact": "Publishing authority is correctly not delegated to a secret's existence: PUBLISH_TO_SITE (a human-set repo variable) AND a key must both be present (macos-release.yml:158-164,192). This matches 'a network connection must not imply authorization'.",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Notarization outcome is written as a machine-readable marker rather than assumed (notarization-status.json) — evidence-first, consistent with the EVIDENCE -> VERIFICATION stage",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Build provenance is SELF_ATTESTED_UNSIGNED (generate-sbom.cjs:124) and build-info.json is plaintext; no builder-signed attestation — a verifier (Computer-A) cannot cryptographically bind the artifact to the commit; SLSA audit rates Build L1-partial",
+      "evidence": "certification/SLSA-STYLE-SUPPLY-CHAIN-AUDIT-2026-09-05.md:29-35",
+      "classification": "DECLARED + MEASURED"
+    },
+    {
+      "fact": "Nothing in the pipeline records a human release decision for macOS (no environment protection rule, no manual approval job); a tag push alone triggers build+release",
+      "evidence": "macos-release.yml:19-25; no `environment:` key in any workflow",
+      "classification": "ABSENT"
+    }
+  ],
+  "gates": {
+    "DESKTOP-PACKAGING": {
+      "status": "PASS (local, MEASURED) / FAIL (CI, MEASURED)",
+      "measured": "rc.30 universal build reproduced from a genuine npm ci checkout at cec399f: dmg+zip+feed+blockmaps present, verify:release 8/8, verify:universal 12/12, LSMinimumSystemVersion 12.0, all 8 deps in asar, notices 67 packages, tree clean at build",
+      "declared": "package:mac chain in package.json:22; electron-builder.yml universal target",
+      "not_measured": "Windows package:win was not run here (rc.27 CI proved it once on 7 Sep); CI macOS packaging has never completed (12/12 runs failed)"
+    },
+    "CODE-SIGNING": {
+      "status": "FAIL",
+      "measured": "local rc.30 artifacts are adhoc/unsigned (spctl rejected); CI signing worked on runner image 20260728.0273 (13 Aug, 3 Sep) and broke on 20260831.0337 (7 Sep) at security set-key-partition-list because electron-builder 26.15.3 passes the P12 password as the keychain password; fix exists upstream in 26.16.1 (published 2026-09-07T18:26Z, dist-tag v26 not latest)",
+      "declared": "hardenedRuntime + entitlements wired; docs claim signing 'solely from CSC_LINK'",
+      "human": "certificate/passwords are held by the founder; secrets already exist in the repo"
+    },
+    "NOTARIZATION": {
+      "status": "FAIL",
+      "measured": "never succeeded: 401 Invalid credentials on 13 Aug and 3 Sep (after the 13 Aug secret rotation); local build state=skipped; no stapling code exists",
+      "declared": "notarize.cjs no-ops without creds; throws on tag push",
+      "human": "APPLE_ID / app-specific password / Team ID must be re-issued and verified by the Apple account holder (notarytool history)"
+    },
+    "RELEASE-PROVENANCE (build side)": {
+      "status": "PARTIAL",
+      "measured": "build-info.json binds version/commit/branch/dirty; feed sha512 verified; SBOM+provenance generated in desktop-ci; provenance is SELF_ATTESTED_UNSIGNED; no attestation action; make-release-manifest is Windows-only; verify-acceptance-artifact not wired; pilot/public-launch branch not pushed so no CI provenance exists for cec399f",
+      "declared": "SLSA audit: Build L1-partial"
+    },
+    "MACOS-DISTRIBUTION": {
+      "status": "FAIL",
+      "measured": "download/feed host neuropause033.com has no DNS record; no macOS asset on any GitHub Release; PUBLISH_TO_SITE unset; unsigned/un-notarized artifacts would be Gatekeeper-blocked; docs stale (arm64 names, Apple-Silicon-only catalog)",
+      "declared": "download.html expects /downloads/NeuroPause.dmg; workflows would alias beta-mac.yml -> latest-mac.yml"
+    }
+  },
+  "gaps": [
+    "certification/baseline.json freeze (40616b9d, 2026-08-21) does not match the NP-B certified state (f0ba0e8, HANDOFF §2) nor HEAD; certification-freeze.yml fails on every push — any CI fix will need a sanctioned re-freeze or an explicit exclusion of .github/ from SRC_SPEC (a policy decision).",
+    "The upstream fix version (electron-builder 26.16.1) shipped ~5 h after the rc.29 run; the repo's ^26.15.3 range would accept it but `npm install`/`npm ci` keep 26.15.3 because the lockfile pins it and dist-tag latest is still 26.15.3.",
+    "No macOS release-manifest equivalent of scripts/make-release-manifest.cjs (signing/notarization status is only recorded by notarization-status.json, which is not uploaded — upload-artifact globs *.dmg/*.zip/*.yml/*.blockmap only).",
+    "GitHub Release glob *.yml also publishes builder-debug.yml (observed on rc.16/rc.27).",
+    "e2e defaults still point at dist/mac-arm64 (platformCommandLive.e2e.cjs:34; journalPackaged.e2e.cjs:25).",
+    "docs/release/PACKAGING-SIGNING-NOTARIZATION.md, RC1-RUNBOOK.md, LAUNCH-02-MAC-PACKAGING.md, docs/downloads/DOWNLOAD-CATALOG.md still describe arm64-only artifacts / latest.yml / placeholder feed URL / 'hook throws on failure' / @electron/notarize ^2.5.0.",
+    "electron-builder.yml:35-36 and download.html:233 assert the repo is private; the GitHub API reports visibility=public — the rationale for the generic provider (and the exposure of builder-debug.yml/prereleases) should be re-examined.",
+    "windows-release on rc.28/rc.29 fails at Test on ui-tests/macosJourney.test.tsx (Windows leg) — Windows artifacts are also blocked, and WIN_CSC_* secrets are absent so Windows would ship unsigned.",
+    "rc.29 macOS log lines could not confirm `security import` output explicitly (electron-builder only logs failing commands); the inference that the P12 password is valid rests on command ordering plus the 3 Sep success with identical secrets."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "F1: bump electron-builder to 26.16.1 in apps/desktop/package.json + package-lock.json; re-run verify:sbom; re-run package:mac locally to confirm no packaging regression",
+      "effort": "S",
+      "files": [
+        "apps/desktop/package.json",
+        "package-lock.json"
+      ],
+      "risk": "source change under the freeze; SBOM regenerates; other 26.16.x backports are benign"
+    },
+    {
+      "action": "F2 (alternative or belt-and-braces): pin runs-on: macos-15 in macos-release.yml (and optionally the desktop-ci macos leg)",
+      "effort": "S",
+      "files": [
+        ".github/workflows/macos-release.yml"
+      ],
+      "risk": "source change under the freeze; image EOL later"
+    },
+    {
+      "action": "Add notarization-status.json to the upload-artifact path list and to the GitHub Release files so the notarization state travels with the artifact",
+      "effort": "S",
+      "files": [
+        ".github/workflows/macos-release.yml"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Exclude builder-debug.yml from the release/upload globs (or use beta*.yml)",
+      "effort": "S",
+      "files": [
+        ".github/workflows/macos-release.yml",
+        ".github/workflows/windows-release.yml"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Update e2e default binary paths to dist/mac-universal",
+      "effort": "S",
+      "files": [
+        "apps/desktop/e2e/platformCommandLive.e2e.cjs",
+        "apps/desktop/e2e/journalPackaged.e2e.cjs"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Refresh the four stale docs to universal names, beta-mac.yml, real feed URL, current hook semantics, @electron/notarize 3.1.1",
+      "effort": "S",
+      "files": [
+        "docs/release/PACKAGING-SIGNING-NOTARIZATION.md",
+        "docs/release/RC1-RUNBOOK.md",
+        "docs/launch/LAUNCH-02-MAC-PACKAGING.md",
+        "docs/downloads/DOWNLOAD-CATALOG.md"
+      ],
+      "risk": "docs only"
+    },
+    {
+      "action": "Add `xcrun stapler staple` of the .app (and the DMG after build via afterAllArtifactBuild) once notarization succeeds",
+      "effort": "M",
+      "files": [
+        "apps/desktop/scripts/notarize.cjs",
+        "apps/desktop/electron-builder.yml"
+      ],
+      "risk": "needs a real notarized build to test"
+    },
+    {
+      "action": "Write a macOS counterpart of make-release-manifest.cjs (codesign/spctl/stapler facts + sha256 sidecar)",
+      "effort": "M",
+      "files": [
+        "scripts/make-release-manifest.cjs"
+      ],
+      "risk": "none"
+    }
+  ],
+  "human_decisions_required": [
+    "Re-issue/verify the Apple notarization credentials (APPLE_ID, app-specific password, APPLE_TEAM_ID) and confirm with `xcrun notarytool history` — only the Apple account holder can do this; the 401 persisted after the 13 Aug rotation.",
+    "Choose F1 (electron-builder 26.16.1) vs F2 (pin macos-15) vs F3 (manual keychain import) for the CI signing repair, and authorise the corresponding certification re-freeze (both touch the frozen source surface).",
+    "Decide whether/when to set PUBLISH_TO_SITE=true, and restore DNS/hosting for neuropause033.com (the feed URL is baked into every build; changing it requires a new build).",
+    "Decide the exposure policy for a PUBLIC repository publishing prerelease GitHub Releases (the config still assumes private); consider whether the generic provider remains the right choice.",
+    "Push pilot/public-launch (or its successor) so that CI provenance exists for cec399f before any tag is cut; a version is spent once tagged (Gate 27).",
+    "Obtain/decide on a Windows Authenticode certificate (WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD are absent)."
+  ],
+  "external_sources_consulted": [
+    "https://github.com/electron-userland/electron-builder/issues/10066",
+    "https://github.com/electron-userland/electron-builder/pull/10101",
+    "https://github.com/electron-userland/electron-builder/releases/tag/electron-builder%4026.16.1",
+    "https://github.com/actions/runner-images/blob/main/README.md",
+    "https://github.com/actions/runner-images/releases/tag/macos-26-arm64%2F20260831.0337",
+    "npm registry: npm view electron-builder time/dist-tags",
+    "GitHub Actions run logs via gh (read-only): 34126195486, 34108402347, 33753118232, 31705572317, 34126195497"
+  ],
+  "non_actions_confirmed": "No file inside the three protected roots was modified by this mapper; no CI triggered; no git push; no secret VALUE read or printed (only names and masked log lines); the only writes were this JSON and a throwaway probe keychain in the scratchpad (deleted)."
+}

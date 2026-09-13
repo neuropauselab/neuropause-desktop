@@ -1,0 +1,2177 @@
+{
+  "verifier": "verify-mac-artifact.cjs",
+  "dist": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final",
+  "app_source": "dmg",
+  "generated_at": "2026-09-13T03:58:16.533Z",
+  "gates": {
+    "CONTAINERS": {
+      "status": "PASS",
+      "checks": 3
+    },
+    "FEED": {
+      "status": "PASS",
+      "checks": 7
+    },
+    "ZIP": {
+      "status": "PASS",
+      "checks": 2
+    },
+    "DMG": {
+      "status": "PASS",
+      "checks": 5
+    },
+    "IDENTITY": {
+      "status": "PASS",
+      "checks": 1
+    },
+    "PLIST": {
+      "status": "PASS",
+      "checks": 3
+    },
+    "ARCHITECTURE": {
+      "status": "PASS",
+      "checks": 3
+    },
+    "DEPENDENCIES": {
+      "status": "WARN",
+      "checks": 16
+    },
+    "SIGNING": {
+      "status": "PASS",
+      "checks": 6
+    },
+    "NOTARIZATION": {
+      "status": "FAIL",
+      "checks": 4
+    },
+    "CONFIG": {
+      "status": "PASS",
+      "checks": 6
+    },
+    "SECRETS": {
+      "status": "PASS",
+      "checks": 2
+    }
+  },
+  "checks": [
+    {
+      "gate": "CONTAINERS",
+      "ok": true,
+      "label": "dmg present",
+      "detail": "NeuroPause-universal.dmg 232533468 B sha256=54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+      "blocking": true
+    },
+    {
+      "gate": "CONTAINERS",
+      "ok": true,
+      "label": "zip present",
+      "detail": "NeuroPause-1.0.0-rc.30-universal-mac.zip 231627130 B sha256=22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+      "blocking": true
+    },
+    {
+      "gate": "CONTAINERS",
+      "ok": true,
+      "label": "feed present",
+      "detail": "beta-mac.yml 538 B sha256=15b7f421a97f67a4aa7f2787a0d38c3db3ca1dde785f937b46398d9a39734f9d",
+      "blocking": true
+    },
+    {
+      "gate": "FEED",
+      "ok": true,
+      "label": "feed version == package version",
+      "detail": "1.0.0-rc.30 vs 1.0.0-rc.30",
+      "blocking": true
+    },
+    {
+      "gate": "FEED",
+      "ok": true,
+      "label": "feed path == zip filename",
+      "detail": "NeuroPause-1.0.0-rc.30-universal-mac.zip vs NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "blocking": true
+    },
+    {
+      "gate": "FEED",
+      "ok": true,
+      "label": "feed sha512 == zip sha512",
+      "detail": "K5IBBvujSmLUkZDX0TN7+W+G… vs K5IBBvujSmLUkZDX0TN7+W+G…",
+      "blocking": true
+    },
+    {
+      "gate": "FEED",
+      "ok": true,
+      "label": "feed files[].size == zip size",
+      "detail": "231627130 vs 231627130",
+      "blocking": true
+    },
+    {
+      "gate": "FEED",
+      "ok": true,
+      "label": "feed file exists: NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "FEED",
+      "ok": true,
+      "label": "feed file exists: NeuroPause-universal.dmg",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "FEED",
+      "ok": true,
+      "label": "no stale arm64-only reference in feed",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "ZIP",
+      "ok": true,
+      "label": "zip extracts (ditto -x -k)",
+      "detail": "",
+      "blocking": true
+    },
+    {
+      "gate": "ZIP",
+      "ok": true,
+      "label": "app bundle found in zip",
+      "detail": "314 files, bundle digest d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+      "blocking": true
+    },
+    {
+      "gate": "DMG",
+      "ok": true,
+      "label": "dmg mounts (hdiutil attach -readonly)",
+      "detail": "Backup GPT Header : 7)…\n  GPT Header (Backup GPT Header : 7): verified CRC32 $FC8702FC\nverified CRC32 $3621EBDF\n/dev/disk6          \tGUID_partition_scheme          \t\n/dev/disk6s1        \tApple_HFS                      \t/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/mnt",
+      "blocking": true
+    },
+    {
+      "gate": "DMG",
+      "ok": true,
+      "label": "dmg contains the app",
+      "detail": ".DS_Store, .VolumeIcon.icns, .background.tiff, Applications, NeuroPause.app",
+      "blocking": true
+    },
+    {
+      "gate": "DMG",
+      "ok": true,
+      "label": "dmg contains /Applications link",
+      "detail": null,
+      "blocking": false
+    },
+    {
+      "gate": "DMG",
+      "ok": true,
+      "label": "app copies out of the dmg (ditto)",
+      "detail": "",
+      "blocking": true
+    },
+    {
+      "gate": "DMG",
+      "ok": true,
+      "label": "app copied from dmg",
+      "detail": "314 files, bundle digest d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+      "blocking": true
+    },
+    {
+      "gate": "IDENTITY",
+      "ok": true,
+      "label": "DMG app bundle digest == ZIP app bundle digest",
+      "detail": "d4ebea63dd3a045c… vs d4ebea63dd3a045c…",
+      "blocking": true
+    },
+    {
+      "gate": "PLIST",
+      "ok": true,
+      "label": "CFBundleIdentifier",
+      "detail": "com.neuropause.desktop",
+      "blocking": true
+    },
+    {
+      "gate": "PLIST",
+      "ok": true,
+      "label": "CFBundleShortVersionString == package version",
+      "detail": "1.0.0-rc.30 vs 1.0.0-rc.30",
+      "blocking": true
+    },
+    {
+      "gate": "PLIST",
+      "ok": true,
+      "label": "LSMinimumSystemVersion present",
+      "detail": "12.0",
+      "blocking": true
+    },
+    {
+      "gate": "ARCHITECTURE",
+      "ok": true,
+      "label": "Mach-O census non-empty",
+      "detail": "15 Mach-O objects",
+      "blocking": true
+    },
+    {
+      "gate": "ARCHITECTURE",
+      "ok": true,
+      "label": "every Mach-O carries x86_64 + arm64",
+      "detail": "all 15 universal",
+      "blocking": true
+    },
+    {
+      "gate": "ARCHITECTURE",
+      "ok": true,
+      "label": "no native .node modules (pure-JS dependency set)",
+      "detail": "0 .node files",
+      "blocking": false
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "app.asar parsed",
+      "detail": "4959 entries; 0 unpacked files",
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "@electron/asar available to read bundle contents",
+      "detail": "yes",
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "every exact specifier required by the main/preload bundles resolves inside the asar",
+      "detail": "5 specifiers resolvable",
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "main/preload bundles found in asar",
+      "detail": "2 files; 3 distinct bare-required packages: electron-updater, @neuropause/cst, ws",
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "every runtime-required package (bundle requires + direct deps + their asar closure) is packaged",
+      "detail": "85 packages required, 0 missing",
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": false,
+      "label": "direct / bundle-required packages declare an entry (`main`/`exports`) that exists in the asar (manifest hygiene; a bare require of the package would fail)",
+      "detail": "@neuropause/cst: entry \"dist/index.js\" not found under node_modules/@neuropause/cst",
+      "blocking": false
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": false,
+      "label": "transitive packages with unresolvable entries (informational)",
+      "detail": "victory-vendor: entry \"index.js\" not found under node_modules/victory-vendor; @types/d3-array: entry \"index.js\" not found under node_modules/@types/d3-array; @types/d3-ease: entry \"index.js\" not found under node_modules/@types/d3-ease; @types/d3-interpolate: entry \"index.js\" not found under node_modules/@types/d3-interpolate; @types/d3-scale: entry \"index.js\" not found under node_modules/@types/d3-scale; @types/d3-shape: entry \"index.js\" not found under node_modules/@types/d3-shape; @types/d3-time: entry \"index.js\" not found under node_modules/@types/d3-time; @types/d3-timer: entry \"index.js\" not found under node_modules/@types/d3-timer",
+      "blocking": false
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: @neuropause/companion-protocol",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: @neuropause/cst",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: @neuropause/shared",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: @neuropause/solution-packs",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: electron-updater",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: qrcode.react",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: recharts",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "direct dependency packaged: ws",
+      "detail": null,
+      "blocking": true
+    },
+    {
+      "gate": "DEPENDENCIES",
+      "ok": true,
+      "label": "every bundle-required package is in the declared production closure (not a devDependency)",
+      "detail": "none outside closure",
+      "blocking": false
+    },
+    {
+      "gate": "SIGNING",
+      "ok": true,
+      "label": "app is code-signed",
+      "detail": "Identifier=com.neuropause.desktop TeamIdentifier=J3G89MY3QG",
+      "blocking": true
+    },
+    {
+      "gate": "SIGNING",
+      "ok": true,
+      "label": "codesign --verify --deep --strict",
+      "detail": "p/Contents/Frameworks/Electron Framework.framework/Versions/Current/.\n/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app: valid on disk\n/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app: satisfies its Designated Requirement",
+      "blocking": true
+    },
+    {
+      "gate": "SIGNING",
+      "ok": true,
+      "label": "signed with a Developer ID Application certificate",
+      "detail": "Developer ID Application: Dishant Dobariya (J3G89MY3QG) → Developer ID Certification Authority → Apple Root CA",
+      "blocking": true
+    },
+    {
+      "gate": "SIGNING",
+      "ok": true,
+      "label": "hardened runtime enabled",
+      "detail": "flags=0x10000(runtime)",
+      "blocking": true
+    },
+    {
+      "gate": "SIGNING",
+      "ok": true,
+      "label": "entitlements include allow-jit (Electron requirement)",
+      "detail": null,
+      "blocking": false
+    },
+    {
+      "gate": "SIGNING",
+      "ok": true,
+      "label": "every nested Mach-O passes codesign --verify --strict",
+      "detail": "14 checked, 0 failing",
+      "blocking": true
+    },
+    {
+      "gate": "NOTARIZATION",
+      "ok": true,
+      "label": "notarization-status.json present",
+      "detail": "state=skipped",
+      "blocking": true
+    },
+    {
+      "gate": "NOTARIZATION",
+      "ok": false,
+      "label": "artifact notarized (per status marker)",
+      "detail": "one or more Apple credentials are absent",
+      "blocking": true
+    },
+    {
+      "gate": "NOTARIZATION",
+      "ok": false,
+      "label": "stapler validate (ticket stapled)",
+      "detail": "Processing: /var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app\nNeuroPause.app does not have a ticket stapled to it.",
+      "blocking": true
+    },
+    {
+      "gate": "NOTARIZATION",
+      "ok": false,
+      "label": "spctl --assess --type execute accepts",
+      "detail": "/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app: rejected\nsource=Unnotarized Developer ID",
+      "blocking": true
+    },
+    {
+      "gate": "CONFIG",
+      "ok": true,
+      "label": "build-info.json inside the app",
+      "detail": "version=1.0.0-rc.30 channel=beta commit=8331185 dirty=false",
+      "blocking": true
+    },
+    {
+      "gate": "CONFIG",
+      "ok": true,
+      "label": "baked backend URL is https",
+      "detail": "https://api.neuropause033.com",
+      "blocking": true
+    },
+    {
+      "gate": "CONFIG",
+      "ok": true,
+      "label": "baked backend URL is not a dev endpoint",
+      "detail": "https://api.neuropause033.com",
+      "blocking": true
+    },
+    {
+      "gate": "CONFIG",
+      "ok": true,
+      "label": "built from a clean tree (dirty=false)",
+      "detail": "dirty=false commit=8331185",
+      "blocking": true
+    },
+    {
+      "gate": "CONFIG",
+      "ok": true,
+      "label": "build-info version == package version",
+      "detail": "1.0.0-rc.30 vs 1.0.0-rc.30",
+      "blocking": true
+    },
+    {
+      "gate": "SECRETS",
+      "ok": true,
+      "label": "no high-confidence credential pattern in the bundle",
+      "detail": "285 files scanned",
+      "blocking": true
+    },
+    {
+      "gate": "SECRETS",
+      "ok": true,
+      "label": "no credential-shaped string in a credential-like context",
+      "detail": "none",
+      "blocking": false
+    },
+    {
+      "gate": "CONFIG",
+      "ok": true,
+      "label": "dev-endpoint string census (classified below, non-blocking)",
+      "detail": "27 hits in 4 files",
+      "blocking": false
+    }
+  ],
+  "containers": {
+    "dmg": {
+      "filename": "NeuroPause-universal.dmg",
+      "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/NeuroPause-universal.dmg",
+      "size": 232533468,
+      "sha256": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+      "sha512_base64": "iMnGU5RpzyXY3ltTLbknwBENKQu1ztrn2Ha/9I3Pj3RfLQEe8V8b/umVLVEOxjUua5wemDXxAYPlRZV0KVstdQ=="
+    },
+    "zip": {
+      "filename": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "size": 231627130,
+      "sha256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+      "sha512_base64": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw=="
+    },
+    "feed": {
+      "filename": "beta-mac.yml",
+      "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/beta-mac.yml",
+      "size": 538,
+      "sha256": "15b7f421a97f67a4aa7f2787a0d38c3db3ca1dde785f937b46398d9a39734f9d",
+      "sha512_base64": "s8mdRT64qFZiRGuZakkZo0N2EwXl/49QOiXq1M3NjwlVpv0iFeBsBB/myuWFsXW6fL9PezmXBYfwXMjWebFN7g=="
+    },
+    "NeuroPause-1.0.0-rc.30-universal-mac.zip.blockmap": {
+      "filename": "NeuroPause-1.0.0-rc.30-universal-mac.zip.blockmap",
+      "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/NeuroPause-1.0.0-rc.30-universal-mac.zip.blockmap",
+      "size": 243209,
+      "sha256": "004a81c0c668950e298c78bd92f1e513f16465a848a32b4c52b648247b72af9b"
+    },
+    "NeuroPause-universal.dmg.blockmap": {
+      "filename": "NeuroPause-universal.dmg.blockmap",
+      "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/NeuroPause-universal.dmg.blockmap",
+      "size": 242451,
+      "sha256": "aa7f4dc8f97eedda4b0b689369dc11a78e9a2ca0b5c5d31001ce2ec65cb828ac"
+    }
+  },
+  "feed": {
+    "version": "1.0.0-rc.30",
+    "path": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+    "sha512": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==",
+    "files": [
+      {
+        "url": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+        "sha512": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==",
+        "size": 231627130
+      },
+      {
+        "url": "NeuroPause-universal.dmg",
+        "sha512": "iMnGU5RpzyXY3ltTLbknwBENKQu1ztrn2Ha/9I3Pj3RfLQEe8V8b/umVLVEOxjUua5wemDXxAYPlRZV0KVstdQ==",
+        "size": 232533468
+      }
+    ]
+  },
+  "plist": {
+    "CFBundleIdentifier": "com.neuropause.desktop",
+    "CFBundleShortVersionString": "1.0.0-rc.30",
+    "CFBundleVersion": "1.0.0-rc.30",
+    "LSMinimumSystemVersion": "12.0",
+    "NSSupportsAutomaticGraphicsSwitching": true
+  },
+  "bundle_digest_zip": {
+    "digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+    "file_count": 314
+  },
+  "bundle_digest_dmg": {
+    "digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+    "file_count": 314
+  },
+  "binary_census": [
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 390184640,
+      "sha256": "a5148533e94ec357cbfea2046060f58bf3d18fe91f2ac73235ef500885f10b17"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 2550448,
+      "sha256": "f93c26ef9c16b42ad4e6486a76b1d0371ae60af42cca7be2c0ecd7d5c702895f"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 207968,
+      "sha256": "a85fb4668f9ad79f5ac4d131d4f9fc83cd8ba1f8f0273a2307077c801fdb4dcc"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 12977504,
+      "sha256": "d29213f5c70860dfed14a56c88d51efaffc7100ac0c04068437317949d4b4759"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 4758544,
+      "sha256": "34352c40122a4f41bdc5f60b9464d520a9dd64c608d5ce5b3bcc20512379dbdf"
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libvk_swiftshader.dylib",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 21182032,
+      "sha256": "f5d2bf53d4e35609af939a5945442ed97e331a9a537a7f718f40415d2d273305"
+    },
+    {
+      "path": "Contents/Frameworks/Mantle.framework/Versions/A/Mantle",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 291488,
+      "sha256": "2db533cb10367267d44d05dd4b5ababeae8c1abb6b089ae4a0e803e934711e1b"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (GPU).app/Contents/MacOS/NeuroPause Helper (GPU)",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451504,
+      "sha256": "a12cfca3ce19f488d404d4671899fbba2829e3efab3e2cedb6c9612dda6cfcd7"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Plugin).app/Contents/MacOS/NeuroPause Helper (Plugin)",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451504,
+      "sha256": "bf3e9b36574b080e5b7f0bfe87954cd58f4ed5323201947ccdad5d2eb4581be2"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Renderer).app/Contents/MacOS/NeuroPause Helper (Renderer)",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451520,
+      "sha256": "1fd06a351388edda5d12eb8529e6b431dea4bd8fe56e7b66378a810b3cca1df0"
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper.app/Contents/MacOS/NeuroPause Helper",
+      "class": "HELPER_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 451488,
+      "sha256": "d58d9b63f683543139d13ecfda7a29b6761771410e2f7130fb944cf391be6e14"
+    },
+    {
+      "path": "Contents/Frameworks/ReactiveObjC.framework/Versions/A/ReactiveObjC",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 762032,
+      "sha256": "f4a25acc01e8a23ba6cf3974f1f8aac7178166e604fed3362b41f9e16c4e7744"
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 291984,
+      "sha256": "dfe9d345f8924547e0aafedea4e3d50331ad9bd9056395da8ea243b8fddb4d7c"
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Squirrel",
+      "class": "FRAMEWORK_BINARY",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 326304,
+      "sha256": "ae56f86c885ac5711b89da0661664cc434a8beb6944cde94ba983bf7b467998b"
+    },
+    {
+      "path": "Contents/MacOS/NeuroPause",
+      "class": "MAIN_EXECUTABLE",
+      "archs": [
+        "x86_64",
+        "arm64"
+      ],
+      "size": 118992,
+      "sha256": "e5ee77ce8f3ad3bb43dd4470897b622d2c93428d74b6fe3b0d8baacaed402b11"
+    }
+  ],
+  "dependency_matrix": [
+    {
+      "package": "electron-updater",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "resolved_version": "6.8.9",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/electron-updater",
+      "entry_detail": "node_modules/electron-updater/out/main.js"
+    },
+    {
+      "package": "@neuropause/cst",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "resolved_version": "1.3.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@neuropause/cst",
+      "entry_detail": "entry \"dist/index.js\" not found under node_modules/@neuropause/cst"
+    },
+    {
+      "package": "ws",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "resolved_version": "8.21.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/ws",
+      "entry_detail": "node_modules/ws/index.js"
+    },
+    {
+      "package": "@neuropause/companion-protocol",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "0.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/companion-protocol",
+      "entry_detail": "node_modules/@neuropause/companion-protocol/src/index.ts"
+    },
+    {
+      "package": "@neuropause/shared",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "0.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/shared",
+      "entry_detail": "node_modules/@neuropause/shared/src/index.ts"
+    },
+    {
+      "package": "@neuropause/solution-packs",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "0.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/solution-packs",
+      "entry_detail": "node_modules/@neuropause/solution-packs/src/index.ts"
+    },
+    {
+      "package": "qrcode.react",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "4.2.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/qrcode.react",
+      "entry_detail": "node_modules/qrcode.react/lib/index.js"
+    },
+    {
+      "package": "recharts",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "2.15.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/recharts",
+      "entry_detail": "node_modules/recharts/lib/index.js"
+    },
+    {
+      "package": "fs-extra",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "10.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/fs-extra",
+      "entry_detail": "node_modules/fs-extra/lib/index.js"
+    },
+    {
+      "package": "js-yaml",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "4.3.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/js-yaml",
+      "entry_detail": "node_modules/js-yaml/index.js"
+    },
+    {
+      "package": "lazy-val",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "1.0.5",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lazy-val",
+      "entry_detail": "node_modules/lazy-val/out/main.js"
+    },
+    {
+      "package": "lodash.escaperegexp",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "4.1.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lodash.escaperegexp",
+      "entry_detail": "node_modules/lodash.escaperegexp/index.js"
+    },
+    {
+      "package": "lodash.isequal",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "4.5.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lodash.isequal",
+      "entry_detail": "node_modules/lodash.isequal/index.js"
+    },
+    {
+      "package": "semver",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "7.7.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/semver",
+      "entry_detail": "node_modules/semver/index.js"
+    },
+    {
+      "package": "tiny-typed-emitter",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "2.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/tiny-typed-emitter",
+      "entry_detail": "node_modules/tiny-typed-emitter/lib/index.js"
+    },
+    {
+      "package": "builder-util-runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "9.7.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/builder-util-runtime",
+      "entry_detail": "node_modules/builder-util-runtime/out/index.js"
+    },
+    {
+      "package": "@noble/ciphers",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.3.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@noble/ciphers",
+      "entry_detail": "node_modules/@noble/ciphers/index.js"
+    },
+    {
+      "package": "@noble/curves",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.9.7",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@noble/curves",
+      "entry_detail": "node_modules/@noble/curves/index.js"
+    },
+    {
+      "package": "@noble/hashes",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.8.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@noble/hashes",
+      "entry_detail": "node_modules/@noble/hashes/index.js"
+    },
+    {
+      "package": "@scure/base",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.2.6",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@scure/base",
+      "entry_detail": "node_modules/@scure/base/lib/index.js"
+    },
+    {
+      "package": "zod",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "3.25.76",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/zod",
+      "entry_detail": "node_modules/zod/index.cjs"
+    },
+    {
+      "package": "@neuropause/industry",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/solution-packs"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/industry",
+      "entry_detail": "node_modules/@neuropause/industry/src/index.ts"
+    },
+    {
+      "package": "clsx",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "2.1.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/clsx",
+      "entry_detail": "node_modules/clsx/dist/clsx.js"
+    },
+    {
+      "package": "eventemitter3",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "4.0.7",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/eventemitter3",
+      "entry_detail": "node_modules/eventemitter3/index.js"
+    },
+    {
+      "package": "lodash",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "4.18.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lodash",
+      "entry_detail": "node_modules/lodash/lodash.js"
+    },
+    {
+      "package": "react-is",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "18.3.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/prop-types/node_modules/react-is",
+      "entry_detail": "node_modules/prop-types/node_modules/react-is/index.js"
+    },
+    {
+      "package": "react-smooth",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "4.0.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/react-smooth",
+      "entry_detail": "node_modules/react-smooth/lib/index.js"
+    },
+    {
+      "package": "recharts-scale",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "0.4.5",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/recharts-scale",
+      "entry_detail": "node_modules/recharts-scale/lib/index.js"
+    },
+    {
+      "package": "tiny-invariant",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "1.3.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/tiny-invariant",
+      "entry_detail": "node_modules/tiny-invariant/dist/tiny-invariant.cjs.js"
+    },
+    {
+      "package": "victory-vendor",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "36.9.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/victory-vendor",
+      "entry_detail": "entry \"index.js\" not found under node_modules/victory-vendor"
+    },
+    {
+      "package": "graceful-fs",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "fs-extra"
+      ],
+      "resolved_version": "4.2.11",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/graceful-fs",
+      "entry_detail": "node_modules/graceful-fs/graceful-fs.js"
+    },
+    {
+      "package": "jsonfile",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "fs-extra"
+      ],
+      "resolved_version": "6.2.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/jsonfile",
+      "entry_detail": "node_modules/jsonfile/index.js"
+    },
+    {
+      "package": "universalify",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "fs-extra"
+      ],
+      "resolved_version": "2.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/universalify",
+      "entry_detail": "node_modules/universalify/index.js"
+    },
+    {
+      "package": "argparse",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "js-yaml"
+      ],
+      "resolved_version": "2.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/argparse",
+      "entry_detail": "node_modules/argparse/argparse.js"
+    },
+    {
+      "package": "debug",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "builder-util-runtime"
+      ],
+      "resolved_version": "4.4.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/debug",
+      "entry_detail": "node_modules/debug/src/index.js"
+    },
+    {
+      "package": "sax",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "builder-util-runtime"
+      ],
+      "resolved_version": "1.6.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/sax",
+      "entry_detail": "node_modules/sax/lib/sax.js"
+    },
+    {
+      "package": "@neuropause/runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/runtime",
+      "entry_detail": "node_modules/@neuropause/runtime/src/index.ts"
+    },
+    {
+      "package": "@neuropause/cloud-core",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/cloud-core",
+      "entry_detail": "node_modules/@neuropause/cloud-core/src/index.ts"
+    },
+    {
+      "package": "@neuropause/shared-cloud",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/shared-cloud",
+      "entry_detail": "node_modules/@neuropause/shared-cloud/src/index.ts"
+    },
+    {
+      "package": "@neuropause/security",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/security",
+      "entry_detail": "node_modules/@neuropause/security/src/index.ts"
+    },
+    {
+      "package": "@neuropause/persistence",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/persistence",
+      "entry_detail": "node_modules/@neuropause/persistence/src/index.ts"
+    },
+    {
+      "package": "@neuropause/connectors",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/connectors",
+      "entry_detail": "node_modules/@neuropause/connectors/src/index.ts"
+    },
+    {
+      "package": "@neuropause/integrations",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/integrations",
+      "entry_detail": "node_modules/@neuropause/integrations/src/index.ts"
+    },
+    {
+      "package": "@neuropause/ai-runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/ai-runtime",
+      "entry_detail": "node_modules/@neuropause/ai-runtime/src/index.ts"
+    },
+    {
+      "package": "@neuropause/nems",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/nems",
+      "entry_detail": "node_modules/@neuropause/nems/src/index.ts"
+    },
+    {
+      "package": "@neuropause/connectivity",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/connectivity",
+      "entry_detail": "node_modules/@neuropause/connectivity/src/index.ts"
+    },
+    {
+      "package": "@neuropause/intelligence",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/intelligence",
+      "entry_detail": "node_modules/@neuropause/intelligence/src/index.ts"
+    },
+    {
+      "package": "@neuropause/automation",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/automation",
+      "entry_detail": "node_modules/@neuropause/automation/src/index.ts"
+    },
+    {
+      "package": "@neuropause/execution",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/execution",
+      "entry_detail": "node_modules/@neuropause/execution/src/index.ts"
+    },
+    {
+      "package": "@neuropause/federation",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/federation",
+      "entry_detail": "node_modules/@neuropause/federation/src/index.ts"
+    },
+    {
+      "package": "@neuropause/cloudops",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/cloudops",
+      "entry_detail": "node_modules/@neuropause/cloudops/src/index.ts"
+    },
+    {
+      "package": "@neuropause/business",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/business",
+      "entry_detail": "node_modules/@neuropause/business/src/index.ts"
+    },
+    {
+      "package": "fast-equals",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-smooth"
+      ],
+      "resolved_version": "5.4.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/fast-equals",
+      "entry_detail": "node_modules/fast-equals/dist/cjs/index.cjs"
+    },
+    {
+      "package": "prop-types",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-smooth"
+      ],
+      "resolved_version": "15.8.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/prop-types",
+      "entry_detail": "node_modules/prop-types/index.js"
+    },
+    {
+      "package": "react-transition-group",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-smooth"
+      ],
+      "resolved_version": "4.4.5",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/react-transition-group",
+      "entry_detail": "node_modules/react-transition-group/cjs/index.js"
+    },
+    {
+      "package": "decimal.js-light",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts-scale"
+      ],
+      "resolved_version": "2.5.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/decimal.js-light",
+      "entry_detail": "node_modules/decimal.js-light/decimal.js"
+    },
+    {
+      "package": "@types/d3-array",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.2.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-array",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-array"
+    },
+    {
+      "package": "@types/d3-ease",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-ease",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-ease"
+    },
+    {
+      "package": "@types/d3-interpolate",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-interpolate",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-interpolate"
+    },
+    {
+      "package": "@types/d3-scale",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "4.0.9",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-scale",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-scale"
+    },
+    {
+      "package": "@types/d3-shape",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.1.8",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-shape",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-shape"
+    },
+    {
+      "package": "@types/d3-time",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-time",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-time"
+    },
+    {
+      "package": "@types/d3-timer",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-timer",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-timer"
+    },
+    {
+      "package": "d3-array",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.2.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-array",
+      "entry_detail": "node_modules/d3-array/src/index.js"
+    },
+    {
+      "package": "d3-ease",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-ease",
+      "entry_detail": "node_modules/d3-ease/src/index.js"
+    },
+    {
+      "package": "d3-interpolate",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-interpolate",
+      "entry_detail": "node_modules/d3-interpolate/src/index.js"
+    },
+    {
+      "package": "d3-scale",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "4.0.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-scale",
+      "entry_detail": "node_modules/d3-scale/src/index.js"
+    },
+    {
+      "package": "d3-shape",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.2.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-shape",
+      "entry_detail": "node_modules/d3-shape/src/index.js"
+    },
+    {
+      "package": "d3-time",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-time",
+      "entry_detail": "node_modules/d3-time/src/index.js"
+    },
+    {
+      "package": "d3-timer",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-timer",
+      "entry_detail": "node_modules/d3-timer/src/index.js"
+    },
+    {
+      "package": "ms",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "debug"
+      ],
+      "resolved_version": "2.1.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/ms",
+      "entry_detail": "node_modules/ms/index.js"
+    },
+    {
+      "package": "@electric-sql/pglite",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/persistence"
+      ],
+      "resolved_version": null,
+      "DECLARED": true,
+      "RESOLVED": false,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@electric-sql/pglite",
+      "entry_detail": "node_modules/@electric-sql/pglite/dist/index.cjs"
+    },
+    {
+      "package": "loose-envify",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "prop-types"
+      ],
+      "resolved_version": "1.4.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/loose-envify",
+      "entry_detail": "node_modules/loose-envify/index.js"
+    },
+    {
+      "package": "object-assign",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "prop-types"
+      ],
+      "resolved_version": "4.1.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/object-assign",
+      "entry_detail": "node_modules/object-assign/index.js"
+    },
+    {
+      "package": "@babel/runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-transition-group"
+      ],
+      "resolved_version": "7.29.7",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@babel/runtime",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@babel/runtime"
+    },
+    {
+      "package": "dom-helpers",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-transition-group"
+      ],
+      "resolved_version": "5.2.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/dom-helpers",
+      "entry_detail": "node_modules/dom-helpers/cjs/index.js"
+    },
+    {
+      "package": "@types/d3-color",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@types/d3-interpolate"
+      ],
+      "resolved_version": "3.1.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-color",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-color"
+    },
+    {
+      "package": "@types/d3-path",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@types/d3-shape"
+      ],
+      "resolved_version": "3.1.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-path",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-path"
+    },
+    {
+      "package": "internmap",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-array"
+      ],
+      "resolved_version": "2.0.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/internmap",
+      "entry_detail": "node_modules/internmap/src/index.js"
+    },
+    {
+      "package": "d3-color",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-interpolate"
+      ],
+      "resolved_version": "3.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-color",
+      "entry_detail": "node_modules/d3-color/src/index.js"
+    },
+    {
+      "package": "d3-format",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-scale"
+      ],
+      "resolved_version": "3.1.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-format",
+      "entry_detail": "node_modules/d3-format/src/index.js"
+    },
+    {
+      "package": "d3-time-format",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-scale"
+      ],
+      "resolved_version": "4.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-time-format",
+      "entry_detail": "node_modules/d3-time-format/src/index.js"
+    },
+    {
+      "package": "d3-path",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-shape"
+      ],
+      "resolved_version": "3.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-path",
+      "entry_detail": "node_modules/d3-path/src/index.js"
+    },
+    {
+      "package": "js-tokens",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "loose-envify"
+      ],
+      "resolved_version": "4.0.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/js-tokens",
+      "entry_detail": "node_modules/js-tokens/index.js"
+    },
+    {
+      "package": "csstype",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "dom-helpers"
+      ],
+      "resolved_version": "3.2.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/csstype",
+      "entry_detail": "entry \"index.js\" not found under node_modules/csstype"
+    }
+  ],
+  "bundle_specifiers": [
+    {
+      "specifier": "electron-updater",
+      "package": "electron-updater",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/electron-updater",
+      "resolved_in_asar": "node_modules/electron-updater/out/main.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "@neuropause/cst/dist/src/kernel.js",
+      "package": "@neuropause/cst",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/@neuropause/cst",
+      "resolved_in_asar": "node_modules/@neuropause/cst/dist/src/kernel.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "@neuropause/cst/dist/src/stores.js",
+      "package": "@neuropause/cst",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/@neuropause/cst",
+      "resolved_in_asar": "node_modules/@neuropause/cst/dist/src/stores.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "@neuropause/cst/dist/src/types.js",
+      "package": "@neuropause/cst",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/@neuropause/cst",
+      "resolved_in_asar": "node_modules/@neuropause/cst/dist/src/types.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "ws",
+      "package": "ws",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/ws",
+      "resolved_in_asar": "node_modules/ws/index.js",
+      "RESOLVABLE": true
+    }
+  ],
+  "nested_signature_checks": [
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libvk_swiftshader.dylib",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Mantle.framework/Versions/A/Mantle",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (GPU).app/Contents/MacOS/NeuroPause Helper (GPU)",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Plugin).app/Contents/MacOS/NeuroPause Helper (Plugin)",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper (Renderer).app/Contents/MacOS/NeuroPause Helper (Renderer)",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/NeuroPause Helper.app/Contents/MacOS/NeuroPause Helper",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/ReactiveObjC.framework/Versions/A/ReactiveObjC",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt",
+      "ok": true
+    },
+    {
+      "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Squirrel",
+      "ok": true
+    }
+  ],
+  "secret_scan": {
+    "files_scanned": 285,
+    "high_confidence": [],
+    "suspicious_in_context": [],
+    "low_confidence_count": 0
+  },
+  "endpoint_scan": [
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/app.asar",
+      "offset": 25348059,
+      "context": "els: ['llama3.1', 'qwen2.5', 'mistral'],.  defaultBaseUrl: 'http://localhost:11434',.  keyless: true,.  chatUrl: (base) "
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/app.asar",
+      "offset": 46366453,
+      "context": "'\";.  const connectSrc = config.isDev ? \"connect-src 'self' http://localhost:* ws://localhost:*\" : \"connect-src 'self'\";"
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/app.asar",
+      "offset": 46987394,
+      "context": "      clearTimeout(timer);.    }.  }.}.const DEFAULT_URL = \"http://localhost:11434\";.class OllamaModelClient {.  provide"
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/app.asar",
+      "offset": 49231509,
+      "context": "s:395`: `provider === 'ollama'` is a bare.   * GET against `http://localhost:11434` -- no vault read, no cloud host, no."
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/app.asar",
+      "offset": 50694089,
+      "context": "aude\", source: \"default\" };.}.const DEFAULT_OLLAMA_URL$1 = \"http://localhost:11434\";.function ollamaEndpoint(cfg) {.  re"
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/app.asar",
+      "offset": 50705732,
+      "context": "uroPause store is written.\".});.const DEFAULT_OLLAMA_URL = \"http://localhost:11434\";.function ollamaBaseUrl() {.  return"
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/app.asar",
+      "offset": 52144490,
+      "context": "llamaProbe({ baseUrl: process.env.NEUROPAUSE_OLLAMA_URL ?? \"http://localhost:11434\" }),.    aiMemoryProbe(() => memorySt"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 33862253,
+      "context": "          return address;.            }.            return `http://127.0.0.1:${address === null || address === void 0 ? "
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 33884305,
+      "context": "string\\\") {\\n        return address\\n      }\\n      return `http://127.0.0.1:${address?.port}`\\n    }\\n\\n    return awai"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 46360941,
+      "context": "rClientIds?.[envName] ?? null;.}.const LOCAL_BACKEND_URL = \"http://127.0.0.1:4000\";.function readUrl(name2, fallback) {."
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 46377518,
+      "context": ".  const address = server.address();.  const redirectUri = `http://127.0.0.1:${address.port}${path}`;.  log$2G.debug(\"Lo"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48184173,
+      "context": "act registered callback port, so pin one..      // Register http://127.0.0.1:42813/callback as the Authorization callbac"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48192102,
+      "context": "red redirect URI, so pin a loopback port..      // Register http://127.0.0.1:42815/callback as the OAuth callback URL.. "
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48198973,
+      "context": " The loopback redirect must be registered exactly. Register http://127.0.0.1:42817/callback under.      // the app's \"Mo"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48202171,
+      "context": "the callback URL, so pin a loopback port..      // Register http://127.0.0.1:42819/callback as the connected app's callb"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48207301,
+      "context": "HubSpot exact-matches the registered redirect URI; register http://127.0.0.1:42821/callback..      loopbackPort: 42821. "
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48210616,
+      "context": "viceNow exact-matches the registered redirect URI; register http://127.0.0.1:42823/callback..      loopbackPort: 42823. "
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48214278,
+      "context": " // SAP exact-matches the registered redirect URI; register http://127.0.0.1:42825/callback in the.      // tenant's OAu"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48218032,
+      "context": "// IDCS exact-matches the registered redirect URI; register http://127.0.0.1:42827/callback as the.      // confidential"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48222018,
+      "context": "ll,.      // Entra exact-matches the redirect URI; register http://127.0.0.1:42829/callback under the app's.      // \"Mo"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/app.asar",
+      "offset": 48225790,
+      "context": "I Clients exact-match the registered redirect URI; register http://127.0.0.1:42831/callback..      loopbackPort: 42831. "
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/docs/guides/CONNECTOR-GITHUB.md",
+      "offset": 940,
+      "context": "back **port**, so NeuroPause.  pins the GitHub redirect to `http://127.0.0.1:42813/callback`. The other.  connectors kee"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/docs/guides/CONNECTOR-GITHUB.md",
+      "offset": 1406,
+      "context": ", e.g. `NeuroPause Desktop (local)`.   - **Homepage URL:** `http://127.0.0.1:42813`.   - **Authorization callback URL:**"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/docs/guides/CONNECTOR-GITHUB.md",
+      "offset": 1468,
+      "context": "tp://127.0.0.1:42813`.   - **Authorization callback URL:** `http://127.0.0.1:42813/callback`.     - This must match **ex"
+    },
+    {
+      "pattern": "loopback",
+      "file": "Contents/Resources/docs/guides/CONNECTOR-GITHUB.md",
+      "offset": 4973,
+      "context": "orize).- The callback URL on your OAuth App is not exactly `http://127.0.0.1:42813/callback`..  Re-open the app under De"
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/docs/guides/SPRINT-5-EARLY-ACCESS.md",
+      "offset": 3385,
+      "context": "l client's URL resolution (`NEUROPAUSE_OLLAMA_URL`, then.  `http://localhost:11434`). If Ollama is not running, the chec"
+    },
+    {
+      "pattern": "localhost",
+      "file": "Contents/Resources/docs/user/AI-WORKFORCE-GUIDE.md",
+      "offset": 2619,
+      "context": "*.- **Ollama** ... a locally-running model server (default `http://localhost:11434`). *(External/local dependency.)*..If"
+    }
+  ],
+  "architecture_string_census": {
+    "process.arch": {
+      "Contents/Resources/app.asar": 12
+    },
+    "os.arch": {
+      "Contents/Resources/app.asar": 1
+    },
+    "Rosetta": {
+      "Contents/Resources/app.asar": 26
+    },
+    "/usr/local": {
+      "Contents/Resources/app.asar": 1
+    },
+    "sysctl": {
+      "Contents/Resources/app.asar": 12
+    },
+    "uname": {
+      "Contents/Resources/app.asar": 13
+    }
+  },
+  "entitlements_xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"https://www.apple.com/DTDs/PropertyList-1.0.dtd\"><plist version=\"1.0\"><dict><key>com.apple.security.cs.allow-dyld-environment-variables</key><true/><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/><key>com.apple.security.cs.disable-library-validation</key><true/><key>com.apple.security.network.client</key><true/><key>com.apple.security.network.server</key><true/></dict></plist>\n",
+  "codesign_dvvv": "Executable=/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app/Contents/MacOS/NeuroPause\nIdentifier=com.neuropause.desktop\nFormat=app bundle with Mach-O universal (x86_64 arm64)\nCodeDirectory v=20500 size=450 flags=0x10000(runtime) hashes=3+7 location=embedded\nHash type=sha256 size=32\nCandidateCDHash sha256=0941efe5e0a5fb6a0a9f90c685499e4079418fcf\nCandidateCDHashFull sha256=0941efe5e0a5fb6a0a9f90c685499e4079418fcf994920c68f971bc93ab380f3\nHash choices=sha256\nCMSDigest=0941efe5e0a5fb6a0a9f90c685499e4079418fcf994920c68f971bc93ab380f3\nCMSDigestType=2\nCDHash=0941efe5e0a5fb6a0a9f90c685499e4079418fcf\nSignature size=8982\nAuthority=Developer ID Application: Dishant Dobariya (J3G89MY3QG)\nAuthority=Developer ID Certification Authority\nAuthority=Apple Root CA\nTimestamp=13 Sep 2026 at 9:26:36 AM\nInfo.plist entries=32\nTeamIdentifier=J3G89MY3QG\nRuntime Version=26.2.0\nSealed Resources version=2 rules=13 files=42\nInternal requirements count=1 size=184\n"
+}

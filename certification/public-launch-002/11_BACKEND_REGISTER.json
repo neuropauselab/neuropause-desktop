@@ -1,0 +1,29 @@
+{
+  "ARTIFACT": "11_BACKEND_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-002",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "backend_source_note": "the local source backend on :4010 was started from the working tree after the last backend edit; its source equals the backend tree of this commit",
+  "public": {
+    "url": "https://api.neuropause033.com",
+    "dns": "resolves (Cloudflare)",
+    "tls": "edge TLS ok",
+    "health": "HTTP 530",
+    "api_version": "UNKNOWN"
+  },
+  "local_source_backend": {
+    "url": "http://127.0.0.1:4010",
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "health": "ok",
+    "journey": "26/26"
+  }
+}

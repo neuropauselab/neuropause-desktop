@@ -1,0 +1,55 @@
+{
+  "ARTIFACT": "29_INCIDENT_RECOVERY_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "cases": [
+    {
+      "case": "backend unavailable (5xx/530)",
+      "behaviour": "desktop local mode, credentials kept (fixed)",
+      "fail": "CLOSED for cloud actions",
+      "measured": true
+    },
+    {
+      "case": "AI unavailable",
+      "behaviour": "gateway 503 / deterministic fallback",
+      "fail": "CLOSED",
+      "measured": true
+    },
+    {
+      "case": "device revoked",
+      "behaviour": "403 device_revoked on heartbeat/register",
+      "fail": "CLOSED",
+      "measured": true
+    },
+    {
+      "case": "token expired",
+      "behaviour": "refresh rotation; reuse burns chain (fixed)",
+      "measured": true
+    },
+    {
+      "case": "PauseCloud unavailable",
+      "behaviour": "DESIGN_ONLY",
+      "measured": false
+    },
+    {
+      "case": "database unavailable",
+      "behaviour": "/health reports component down",
+      "measured": false
+    },
+    {
+      "case": "disk full / process crash / machine restart",
+      "behaviour": "NOT_MEASURED (e2e sigkill tests exist: apps/desktop/e2e/sigkill*.e2e.cjs)",
+      "measured": false
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "ARTIFACT": "21_CLEAN_ROOM_BUILD",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "worktree": "/Users/saurabhpatel/Desktop/np-public-launch",
+  "node_modules": "real (npm ci)",
+  "build": {
+    "execution_id": "EXEC-BUILD-mtz9ziid",
+    "step": "build",
+    "command": "npm run build",
+    "cwd": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "exit_code": 0,
+    "signal": null,
+    "timed_out": false,
+    "started_at": "2026-09-13T03:49:47.509Z",
+    "ended_at": "2026-09-13T03:49:54.401Z",
+    "duration_ms": 6892,
+    "stdout_file": "gate-runs-final/build.stdout.log",
+    "stderr_file": "gate-runs-final/build.stderr.log",
+    "stdout_sha256": "c6cd0a492e1b79104a0e3c779b65cbe868e674ecd43e32733f7b80328daff872",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 11408,
+    "stderr_bytes": 0
+  },
+  "package_mac": {
+    "execution_id": "EXEC-PACKAGE-MAC-mtz9zntu",
+    "step": "package-mac",
+    "command": "npm run package:mac",
+    "cwd": "/Users/saurabhpatel/Desktop/np-public-launch/apps/desktop",
+    "exit_code": 0,
+    "signal": null,
+    "timed_out": false,
+    "started_at": "2026-09-13T03:49:54.402Z",
+    "ended_at": "2026-09-13T03:57:00.211Z",
+    "duration_ms": 425809,
+    "stdout_file": "gate-runs-final/package-mac.stdout.log",
+    "stderr_file": "gate-runs-final/package-mac.stderr.log",
+    "stdout_sha256": "f73fe3c67d21e95c228511a1ba4f41fb18ec0b1e4d59f8992604fa83aa7b32a9",
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_bytes": 27834,
+    "stderr_bytes": 0
+  },
+  "verify_release": "PASS 8/8 (in package script)",
+  "verify_universal": "PASS",
+  "deep_verifier": {
+    "CONTAINERS": {
+      "status": "PASS",
+      "checks": 3
+    },
+    "FEED": {
+      "status": "PASS",
+      "checks": 7
+    },
+    "ZIP": {
+      "status": "PASS",
+      "checks": 2
+    },
+    "DMG": {
+      "status": "PASS",
+      "checks": 5
+    },
+    "IDENTITY": {
+      "status": "PASS",
+      "checks": 1
+    },
+    "PLIST": {
+      "status": "PASS",
+      "checks": 3
+    },
+    "ARCHITECTURE": {
+      "status": "PASS",
+      "checks": 3
+    },
+    "DEPENDENCIES": {
+      "status": "WARN",
+      "checks": 16
+    },
+    "SIGNING": {
+      "status": "PASS",
+      "checks": 6
+    },
+    "NOTARIZATION": {
+      "status": "FAIL",
+      "checks": 4
+    },
+    "CONFIG": {
+      "status": "PASS",
+      "checks": 6
+    },
+    "SECRETS": {
+      "status": "PASS",
+      "checks": 2
+    }
+  },
+  "classification": "MEASURED"
+}

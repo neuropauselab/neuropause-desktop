@@ -1,0 +1,22 @@
+{
+  "product": "NeuroPause OS",
+  "channel": "beta",
+  "version": "1.0.0-rc.30",
+  "build": "1.0.0-rc.30+8331185",
+  "gitCommit": "8331185",
+  "branch": "pilot/public-launch",
+  "dirty": false,
+  "buildTime": "2026-09-13T03:57:00.761Z",
+  "platform": "win32",
+  "architecture": "x64",
+  "installerArch": "x86",
+  "electronVersion": "42.8.1",
+  "nodeVersion": "20",
+  "artifact": "NeuroPause-Setup.exe",
+  "artifactBytes": 111896057,
+  "artifactSha256": "fc13c84d041ece69cae5737126a6e60cfada55491a7a12d759b8bb2e911bb4e4",
+  "signingStatus": "NOT CONFIGURED",
+  "notarizationStatus": "NOT APPLICABLE (Windows)",
+  "certificationStatus": "PROGRAM 13C — NOT CERTIFIED",
+  "testSummary": null
+}

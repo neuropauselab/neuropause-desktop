@@ -1,0 +1,35 @@
+{
+  "ARTIFACT": "03_VERSION_RELEASE_IDENTITY",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "RELEASE_ID": "NP-OS-1.0.0-rc.30-8331185ba41f",
+  "VERSION": "1.0.0-rc.30",
+  "RELEASE_CHANNEL": "beta",
+  "GIT_COMMIT": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+  "SOURCE_TREE": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+  "BUILD_ID": "1.0.0-rc.30+8331185",
+  "BUILD_ENVIRONMENT_ID": {
+    "node": "v20.20.2",
+    "os": "darwin 25.5.0",
+    "arch": "arm64",
+    "electron": "42.8.1",
+    "electron_builder": "26.15.3"
+  },
+  "tagged": false,
+  "pushed": false,
+  "decision_required": [
+    "RELEASE_VERSION: A) 1.0.0-rc.30  B) 1.0.0",
+    "tag creation (permanent; a version is spent once tagged)"
+  ],
+  "invariant": "two different binaries can never claim the same release identity: release_id embeds the commit and each artifact digest is registered"
+}

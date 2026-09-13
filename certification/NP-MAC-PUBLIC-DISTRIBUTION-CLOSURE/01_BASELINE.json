@@ -1,0 +1,31 @@
+{
+  "ARTIFACT": "01_BASELINE",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "starting_commit": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+  "starting_version": "1.0.0-rc.30",
+  "electron": "42.8.1",
+  "electron_builder": "26.15.3",
+  "electron_updater": "6.8.9",
+  "packaging_config": "apps/desktop/electron-builder.yml (mac.target dmg+zip arch universal; hardenedRuntime; notarize:false + afterSign notarize.cjs; publish generic https://neuropause033.com/updates channel beta; dmg artifactName NeuroPause-${arch}.${ext})",
+  "release_verifiers_before": [
+    "verify-release-artifacts.cjs",
+    "verify-universal-and-deps.cjs",
+    "verify-packaged-content.cjs (absence only)"
+  ],
+  "release_verifiers_added": [
+    "verify-mac-artifact.cjs",
+    "verify-mac-artifact.controls.cjs",
+    "packaged-smoke.cjs"
+  ],
+  "prior_defect": "asar missing 4/8 prod deps when built from a symlinked node_modules; caught only by looking inside the asar",
+  "baseline_reproduces": true
+}

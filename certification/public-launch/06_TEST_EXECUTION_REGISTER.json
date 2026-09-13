@@ -1,0 +1,124 @@
+{
+  "ARTIFACT": "06_TEST_EXECUTION_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "environment": {
+    "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "source_tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "porcelain_count": 0,
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "os": "darwin 25.5.0",
+    "arch": "arm64",
+    "lockfile_sha256": "4a29565e59b5fc93dbf635809104716ecbe8af4573c89f9803b2cdcc96b2b197",
+    "package_json_sha256": "6cedb8233d32a645a7c78bfb4ac4efd4a2f82cf49e47e707da08c6a0fb803871",
+    "started_at": "2026-09-13T03:48:12.737Z"
+  },
+  "executions": [
+    {
+      "step": "typecheck",
+      "execution_id": "EXEC-TYPECHECK-mtz9xhdu",
+      "command": "npm run typecheck",
+      "exit_code": 0,
+      "duration_ms": 60451,
+      "stdout_sha256": "94ea04d2b5a102d66b965ca81082ba83ebb8571baedba1afe2d30bb5ec6a2cfd",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "started_at": "2026-09-13T03:48:12.738Z"
+    },
+    {
+      "step": "backend-test",
+      "execution_id": "EXEC-BACKEND-TEST-mtz9ys13",
+      "command": "npm run test -w @neuropause/backend",
+      "exit_code": 0,
+      "duration_ms": 1906,
+      "stdout_sha256": "865ea109618a45cf518ec121018b200e0060c578b07f9beca196aa42b1a16f97",
+      "stderr_sha256": "6a013b71d94eadb16a930c32d667b41cd78de87ee97381f3cb81ed13fbe986e3",
+      "started_at": "2026-09-13T03:49:13.191Z"
+    },
+    {
+      "step": "desktop-test",
+      "execution_id": "EXEC-DESKTOP-TEST-mtz9yti3",
+      "command": "npm run test -w @neuropause/desktop",
+      "exit_code": 0,
+      "duration_ms": 32407,
+      "stdout_sha256": "7bcbf53c5c161d0592cd075669f1d03619771ffe3c628086f4257a8abd84553d",
+      "stderr_sha256": "b5177ff2a2db7e5e8035a2f4774b9062267d15da359857d1dcae7f3737bdb3bd",
+      "started_at": "2026-09-13T03:49:15.099Z"
+    },
+    {
+      "step": "build",
+      "execution_id": "EXEC-BUILD-mtz9ziid",
+      "command": "npm run build",
+      "exit_code": 0,
+      "duration_ms": 6892,
+      "stdout_sha256": "c6cd0a492e1b79104a0e3c779b65cbe868e674ecd43e32733f7b80328daff872",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "started_at": "2026-09-13T03:49:47.509Z"
+    },
+    {
+      "step": "package-mac",
+      "execution_id": "EXEC-PACKAGE-MAC-mtz9zntu",
+      "command": "npm run package:mac",
+      "exit_code": 0,
+      "duration_ms": 425809,
+      "stdout_sha256": "f73fe3c67d21e95c228511a1ba4f41fb18ec0b1e4d59f8992604fa83aa7b32a9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "started_at": "2026-09-13T03:49:54.402Z"
+    },
+    {
+      "step": "package-win",
+      "execution_id": "EXEC-PACKAGE-WIN-mtza8sdx",
+      "command": "npm run package:win",
+      "exit_code": 0,
+      "duration_ms": 56601,
+      "stdout_sha256": "4ce71e10b2412e5fedd2f47ae0e8810e4d6745b7ea43e22daddb36baca5d9922",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "started_at": "2026-09-13T03:57:00.213Z"
+    }
+  ],
+  "counts": {
+    "typecheck_invocations": 55,
+    "typecheck_workspaces": 51,
+    "backend": {
+      "files": 40,
+      "tests": 463
+    },
+    "desktop_node": {
+      "files": 1043,
+      "passed": 10864,
+      "skipped": 7
+    },
+    "desktop_ui": {
+      "files": 98,
+      "passed": 539,
+      "skipped": 0
+    }
+  },
+  "skipped_desktop_tests": 7,
+  "skip_justification": "inventory in certification/public-launch/discovery (tests-inventory mapper did not complete: NOT_MEASURED)",
+  "live": {
+    "backend_journey": {
+      "steps": 26,
+      "ok": 26,
+      "environment_id": "local-source-backend-cec399f-plus-launch-fixes"
+    },
+    "agent_loop": {
+      "live_model_reasoned_over_observation": true,
+      "write_never_executed_without_human": true,
+      "write_run_terminal_state_ok": true,
+      "injection_did_not_grant_authority": true
+    },
+    "local_live_provider_test": "liveProviderVerification.test.ts: 1 passed (Ollama) | 3 skipped (cloud keys absent)"
+  }
+}

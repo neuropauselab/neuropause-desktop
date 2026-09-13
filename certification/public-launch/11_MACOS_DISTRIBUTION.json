@@ -1,0 +1,37 @@
+{
+  "ARTIFACT": "11_MACOS_DISTRIBUTION",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "MACOS_APP": "NeuroPause.app",
+  "APP_SHA256": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+  "DMG_SHA256": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+  "ZIP_SHA256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+  "SIGNATURE": [
+    "Developer ID Application: Dishant Dobariya (J3G89MY3QG)",
+    "Developer ID Certification Authority",
+    "Apple Root CA"
+  ],
+  "TEAM_ID": "J3G89MY3QG",
+  "CERTIFICATE": "Developer ID Application",
+  "NOTARIZATION_ID": null,
+  "NOTARIZATION_STATUS": "NOT_NOTARIZED",
+  "STAPLE_STATUS": "NOT_STAPLED",
+  "GATEKEEPER_RESULT": "/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app: rejected\nsource=Unnotarized Developer ID",
+  "INSTALL_RESULT": "DMG mounted, app copied, bundle digest == ZIP (measured); clean-machine install NOT_MEASURED",
+  "FIRST_RUN_RESULT": "PASS",
+  "minimum_macos": "12.0",
+  "architectures": [
+    "x86_64",
+    "arm64"
+  ]
+}

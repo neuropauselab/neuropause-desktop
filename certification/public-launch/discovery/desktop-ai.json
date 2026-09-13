@@ -1,0 +1,864 @@
+{
+  "key": "desktop-ai",
+  "generated_at": "2026-09-12",
+  "repo": "/Users/saurabhpatel/Desktop/np-public-launch",
+  "branch": "pilot/public-launch",
+  "head": "cec399f",
+  "version": "1.0.0-rc.30",
+  "method": "read-only source audit; no test suites or builds executed; one local read-only HTTP GET to 127.0.0.1:11434/api/tags; claude-api skill load was DENIED by the permission classifier so vendor model-id validity is NOT verified",
+  "classification_legend": "MEASURED = executed/observed by this session; DECLARED = doc/comment/config asserts it; DERIVED = computed from measured facts; INFERRED = judgement; ABSENT = looked for and does not exist",
+  "scope_inventory": {
+    "ai_dir_files": 66,
+    "ai_test_files_incl_brain": 27,
+    "assistant_test_files": 21,
+    "liveBrain_test_files": 17,
+    "ai_runtime_test_files": 6,
+    "key_files_lines": {
+      "apps/desktop/src/main/assistant/assistantService.ts": 1856,
+      "apps/desktop/src/main/assistant/assistantModel.ts": 817,
+      "apps/desktop/src/main/assistant/deterministicAnswers.ts": 346,
+      "apps/desktop/src/main/ai/providerManager.ts": 246,
+      "apps/desktop/src/main/ai/aiEngine.ts": 293,
+      "apps/desktop/src/main/liveBrain/executionGate.ts": 223,
+      "apps/desktop/src/main/liveBrain/proposalExecutionBoundary.ts": 94,
+      "apps/desktop/src/main/liveBrain/brainProposeLane.ts": 199
+    }
+  },
+  "sections": {
+    "1_hardcoded_provider_and_model_names": {
+      "chat_models_non_test": [
+        {
+          "literal": "claude-haiku-4-5-20251001",
+          "where": "apps/desktop/src/main/ai/modelRouter.ts:20 (DEFAULT_MODELS.fast); apps/desktop/src/main/ai/pricing.ts:22",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "claude-sonnet-4-6",
+          "where": "apps/desktop/src/main/ai/modelRouter.ts:21 (DEFAULT_MODELS.balanced); apps/desktop/src/main/ai/pricing.ts:21; apps/desktop/src/main/ai/providerManager.ts:158 (external Anthropic candidate default)",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "claude-opus-4-8",
+          "where": "apps/desktop/src/main/ai/modelRouter.ts:22 (DEFAULT_MODELS.deep); apps/desktop/src/main/ai/pricing.ts:20",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "gpt-4o",
+          "where": "apps/desktop/src/main/ai/providerManager.ts:23 (DEFAULT_OPENAI_MODEL); apps/desktop/src/main/ai/pricing.ts:24",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "gpt-4o-mini",
+          "where": "apps/desktop/src/main/ai/pricing.ts:25 (pricing only; never selected by code)",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "llama3.1",
+          "where": "apps/desktop/src/main/ai/providerManager.ts:22 (DEFAULT_OLLAMA_MODEL); apps/desktop/src/main/ai/provider.ts:27; apps/desktop/src/renderer/src/settings/AiSettingsPanel.tsx:44",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "llama3.2:3b",
+          "where": "apps/desktop/src/renderer/src/settings/AiSettingsPanel.tsx:43 (suggested pull tag)",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "qwen2.5:14b",
+          "where": "apps/desktop/src/renderer/src/settings/AiSettingsPanel.tsx:45 (suggested pull tag)",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "fake-1",
+          "where": "packages/ai-runtime/src/providers.ts:85; packages/ai-runtime/src/governance.ts:37 (preview fake provider)",
+          "classification": "MEASURED"
+        }
+      ],
+      "embedding_models_backend_out_of_chat_scope": [
+        {
+          "literal": "nomic-embed-text",
+          "where": "apps/backend/src/semantic/embedding/embeddingConfig.ts:33",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "text-embedding-3-small",
+          "where": "apps/backend/src/semantic/embedding/embeddingConfig.ts:34",
+          "classification": "MEASURED"
+        }
+      ],
+      "provider_ids": [
+        {
+          "literal": "anthropic",
+          "where": "apps/desktop/src/main/ai/claudeClient.ts:29; providerManager.ts:26 (ANTHROPIC_CREDENTIAL_ID='anthropic')"
+        },
+        {
+          "literal": "openai",
+          "where": "apps/desktop/src/main/ai/openaiClient.ts:35; providerManager.ts:28"
+        },
+        {
+          "literal": "ollama",
+          "where": "apps/desktop/src/main/ai/ollamaClient.ts:37"
+        },
+        {
+          "literal": "private-first",
+          "where": "apps/desktop/src/main/ai/privateFirstClient.ts:52"
+        },
+        {
+          "literal": "booting",
+          "where": "apps/desktop/src/main/ai/provider.ts:62"
+        },
+        {
+          "literal": "mock",
+          "where": "apps/desktop/src/main/ai/mockClient.ts:17"
+        }
+      ],
+      "endpoints": [
+        {
+          "literal": "https://api.anthropic.com/v1/messages",
+          "where": "apps/desktop/src/main/ai/claudeClient.ts:10",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "https://api.anthropic.com/v1/models",
+          "where": "apps/desktop/src/main/ai/connectionValidator.ts:13",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "https://api.openai.com/v1/chat/completions",
+          "where": "apps/desktop/src/main/ai/openaiClient.ts:17",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "https://api.openai.com/v1/models",
+          "where": "apps/desktop/src/main/ai/connectionValidator.ts:59",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "http://localhost:11434",
+          "where": "apps/desktop/src/main/ai/ollamaClient.ts:14; providerManager.ts:84; aiConfigIpc.ts:87",
+          "classification": "MEASURED"
+        },
+        {
+          "literal": "anthropic-version 2023-06-01",
+          "where": "apps/desktop/src/main/ai/claudeClient.ts:11; connectionValidator.ts:14",
+          "classification": "MEASURED"
+        }
+      ],
+      "notes": [
+        {
+          "fact": "Under buildModelRouter every tier (fast/balanced/deep) collapses to plan.attempts[0].model; tier differentiation only survives on the legacy single-provider/boot builders",
+          "evidence": "apps/desktop/src/main/ai/providerManager.ts:238-245",
+          "classification": "DERIVED"
+        },
+        {
+          "fact": "pricing.ts header claims rates 'verified June 2026 from the Anthropic pricing docs'",
+          "evidence": "apps/desktop/src/main/ai/pricing.ts:2-4",
+          "classification": "DECLARED"
+        },
+        {
+          "fact": "Validity of the three Claude model ids and two OpenAI ids against the vendors' current catalogs was not verified in this session",
+          "evidence": "claude-api skill load denied; no network call to vendors made",
+          "classification": "ABSENT"
+        },
+        {
+          "fact": "69 additional model-literal lines exist in *.test.ts under ai/, assistant/, liveBrain/, ai-runtime, shared",
+          "evidence": "grep -rnE model-literal regex | grep .test.ts | wc -l = 69",
+          "classification": "MEASURED"
+        }
+      ]
+    },
+    "2_key_custody": {
+      "facts": [
+        {
+          "fact": "Cloud keys are resolved in the main process by cloudKeyFor(): Secure Vault credentialStore.getSecret('anthropic'|'openai') first, then process.env.ANTHROPIC_API_KEY / OPENAI_API_KEY, else ''",
+          "evidence": "apps/desktop/src/main/ai/providerManager.ts:31-36",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "credentialStore encrypts with Electron safeStorage and refuses to persist plaintext when OS encryption is unavailable",
+          "evidence": "apps/desktop/src/main/security/secureStore.ts:7-11,15,122-149",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "ai-config.json (AiConfigStore) has no secret field; coerce() only carries provider/model/ollamaUrl/migratedFromEnv/mode/externalConsent",
+          "evidence": "apps/desktop/src/main/ai/aiConfigStore.ts:56-90,97-114",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "getConfig() returns only hasStoredKey / storedKeys booleans; AiConfigDto has no secret field",
+          "evidence": "apps/desktop/src/main/ai/aiConfigIpc.ts:93-116; packages/shared/src/types/aiConfig.ts:17-35",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Preload is a generic contextBridge invoke/on bridge; zero references to apiKey/ANTHROPIC/OPENAI/secret/credential in apps/desktop/src/preload/index.ts",
+          "evidence": "apps/desktop/src/preload/index.ts:8-34; grep -niE 'apiKey|ANTHROPIC|OPENAI|secret|credential' = 0 hits",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Renderer can SEND a key to main (aiConfig:setCredential secret z.string().min(1); aiConfig:test optional secret) but no IPC response type carries a key back",
+          "evidence": "packages/shared/src/ipc/contracts.ts:2479-2488; aiConfigIpc.ts:379-410",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "No key can reach the renderer/preload through the AI IPC family",
+          "evidence": "derived from DTO shapes + preload grep + IPC contracts above",
+          "classification": "DERIVED"
+        },
+        {
+          "fact": "Key-in-error-message leak (newline in key -> TypeError echoing key -> IPC -> UI -> assistant-conversations.json) was fixed by assertHeaderSafeApiKey + redactProviderError in both cloud clients",
+          "evidence": "apps/desktop/src/main/ai/apiKeyGuard.ts:44-94; claudeClient.ts:51,94; openaiClient.ts:55,100; git commit 75a8b3c 'fix(ai): a provider API key can no longer reach the screen or the disk'",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "aiConfig:test falls back to the STORED vault key when no candidate secret is supplied and makes a real vendor request; gated to org:manage (not cloud:operate) - an org manager can validity-probe the install key",
+          "evidence": "apps/desktop/src/main/ai/aiConfigIpc.ts:394-410; apps/desktop/src/main/ai/aiAuthzGate.ts:66-99",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Environment variables ANTHROPIC_API_KEY / OPENAI_API_KEY are read by the main process as fallback; .env.example documents NEUROPAUSE_LLM_PROVIDER/NEUROPAUSE_OLLAMA_URL/NEUROPAUSE_OLLAMA_MODEL/ANTHROPIC_API_KEY and reserves NEUROPAUSE_LITELLM_URL/NEUROPAUSE_LITELLM_API_KEY (not wired)",
+          "evidence": "claudeClient.ts:35; openaiClient.ts:41; .env.example:63-68",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "AI config write channels require cloud:operate (setProvider/setModel/setCredential/clearCredential/setMode/setExternalConsent/resetToEnv/migrate); AiPreferenceSet org:manage; AiRoutingUsage cloud:read; get/health/detectOllama/migrationStatus/routing.status PUBLIC",
+          "evidence": "apps/desktop/src/main/ai/aiAuthzGate.ts:57-211",
+          "classification": "MEASURED"
+        }
+      ]
+    },
+    "3_server_side_gateway": {
+      "facts": [
+        {
+          "fact": "apps/backend/src/ai does not exist",
+          "evidence": "ls -d apps/backend/src/ai -> 'No such file or directory'",
+          "classification": "ABSENT"
+        },
+        {
+          "fact": "The only backend files mentioning anthropic/openai/ollama are the semantic EMBEDDING provider (7 files under apps/backend/src/semantic/embedding/*); no chat/completion proxy or gateway exists in the backend",
+          "evidence": "grep -rliE 'anthropic|openai|ollama' apps/backend/src = 7 files, all semantic/embedding/*",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "The desktop main process calls vendor endpoints DIRECTLY with fetch (no SDK): Anthropic /v1/messages, OpenAI /v1/chat/completions, Ollama /api/chat",
+          "evidence": "claudeClient.ts:10,55-69; openaiClient.ts:17,62-74; ollamaClient.ts:14,80-85",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "No @anthropic-ai/sdk, openai, or ollama npm dependency exists in any package.json",
+          "evidence": "grep -rn '@anthropic-ai|\"openai\"|\"ollama\"' package.json files = 0 hits",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "packages/ai-runtime is a self-declared PREVIEW foundation shipping only a deterministic FakeProvider; it is NOT a dependency of apps/desktop or apps/backend",
+          "evidence": "packages/ai-runtime/src/index.ts:9-12; providers.ts:74-104; grep -c ai-runtime apps/desktop/package.json = 0",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Consequence: every install holds its own vendor credential and there is no central policy, metering, quota, or kill-switch between the client and the vendor",
+          "evidence": "derived from the above",
+          "classification": "DERIVED"
+        },
+        {
+          "fact": "No egress allowlist restricts main-process fetch destinations; security/csp.ts only sets renderer response headers",
+          "evidence": "grep onBeforeRequest|allowlist|egress in apps/desktop/src/main/{index.ts,security/*.ts,platform/*.ts} -> only csp.ts:41 onHeadersReceived",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "A 6,969,751-byte built main-process bundle apps/desktop/index.js (containing the vendor URLs) is git-TRACKED and was added in HEAD commit cec399f (161,690 insertions); it is byte-size-identical to the ignored apps/desktop/out/main/index.js",
+          "evidence": "git ls-files apps/desktop/index.js; git show --stat cec399f -- apps/desktop/index.js; ls -la",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "The tracked bundle looks accidental (out/ is .gitignored at .gitignore:30 but the copy at apps/desktop/index.js is not)",
+          "evidence": ".gitignore:30",
+          "classification": "INFERRED"
+        }
+      ]
+    },
+    "4_tool_loop": {
+      "verdict": "NO multi-turn model->tool->observation->model loop exists anywhere in the desktop app or packages. Every model invocation is exactly ONE completion request with ONE user message and no tools parameter; 'toolCalls' in the assistant are locally-authored trace records of deterministic operations.",
+      "verdict_classification": "DERIVED",
+      "facts": [
+        {
+          "fact": "AiEngine.run renders a prompt, resolves one client, and issues ONE client.complete() with messages=[{role:'user'}]; result is parsed and returned; no loop, no tools",
+          "evidence": "apps/desktop/src/main/ai/aiEngine.ts:83-162 (messages at 107; single complete at 109-114)",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "ModelRequest has only model/system/messages/maxOutputTokens - no tools field; Claude request body sends only model/max_tokens/system/messages",
+          "evidence": "apps/desktop/src/main/ai/modelClient.ts:14-19; claudeClient.ts:62-67; openaiClient.ts:68-72",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "assistantService.ask makes at most two runAi calls per turn: reason() or reasonOverReport() (one narrative), plus draft() for content-creation intent; each is a single completion",
+          "evidence": "apps/desktop/src/main/assistant/assistantService.ts:508-514 (reasoning), 522-525 (draft), 1612-1698 (reason/reasonOverReport bodies), 1700-1736 (draft body)",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Assistant 'toolCalls' are AssistantToolCall records pushed by the service for deterministic local operations - retrieval (Context Builder), draft, and productivity resolvers (intelligence/knowledge/automation/operations/strategy/federation) - via this.toolCall(); none is model-initiated and none feeds a subsequent model turn",
+          "evidence": "assistantService.ts:941-990 (retrieve pushes tool:'retrieval'), 1051-1072 (toolCall helper), 1117/1150/1183/1215/1249/1284 (resolver call sites), 1721-1732 (tool:'draft')",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Turn pipeline order is fixed: mail-intent/clarification -> deterministic answers -> context -> planning -> productivity flows -> reasoning -> drafting -> envelope; the model runs after all local operations, never before them",
+          "evidence": "assistantService.ts:352-611",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Deterministic answers (arithmetic, date/time, outstanding invoices, lot/inventory quantity, pending approvals) are resolved BEFORE any model call and short-circuit the turn with processing='none'",
+          "evidence": "assistantService.ts:433-459; deterministicAnswers.ts:319-346",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Plans are built from deterministic templates: buildPlan(intent.intent, mode, correlationId, targets, now) where targets come from locateTargets over live records; AI output is never an input to buildPlan",
+          "evidence": "assistantService.ts:487-493; assistantModel.ts buildPlan",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "The only fields read from model output are answer/executiveSummary, recommendations, assumptions (assistant), text (draft), recommendedAction (engineering), recommendations (founder), plus confidence/evidence by the parser",
+          "evidence": "assistantService.ts:557-559,1733; engineeringAI.ts:109; founderAI.ts:369; responseParser.ts:18-28",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Execution happens only in decideStep(): a human decision on a waiting step with needsApproval, then only if MODE_CONFIG[mode].dispatchOnApproval, then this.deps.execute (ExecuteEngine) for executionKind automation|worker; Plan mode records approval but dispatches nothing",
+          "evidence": "assistantService.ts:642-750; assistantModel.ts:209-236",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "assistantAiBoundary.test.ts pins: no 'connector' step kind; every side-effecting step approval-gated; disabled outside Execute mode; no authority fields on steps",
+          "evidence": "apps/desktop/src/main/assistant/assistantAiBoundary.test.ts:1-16,40-75",
+          "classification": "MEASURED (test source read; not executed here)"
+        },
+        {
+          "fact": "The mail-draft gateway has a bounded retry loop of at most 2 adapter calls (initial + ONE repair) then deterministic referenceDrafter fallback; but the LIVE lane serves referenceDrafter (zero model) via servingDraftMailer()",
+          "evidence": "apps/desktop/src/main/ai/brain/mailDraftGateway.ts:82-111,124-126",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Recipients for mail intents are extracted LITERALLY from the user's typed turn; the model output can never set 'to' or action",
+          "evidence": "apps/desktop/src/main/capabilities/assistantMailIntent.ts:9-19,79,173-174",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "packages/ai-runtime ToolRuntime.call is a single governed invocation (permission gate -> zod -> timed execute -> audit) and AgentRuntime.execute a single run; no loop; package unused by desktop",
+          "evidence": "packages/ai-runtime/src/tools.ts:48-117; agents.ts:45-80",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Other single-call model consumers: founderAI.ts:358 (founder.executive), engineeringAI.ts:100 (engineering.summary), connectors/m365/aiDrafts.ts:38 (m365 draft; DOES invoke a model, outside the BRAIN-1 gateway), runtimeCore.ts:4502 wireAiQa generate (generic.summary, maxOutputTokens 400)",
+          "evidence": "as cited",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Ollama model catalog on this machine advertises 'tools' capability for qwen3-coder:30b, but no code path sends tools to Ollama",
+          "evidence": "GET http://127.0.0.1:11434/api/tags (capabilities: ['completion','tools']); ollamaClient.ts:83 body has no tools",
+          "classification": "MEASURED"
+        }
+      ]
+    },
+    "5_bounds": {
+      "present": [
+        {
+          "bound": "Claude HTTP timeout 60,000 ms",
+          "evidence": "claudeClient.ts:37",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "OpenAI HTTP timeout 60,000 ms",
+          "evidence": "openaiClient.ts:43",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Ollama HTTP timeout 120,000 ms",
+          "evidence": "ollamaClient.ts:46",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Ollama detect probe 2,500 ms; ollama --version 2,000 ms; model pull 30 min",
+          "evidence": "aiConfigIpc.ts:286,257,323",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Default max output tokens 1024 (DEFAULT_MAX_OUTPUT); AI QA 400; smoke 256",
+          "evidence": "aiEngine.ts:46,113; runtimeCore.ts:4507; smoke.ts:38",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Context Builder budget defaults maxItems 12 / maxChars 6000 / perSource 8",
+          "evidence": "contextBuilder.ts:130-132",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Assistant mode retrieval budgets: ask 8/4000/6, analyze 16/9000/10",
+          "evidence": "assistantModel.ts:222-236",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Conversation history in prompt capped at 4 turns / 900 chars",
+          "evidence": "assistantModel.ts:558-569",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Request text caps: AssistantAsk text max 4000; M365Draft instruction 4000 + context 20000; founder text 1000",
+          "evidence": "packages/shared/src/ipc/contracts.ts:946,498-499,917",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "PrivateFirstClient tries each planned route exactly once, in order",
+          "evidence": "privateFirstClient.ts:79-113",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Draft-lane repair retry: exactly one (dormant - lane serves referenceDrafter)",
+          "evidence": "mailDraftGateway.ts:87-104",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "AiAuditLog in-memory ring cap 1000 records, ephemeral",
+          "evidence": "auditLog.ts:2-15",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "L6 proposal freshness/expiry window 10 min, enforced at confirm",
+          "evidence": "brainProposeLane.ts:52-53; proposalExecutionBoundary.ts:67-70",
+          "classification": "MEASURED"
+        },
+        {
+          "bound": "Usage/cost accumulated per tenant (calls, tokens, USD by worker/model)",
+          "evidence": "usageTracker.ts:63-120",
+          "classification": "MEASURED"
+        }
+      ],
+      "absent": [
+        {
+          "bound": "Max agent turns / iteration cap",
+          "evidence": "not applicable - no loop exists (see section 4)",
+          "classification": "ABSENT"
+        },
+        {
+          "bound": "Provider retry / backoff / circuit breaker on repeated failures",
+          "evidence": "grep retry|backoff in ai/ non-test -> only mailDraftGateway; no retry in aiEngine/clients",
+          "classification": "ABSENT"
+        },
+        {
+          "bound": "Cost cap / spend limit / quota enforcement",
+          "evidence": "grep -riE 'costLimit|cost.cap|spendLimit|quota' ai/ assistant/ liveBrain/ -> 0 hits; UsageTracker only accumulates",
+          "classification": "ABSENT"
+        },
+        {
+          "bound": "Per-user / per-device / per-tenant rate limit on model invocation or IPC",
+          "evidence": "grep RateLimiter|tokenBucket|throttl in ipc/ non-test -> 0 files; aiAuthzGate.ts:175-178 states 'no rate limit above runSecureHandler'",
+          "classification": "ABSENT"
+        },
+        {
+          "bound": "Concurrency cap on in-flight model calls",
+          "evidence": "assistantService.ts:252-256 tracks inflight per conversation for cancel only",
+          "classification": "ABSENT"
+        },
+        {
+          "bound": "Input token budget enforced in tokens (only char/item budgets exist)",
+          "evidence": "contextBuilder.ts:293-310 char-based",
+          "classification": "ABSENT"
+        },
+        {
+          "bound": "Durable AI audit trail (auditLog is in-memory; routingUsageStore persists counts only)",
+          "evidence": "auditLog.ts:2-9; routingUsageStore.ts:2-13",
+          "classification": "ABSENT"
+        }
+      ],
+      "derived": [
+        {
+          "fact": "Worst-case sequential latency before deterministic fallback under private_first with consent and both cloud keys: 120s (Ollama) + 60s (Anthropic) + 60s (OpenAI) = 240s per turn",
+          "evidence": "timeouts above + privateFirstClient.ts:80-113 sequential loop",
+          "classification": "DERIVED"
+        }
+      ]
+    },
+    "6_authorization_from_ai_output": {
+      "verdict": "AI output cannot set any authorization state. Grep for authorized/approved/AUTHORIZED in ai/, liveBrain/, assistant/ (non-test) finds only 401 message strings, prompt text, a memory-classifier regex over USER statements, and the proposal rule that BLOCKS auto-approved proposals. 'AUTHORIZED=true' does not appear.",
+      "verdict_classification": "DERIVED",
+      "facts": [
+        {
+          "fact": "grep authorized|approved hits: connectionValidator.ts:45,75 and openaiClient.ts:81 ('401 Unauthorized' strings); promptManager.ts:324,328 (prompt says actions run only through explicitly approved plan steps); conversationMemory.ts:75 DECISION_RE classifies the founder's own statement for memory type; proposal.ts:185 BLOCKED when !requiresApproval; assistantModel.ts:215 dispatchOnApproval comment; tenantAiPreferenceCompose.ts:7; conversationStore.ts:179; productivity.ts:3,108",
+          "evidence": "grep -rnE 'authorized|AUTHORIZED|approved|APPROVED' apps/desktop/src/main/{ai,liveBrain,assistant} non-test",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Literal 'AUTHORIZED=true' absent from ai/, liveBrain/, assistant/",
+          "evidence": "same grep",
+          "classification": "ABSENT"
+        },
+        {
+          "fact": "decideStep sets step.decidedBy='user' from an IPC decision (AssistantPlanDecide, permission workforce:operate); the model never reaches this path",
+          "evidence": "assistantService.ts:657; ipc/runtimeAuthz.ts:550",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "proposalExecutionBoundary.admitForExecution is ASK-only by construction (no ALLOW branch) and REFUSES on: non-certified capability, tenant drift, expiry at confirm time, state drift, authority re-derivation mismatch, re-derived !requiresApproval, verification-plan mismatch",
+          "evidence": "liveBrain/proposalExecutionBoundary.ts:10-17,56-93; tests proposalExecutionBoundary.test.ts:50-93",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "l6ExecutionGate gates only 'mail.send'; refuses IDENTITY_UNRESOLVED when tenantId is '' and MALFORMED_REQUEST when no recipient; a mail.send with NO stashed proposal is SKIP (proceeds as human-composed governed send) and is recorded NOT_EVALUATED",
+          "evidence": "liveBrain/executionGate.ts:91-223",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Stashed proposals are single-use (takeProposal deletes on read) and keyed by tenant+capability+account+canonical params, so an edited send no longer matches",
+          "evidence": "liveBrain/proposalStore.ts:23-36; brainProposeLane.ts:18-20",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "WEAKNESS: the execution-time state hash is a Phase-0 placeholder equal to the tenant id (stateHashAtProposal === currentStateHash always), so the 'state drift' refusal is degenerate at the production gate",
+          "evidence": "liveBrain/executionGate.ts:93-95,98-100",
+          "classification": "MEASURED (fact) / DERIVED (weakness)"
+        },
+        {
+          "fact": "deriveOracle returns productionWired:false for mail.send; all other capabilities are declared UNVERIFIABLE",
+          "evidence": "liveBrain/executionGate.ts:61-70",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "The Live Brain propose lane is deterministic (no LLM): brainReasoning is 'deterministic' and 'does NOT PROPOSE'; the lane composes real substrate and calls the pure buildProposal",
+          "evidence": "liveBrain/brainReasoning.ts:1-14; brainProposeLane.ts:96-199; DECISIONS.md:16 ('Live Brain does NOT mean live LLM')",
+          "classification": "MEASURED (source) / DECLARED (decision)"
+        },
+        {
+          "fact": "buildProposal refuses/blocks: not provably single tenant, scope escalation, cross-tenant target, unresolved conflict, no resolvable evidence, evidence of another tenant, state changed since reasoning (EXPIRED), stale evidence (EXPIRED), !requiresApproval (BLOCKED), inconsistent verification plan (BLOCKED)",
+          "evidence": "liveBrain/proposal.ts:140-218",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "proposalValidation (S117) is advisory-only: validates tool args against the TRUSTED tool's own zod schema, never executes, carries no authority fields; pinned by 'O6 - adversarial: the metadata layer cannot become an authorization surface'",
+          "evidence": "ai/proposalValidation.ts:14-28,89-106; proposalValidation.test.ts:101",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "AssistantAsk and AssistantCancel are PUBLIC IPC channels (no auth, no permission) by deliberate decision; an unauthenticated renderer message can therefore trigger retrieval over scoped stores and a billable model call",
+          "evidence": "ipc/runtimeAuthz.ts:1169-1175",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Context Builder governanceFilter defaults to allow-all ('real policy enforcement wired later')",
+          "evidence": "ai/contextBuilder.ts:194-197",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Invariant mapping: HUMAN (typed turn / decideStep) -> CONTROL (deterministic intent, MODE_CONFIG, planRoute, aiAuthzGate) -> COMPUTE (single completion) -> EVIDENCE (envelope trace, routing stamp, AiAuditLog, routingUsageStore) -> VERIFICATION (ExecuteEngine session state read back; L6 verifyEffect not production-wired) -> HUMAN DECISION (decideStep / M365 confirm). AI never authorizes; client-side authority is bounded by IPC permission gates in main; network connectivity does not confer authorization (gate re-derives from substrate); stale proposals rejected at confirm.",
+          "evidence": "sections 4 and 6",
+          "classification": "DERIVED"
+        }
+      ]
+    },
+    "7_adversarial_tests": {
+      "grep": {
+        "pattern": "injection|jailbreak|untrusted|adversar",
+        "dirs": "apps/desktop/src/main/{ai,liveBrain,assistant} packages/ai-runtime/src",
+        "files": 9,
+        "lines": 13,
+        "classification": "MEASURED"
+      },
+      "present": [
+        {
+          "test": "apps/desktop/src/main/capabilities/assistantMailIntent.hostileAdapter.test.ts - 5 tests; a maximally hostile drafter returning attacker addresses (attacker@evil.com, thief@evil.com, victim@evil.com, exfil@evil.com) cannot smuggle a recipient/action",
+          "evidence": "file lines 1-24; grep -c it( = 5",
+          "classification": "MEASURED (source)"
+        },
+        {
+          "test": "apps/desktop/src/main/ai/brain/draftEval.ts - eval harness with 2 injection scenarios (i1, i2) scoring hostile leaks; the eval report is a zero-model baseline with 0 real candidates",
+          "evidence": "draftEval.ts:58,60 (2 injection rows); certification/source-update/PHASE-I-A3-NEUROPAUSE-OS-BRAIN-1-GATEWAY-EVIDENCE.md:40; NP_STATE.md:30",
+          "classification": "MEASURED (harness) / DECLARED (report)"
+        },
+        {
+          "test": "ai/proposalValidation.test.ts:101 'O6 - adversarial: the metadata layer cannot become an authorization surface'",
+          "classification": "MEASURED (source)"
+        },
+        {
+          "test": "liveBrain/proposal.test.ts:85 'evidence injection - unresolvable ref -> BLOCKED'",
+          "classification": "MEASURED (source)"
+        },
+        {
+          "test": "liveBrain/purposeBridge.test.ts:50 'untrusted propose() naming a capability != the purpose route -> NOT_READY'",
+          "classification": "MEASURED (source)"
+        },
+        {
+          "test": "ai/aiConfigTestAuthority.test.ts - untrusted renderer frame calling aiConfig:test",
+          "evidence": "file header line 13",
+          "classification": "MEASURED (source)"
+        },
+        {
+          "test": "ai/apiKeyLeakGuard.test.ts - key never reaches screen/disk (newline-in-key TypeError path)",
+          "evidence": "file header lines 1-12",
+          "classification": "MEASURED (source)"
+        },
+        {
+          "test": "ai/providerWireIntegration.test.ts - 7 wire tests incl. 'a 401 from the provider reaches the fallback reason; the key never appears'",
+          "evidence": "lines 152-221",
+          "classification": "MEASURED (source)"
+        },
+        {
+          "test": "assistant/assistantAiBoundary.test.ts - AI-is-not-authority plan-layer invariants",
+          "evidence": "lines 40-75",
+          "classification": "MEASURED (source)"
+        }
+      ],
+      "absent": [
+        {
+          "gap": "No prompt-injection test against the reasoning prompts (assistant.workspace, founder.executive, engineering.summary, m365.draft.*) where retrieved CONTEXT text contains instructions",
+          "evidence": "grep 'injection' in ai/*.test.ts assistant/*.test.ts -> none target promptManager/aiEngine/assistantService reasoning",
+          "classification": "ABSENT"
+        },
+        {
+          "gap": "No jailbreak corpus or red-team suite",
+          "evidence": "grep jailbreak = 0 hits repo AI dirs",
+          "classification": "ABSENT"
+        },
+        {
+          "gap": "No output-content screening of model text before rendering (only JSON field extraction); input governance screen exists (screen dep) but is applied to the user turn, not to model output",
+          "evidence": "assistantService.ts:141,557-559; responseParser.ts",
+          "classification": "ABSENT"
+        },
+        {
+          "gap": "No test exercising an untrusted/unauthenticated AssistantAsk causing model spend (the channel is PUBLIC by design)",
+          "evidence": "ipc/runtimeAuthz.ts:1169-1175",
+          "classification": "ABSENT"
+        },
+        {
+          "gap": "None of the tests above were executed by this session; pass counts come from certification docs",
+          "classification": "NOT_MEASURED"
+        }
+      ]
+    },
+    "8_outage_behaviour": {
+      "facts": [
+        {
+          "fact": "Boot: engineInstance uses createBootRouter() whose client is never configured and whose complete() rejects; any run before engineManager.init() takes the deterministic fallback with routing 'none'",
+          "evidence": "ai/provider.ts:59-72; ai/engineInstance.ts:11-20",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "engineManager states: booting | loading | ready | needs-setup | error; reconfigure failure retains the fail-closed router",
+          "evidence": "ai/engineManager.ts:20,62-83",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "AiEngine.run: unconfigured client -> fallback {grounded:false, model:'none', confidence:0, usage 0, routing:noModelRouting(reason)} with audit outcome 'fallback'; thrown error -> same fallback with the error reason and audit outcome 'error'; the engine never throws to callers",
+          "evidence": "ai/aiEngine.ts:93-105,152-161,180-210",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "PrivateFirstClient: empty plan -> throws planner refusal; all routes fail -> throws 'No permitted AI route could serve this request. Tried: <Location (provider): reason; ...>' naming every attempt",
+          "evidence": "ai/privateFirstClient.ts:74-121",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Planner refusal texts per mode (local_only / private_first / external) instruct the user (start ollama serve, enable external in Settings -> AI, add a provider)",
+          "evidence": "packages/shared/src/types/aiRouting.ts:317-326",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Ollama client errors: 'Ollama timed out after Nms (the model may be loading or too large)' / 'Could not reach Ollama at <url> - is it running? Try: ollama serve'",
+          "evidence": "ai/ollamaClient.ts:86-90",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Assistant: when ai.grounded is false the envelope gets aiOffline=true, confidence 0, reasoningSummary 'No model was reachable - showing deterministic findings only.', processing = routing stamp; deterministic findings/structured reports still render",
+          "evidence": "assistant/assistantService.ts:553-562,599-603",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "Renderer surfaces: AssistantView chip 'AI offline - deterministic'; Session Inspector 'no (deterministic fallback)'; AiHomeView 'No AI route is available - deterministic answers still work, and nothing is sent anywhere.'; AiRoutingPanel states not_configured/disabled/connected/unreachable; ProcessingBadge shows execution-stamped location",
+          "evidence": "renderer/src/assistant/AssistantView.tsx:279; assistant/assistantViewModel.ts:106,161; firstRun/AiHomeView.tsx:218,246; settings/AiRoutingPanel.tsx:35-37",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "routingStatus() probes Ollama reachability live (detectOllama) but cloud routes are shown 'connected' merely because a key is stored - no cloud reachability probe; getHealth() for cloud is passive (configured flag only)",
+          "evidence": "ai/aiConfigIpc.ts:138-182,190-206",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "M365 draft outage text: 'No draft was generated (the AI model may not be configured). You can still compose manually.'; AI QA generate swallows errors to empty text",
+          "evidence": "connectors/m365/aiDrafts.ts:44-52; runtimeCore.ts:4515-4517",
+          "classification": "MEASURED"
+        },
+        {
+          "fact": "No circuit breaker: every subsequent turn re-attempts the full route list with full timeouts",
+          "evidence": "privateFirstClient.ts:80-113; no state kept across calls",
+          "classification": "ABSENT"
+        },
+        {
+          "fact": "No user-visible degradation state for a slow-but-alive provider (no per-turn deadline shorter than the client timeouts; cancel is manual)",
+          "evidence": "assistantService.ts:252-256,515-517",
+          "classification": "ABSENT"
+        }
+      ]
+    }
+  },
+  "evidence_status": {
+    "declared_certification": [
+      {
+        "doc": "certification/GATE8-LIVE-AI-EVIDENCE.md (2026-08-31, branch cert/data-import-cst-integration, base b356682)",
+        "claims": "7 safety properties PASS by independent read; providerWireIntegration 7/7; liveProviderVerification 1 passed / 3 skipped; local Ollama live GREEN on 2026-08-14 (llama3.1, provenance local/ollama/local_only); cloud-live ABSENT (operator keys); Gate 8 YELLOW",
+        "classification": "DECLARED"
+      },
+      {
+        "doc": "certification/PRODUCT-READINESS-MATRIX.md:21",
+        "claims": "Gate 8 AI/Assistant YELLOW; D-4 boot fail-closed closed round 35; live local inference 1.7s on 2026-08-14",
+        "classification": "DECLARED"
+      },
+      {
+        "doc": "certification/AI-PROVIDER-CONNECTION-EVIDENCE.md (2026-08-31, base 545eb1a)",
+        "claims": "one credential-disclosure defect + two robustness defects found and fixed (key-in-TypeError path; non-JSON provider bodies)",
+        "classification": "DECLARED"
+      },
+      {
+        "doc": "DECISIONS.md:19-27 D-13",
+        "claims": "draft lane stays referenceDrafter-served until eval bar (hostile 100%, schema >=95%, zero authority leakage, human review); LiteLLM reserved; zero-model mode permanent",
+        "classification": "DECLARED"
+      },
+      {
+        "doc": "CLAUDE.md:20 (F-P8 correction)",
+        "claims": "a SECOND mail-draft path (M365 panel 'AI draft' -> connectors/index.ts m365Draft -> m365/aiDrafts.ts -> aiEngine.run) DOES invoke a model and never enters the BRAIN-1 gateway",
+        "classification": "DECLARED; source confirmed at connectors/m365/aiDrafts.ts:38 (MEASURED)"
+      }
+    ],
+    "measured_this_session": [
+      {
+        "fact": "Local Ollama daemon reachable at 127.0.0.1:11434 with installed models including qwen3-coder:30b and qwen2.5:0.5b - the local-live test is runnable on this machine now",
+        "evidence": "curl http://127.0.0.1:11434/api/tags (HTTP 200, JSON models list)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "No CI workflow references NP_LIVE_AI, ANTHROPIC_API_KEY, OPENAI_API_KEY, or ollama",
+        "evidence": "grep .github/workflows/*.yml = 0 hits",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Historical evidence root NP-B-016..NP-B-023-RAW-MEASUREMENTS contains no mention of ollama/anthropic/ai engine/liveProvider/NP_LIVE_AI",
+        "evidence": "grep -rliE over /Users/saurabhpatel/neuropause-desktop/NP-B-0*/ = 0 files",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "No document in the repo names gates AI-LIVE-INTEGRATION, AI-TOOL-EXECUTION, AI-SECURITY, or AI-OUTAGE",
+        "evidence": "grep -rlE across *.md/*.json/*.txt = 0",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "Last AI-subsystem commits: acdb68a (S162 ActionRecordStore.flush), 2211923 (S160 win32), 911a436/74ff1fe/06127b1/9ea010e (S129-S135 grounding), 49f5566/02d8baa (S117/S118 proposal metadata), 17d4798 (aiConfig:test oracle), 75a8b3c (key leak)",
+        "evidence": "git log --oneline -15 -- apps/desktop/src/main/{ai,assistant,liveBrain} packages/ai-runtime",
+        "classification": "MEASURED"
+      }
+    ],
+    "not_measured": [
+      "No vitest file was executed (rules: background revalidation running; the live test's afterEach deletes tenant-ai-preference.json relative to apps/desktop, a transient write inside the read-only repo).",
+      "No vendor API was contacted.",
+      "Model-id validity against vendor catalogs (skill load denied)."
+    ]
+  },
+  "gate_assessments": [
+    {
+      "gate": "AI-LIVE-INTEGRATION",
+      "status": "WAITING_FOR_OPERATOR_SECRET",
+      "reason": "Cloud-live completion (Anthropic/OpenAI) has never been measured on any HEAD - it is env-gated on operator keys (liveProviderVerification.test.ts:42-44,84-104) and CI never sets NP_LIVE_AI. Local-live is DECLARED GREEN once on 2026-08-14 on branch cert/data-import-cst-integration, not at cec399f; it is MEASURABLE on this machine now (Ollama reachable with models) via `cd apps/desktop && NP_LIVE_AI=1 npx vitest run src/main/ai/liveProviderVerification.test.ts` (note: the test transiently writes/deletes tenant-ai-preference.json in cwd). Architecture is direct client->vendor with no server gateway (ABSENT)."
+    },
+    {
+      "gate": "AI-TOOL-EXECUTION",
+      "status": "PASS",
+      "reason": "Source-verified (not test-executed here): no multi-turn tool loop exists; every model call is one completion with no tools parameter (aiEngine.ts:107-114, modelClient.ts:14-19); assistant toolCalls are locally-authored records of deterministic operations; execution reaches ExecuteEngine only through human decideStep on approval-gated automation/worker steps (assistantService.ts:642-750) or the L6 ASK-only mail.send gate (proposalExecutionBoundary.ts:56-93, executionGate.ts:91-223). Residuals: execution-gate stateHash is a placeholder (executionGate.ts:93-95); verifyEffect productionWired:false (executionGate.ts:68); if the gate expects a functioning agentic tool loop, that capability is ABSENT by design."
+    },
+    {
+      "gate": "AI-SECURITY",
+      "status": "FAIL",
+      "reason": "Key custody PASSES (Vault via safeStorage, booleans-only DTOs, header-safety + redaction, providerManager.ts:31-36 / aiConfigIpc.ts:93-116 / apiKeyGuard.ts:44-94). FAIL drivers, all MEASURED: (1) AssistantAsk is a PUBLIC IPC channel (runtimeAuthz.ts:1169-1175) so an unauthenticated renderer message can drive retrieval + a billable model call; (2) no rate limit anywhere in ipc/ (0 files) and no cost cap/quota (0 hits) - aiAuthzGate.ts:175-178 records the spend concern; (3) no prompt-injection tests against the reasoning prompts and Context Builder governanceFilter is allow-all (contextBuilder.ts:194-197); (4) a 6.9 MB built main bundle apps/desktop/index.js is tracked at HEAD (cec399f). Gate criteria were not supplied; downgrade to WAITING_FOR_HUMAN if the operator accepts (1)-(2) as product policy."
+    },
+    {
+      "gate": "AI-OUTAGE",
+      "status": "PASS",
+      "reason": "Source-verified fallback chain: fail-closed boot router (provider.ts:59-72), engine never throws (aiEngine.ts:93-105,152-161), composite names every failed route (privateFirstClient.ts:118-121), assistant marks aiOffline with deterministic findings still rendered (assistantService.ts:553-562), renderer chips/messages present (AssistantView.tsx:279, AiHomeView.tsx:218, AiRoutingPanel.tsx:35-37). Residuals (ABSENT): no circuit breaker; worst-case 240 s sequential timeouts per turn; cloud 'connected' state is key-presence only, no reachability probe (aiConfigIpc.ts:161-164,190-206). Not exercised live in this session."
+    }
+  ],
+  "gaps": [
+    "Cloud-live (Anthropic/OpenAI) completion has never been measured; requires operator keys entered via Secure Vault or env in the operator's shell.",
+    "Local-live evidence is dated 2026-08-14 on a different branch/HEAD; not re-measured at cec399f.",
+    "Vendor model-id validity (claude-haiku-4-5-20251001, claude-sonnet-4-6, claude-opus-4-8, gpt-4o) not verified this session.",
+    "All test pass counts are DECLARED (certification docs); nothing was executed here.",
+    "Historical evidence root (NP-B-016..023) carries zero AI-subsystem evidence.",
+    "No repo document names the four AI gates; Gate 8 (AI/Assistant) is the closest and is YELLOW.",
+    "Execution-time state-hash drift check is a placeholder (tenantId), so 'state changed since proposal' cannot fire at the production gate.",
+    "L6 verification oracle is productionWired:false; only mail.send is gated; all other capabilities declared unverifiable.",
+    "A second model-invoking draft path (connectors/m365/aiDrafts.ts) bypasses the BRAIN-1 gateway's zod/repair guards (documented in CLAUDE.md:20 F-P8)."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Run the env-gated local-live test at cec399f to upgrade local-live from DECLARED to MEASURED (Ollama is reachable now): cd apps/desktop && NP_LIVE_AI=1 npx vitest run src/main/ai/liveProviderVerification.test.ts; capture output as evidence",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/ai/liveProviderVerification.test.ts"
+      ],
+      "risk": "transient write/delete of tenant-ai-preference.json in apps/desktop cwd; 180 s timeout; contention with background revalidation"
+    },
+    {
+      "action": "Remove the tracked built bundle apps/desktop/index.js from git and add it to .gitignore",
+      "effort": "S",
+      "files": [
+        "apps/desktop/index.js",
+        ".gitignore"
+      ],
+      "risk": "none functional; verify no script references the root-level file"
+    },
+    {
+      "action": "Add a per-tenant/per-install rate limit and a configurable daily USD cap around AiEngine.run (UsageTracker already holds per-tenant totals)",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/ai/aiEngine.ts",
+        "apps/desktop/src/main/ai/usageTracker.ts",
+        "apps/desktop/src/main/ai/aiConfigStore.ts"
+      ],
+      "risk": "policy values need a human decision; must fail closed to deterministic fallback, not throw"
+    },
+    {
+      "action": "Add prompt-injection regression tests: retrieved context items containing instructions must not alter the assistant.workspace JSON contract or produce action claims; pin with MockModelClient replies",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/assistant/assistantService.test.ts",
+        "apps/desktop/src/main/ai/promptManager.ts"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Replace the Phase-0 placeholder stateHash in l6ExecutionGate with the propose-lane canonical hash so state-drift refusal is live",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/liveBrain/executionGate.ts",
+        "apps/desktop/src/main/liveBrain/brainProposeLane.ts",
+        "apps/desktop/src/main/liveBrain/proposalStore.ts"
+      ],
+      "risk": "design change to a frozen-adjacent gate; needs the propose seam to carry the hash"
+    },
+    {
+      "action": "Add a short-lived circuit breaker / cool-down per route in PrivateFirstClient after N consecutive failures, and a cloud reachability probe for routingStatus 'connected'",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/ai/privateFirstClient.ts",
+        "apps/desktop/src/main/ai/aiConfigIpc.ts"
+      ],
+      "risk": "must preserve execution-stamped provenance semantics"
+    },
+    {
+      "action": "Route connectors/m365/aiDrafts.ts through mailDraftGateway parse/zod guards or document it as a separate reviewed lane",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/connectors/m365/aiDrafts.ts",
+        "apps/desktop/src/main/ai/brain/mailDraftGateway.ts"
+      ],
+      "risk": "low; draft is review-only text"
+    }
+  ],
+  "human_decisions_required": [
+    "Whether AssistantAsk / AssistantCancel remain PUBLIC (unauthenticated) IPC channels for public launch, given they trigger tenant-scoped retrieval and billable model calls (runtimeAuthz.ts:1169-1175).",
+    "Whether public launch requires a measured cloud-live completion (operator must supply ANTHROPIC_API_KEY / OPENAI_API_KEY via Secure Vault or shell env for the gated test) or whether local-only (Ollama) is the launch posture.",
+    "Whether the direct client->vendor architecture (no server-side AI gateway, each install holds its own key, no central metering/kill-switch) is accepted for public launch.",
+    "Rate-limit and cost-cap policy values, if adopted.",
+    "Whether an org manager may validity-probe the stored install key via aiConfig:test (org:manage) or whether that channel should require cloud:operate (aiAuthzGate.ts:74-97 records the tradeoff).",
+    "Whether the tracked apps/desktop/index.js bundle in HEAD cec399f was intentional."
+  ]
+}

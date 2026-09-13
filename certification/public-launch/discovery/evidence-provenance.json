@@ -1,0 +1,761 @@
+{
+  "key": "evidence-provenance",
+  "generated_at": "2026-09-12",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "porcelain_count": 0,
+    "version": "1.0.0-rc.30",
+    "classification": "MEASURED (git rev-parse / git status / package.json:3)"
+  },
+  "method": "Read-only. Files read in full or in cited ranges; targeted grep; node -e for digest experiments and kernel import; bash certification/verify-freeze.sh (read-only) and certification/verify-freeze.test.sh with TMPDIR confined to the scratchpad. No builds, no full suites, no network, no secrets read. Local userData evidence files were probed for existence/row counts only (none exist).",
+  "architecture_invariant_under_audit": "HUMAN -> CONTROL -> COMPUTE -> EVIDENCE -> VERIFICATION -> HUMAN DECISION. AI proposes; policy/authority governs; Computer-B executes; Computer-A verifies; Human decides. AI never authorizes; client never final authority; network != authorization; stale authorization rejected.",
+  "subsystem_map": {
+    "apps/desktop/src/main/evidence/": {
+      "files": [
+        "recordFingerprint.ts (52 lines) — the ONLY file in the directory"
+      ],
+      "role": "RECORD-FINGERPRINT authority: sha256(lowercase, whitespace-collapsed, trimmed).slice(0,16); empty -> ''. Purpose is PRIVACY (no subject/body on disk) with a comparison codomain; it is NOT a row-integrity digest.",
+      "evidence": "apps/desktop/src/main/evidence/recordFingerprint.ts:9-20,38-52"
+    },
+    "apps/desktop/src/main/connectors/actionRecord.ts": {
+      "role": "The durable, tenant-scoped, append-only ActionRecord store (S34a). Persisted at <userData>/action-records.json as {schemaVersion:1, records:[...]}. Observer (never a gate). Exposes observe / observeGovernance / recordVerification / query / flush; seam-22 createActionRecordReader(dir) gives a query-only fresh reader over the persisted file.",
+      "evidence": "actionRecord.ts:35,38-57,115-186,305-329,372-397,417-468,474-534,561-586,589-602,614,623-630"
+    },
+    "apps/desktop/src/main/executionStore.ts": {
+      "role": "Execute-engine session persistence ({sessions:[...]}, per-tenant cap 500, tmp+rename). Carries decisionId/bindingDigest/claimNonce for governed executions. No digest/chain.",
+      "evidence": "executionStore.ts:55-60,116-133,186-198; packages/shared/src/types/executeEngine.ts:76-116"
+    },
+    "apps/desktop/src/main/decisions/": {
+      "role": "DecisionRecordStore (decision-records.json, cap 2000) and HoldStore (holds.json, cap 2000) over AppendOnlyJsonStore (append + in-place mutate, capped eviction confined to writing scope; fail-quiet persist). IPC: DecisionRecordList/Get, HoldList/Resolve.",
+      "evidence": "decisions/appendOnlyStore.ts:10-16,256-319,330-344,368-384; decisionService.ts:89-110; holdStore.ts:27,42-77; instances.ts:18-29; index.ts:50-113"
+    },
+    "apps/desktop/src/main/cst/": {
+      "role": "Adapters over the vendored kernel: sendTransition (mail.send), governedAction (M365 cohorts 1/2A/2B-i/2B-ii), importTransition (data import); boundDecisionClaim/-Mint (8-field canonical binding digest, no signature); durableIdempotencyStore (Node-20 JSON intent ledger, atomic rename, no fsync).",
+      "evidence": "cst/sendTransition.ts:1-25,154-300; governedAction.ts:1-28,243-375; importTransition.ts:1-17,193-259; boundDecisionClaim.ts:10-29,52-58,74-76,128-139; durableIdempotencyStore.ts:1-28,188-195"
+    },
+    "vendored kernel @neuropause/cst 1.3.0": {
+      "tgz": "apps/desktop/vendor/neuropause-cst-1.3.0.tgz sha256 293d056047346631c72dd117b50733162b5ae08448f3c2bdedd73703cbceb431 (MEASURED shasum)",
+      "declared_description": "Consequential State Transition reference kernel — the executable half of NPMS-1.0 (node_modules/@neuropause/cst/package.json:4)",
+      "listing": "package/dist/src/{camera,durable,index,kernel,payment,shadow,stores,types}.js + .d.ts, package/src/*.ts, package/test/* (tar tzf)",
+      "provides": "CstKernel.run(request, effect): identify -> govern -> approval -> CLAIM -> revalidate -> idempotency -> execute -> observe -> verify -> evidence (kernel.js:4-8). 18 guards, all true by default (MEASURED via node import: ALL_GUARDS count 18, all true). Typed ids (TransitionId, RequestId, ExecutionId, ApprovalId, EvidenceId, IdempotencyKey, FencingToken). Approval binds 9 things. EvidenceRef{evidenceId, source, observedAt, freshnessRequirementMs}. TransitionOutcome envelope with verdict/reason/claimed/fencingToken/executed/executionId/verification/verificationProposition/outcomeClass/timeline. EvidenceStore = in-memory append-only array of frozen {transitionId, stage, at, detail}; forTransition(id); no digest, no persistence. DurableStore (SQLite via node:sqlite, Node>=22) unused by desktop. ShadowEffect/PaymentRailCapabilities (payment/shadow) unused by desktop.",
+      "evidence": "node_modules/@neuropause/cst/dist/src/types.d.ts:17-23,55-80,116-198; stores.d.ts:179-191; stores.js:188-195; kernel.js:22-31,61-64,373-398; durable.js:20-45; certification/source-update/CST-1.3.0-DEFECTS-FOUND.md:10-46"
+    },
+    "apps/backend/src/pilot/": {
+      "role": "Pilot lifecycle: consents, enrollments, pilot_events (append via INSERT), human_decisions (INSERT). Authority guard: NO_AUTHORITY_CONFIGURED -> UNKNOWN; applyHumanDecision withholds unless explicit ALLOW -> HTTP 403 human_decision_required in production.",
+      "evidence": "pilot/types.ts:63-71; service.ts:101-146; authority.ts:46-50,56-91; router.ts:23-30,103-110; repository.ts:58-64; apps/backend/src/db/migrations/0013_pilot.sql:24-42"
+    },
+    "apps/backend/src/pausecloud/interfaces.ts": {
+      "role": "PauseCloud = INTERFACE BOUNDARY ONLY, DESIGN_ONLY / NOT_IMPLEMENTED. EvidenceObject{objectDigest,sizeBytes,mediaType,createdAt,verificationState UNVERIFIED|DIGEST_VERIFIED}; EvidenceReference; ProvenanceRecord{recordId,objectDigest,parentDigests,producedBy,producedAt}; RetentionPolicy; DeletionRequest/Decision (decidedByHumanId); StorageReceipt{objectDigest,provider,storedAt,tier}; PauseCloudStorageProvider put/get, deliberately no delete. Zero importers.",
+      "evidence": "pausecloud/interfaces.ts:1-13,14-20,27-44,72-85; grep 'pausecloud' apps/backend/src -> only this file"
+    },
+    "packages/certification/": {
+      "role": "NCEA 16.0 validation matrix: hard-coded TypeScript constants (VALIDATION_MATRIX with typed-in test counts, CERTIFICATION_AREAS) plus a benchmark harness. Produces no digest-bound evidence objects; not referenced by any CI workflow.",
+      "evidence": "packages/certification/src/index.ts:1-13; validationMatrix.ts:15-17,35-135; constants.ts:2; grep 'certification' .github/workflows -> only certification-freeze.yml (scripts, not this package)"
+    },
+    "certification/verify-freeze.sh + verify-freeze.test.sh": {
+      "role": "Freeze integrity: baseline ancestry + source diff (certification/ and 7 doc files excluded) + commits-since listing with author; exit 0 INTACT / 1 BROKEN / 2 NO BASELINE. Test drives real scripts in throwaway repos.",
+      "evidence": "certification/verify-freeze.sh:18-22,36,57-109; verify-freeze.test.sh:42-147; .github/workflows/certification-freeze.yml:60,66"
+    },
+    "certification/pilot-gate-closure/": {
+      "role": "TR-GPR-01 state snapshot (DESIGNATED:false), TR-GPR-02 claim register (all NEITHER_ADOPTED_NOR_EXCLUDED, VERIFIER NOT_SELECTED), TR-GPR-03 test<->artifact binding (3 execution records), PILOT-OPERATOR-DESIGNATION (recorded, not made, by machine), GATE-STATUS-BOARD, REVIEWER-BRIEFING-PACK.",
+      "evidence": "TR-GPR-01-STATE-SNAPSHOT.json:8-14,15-31,58; TR-GPR-02-PILOT-CLAIM-REGISTER.json:9-10,45-52,60; TR-GPR-03-TEST-ARTIFACT-BINDING.json:4-9,10-107; GATE-STATUS-BOARD.md:28-54"
+    },
+    "scripts/make-release-manifest.cjs": {
+      "role": "Windows-only founder-handoff manifest: reads build-info (commit/branch/dirty/buildTime/channel/version), sha256 of artifact bytes, Authenticode presence parsed from the PE certificate table; writes release-manifest.json + .sha256 sidecar; refuses without build-info; warns on default local build-info.",
+      "evidence": "scripts/make-release-manifest.cjs:48-57,87-99,112-139,162-176"
+    },
+    "build provenance (generate-build-info.cjs / buildInfo.ts / electron-builder.yml)": {
+      "role": "build-info.json baked as extraResource; fields backendUrl, releaseNotes, connectorClientIds, version, channel, commit (SHORT sha, '-dirty' suffix), branch, dirty (true/false/null), buildTime. Runtime getBuildInfo() surfaces version/channel/commit/buildTime/releaseNotes/runtime versions but NOT branch or dirty.",
+      "evidence": "apps/desktop/scripts/generate-build-info.cjs:58-93,95-118; apps/desktop/src/main/buildInfo.ts:17-25,47-82; apps/desktop/electron-builder.yml:19-21,79,99"
+    }
+  },
+  "evidence_object_schemas": [
+    {
+      "name": "ActionRecord (desktop, action-records.json)",
+      "id_field": "id = `act_<uuid>` (random, not content-derived)",
+      "other_ids": "requestId `req:<idem>:<stamp>` (kernel-minted, may be '' for governance rows); transitionId = admissionRef = `m365-send:<sha256(tenant|connector|account|action|JSON.stringify(params))>` (content-addressed, collides across causally distinct runs by design); correlationId `asst_<uuid>` optional (causal episode)",
+      "digest_fields": "subjectFingerprint / bodyFingerprint = sha256-16 of normalized text (privacy fingerprints of CONTENT, not of the row). NO row digest, NO previous-hash, NO signature.",
+      "time_fields": "at (record_time), requestTime (parsed from requestId, nullable), eventTime (null on all production paths), confirmedAt (optional, human gesture instant), verification.at (verification_time), verification.effectTime (provider stamp)",
+      "provenance_fields": "actor (verbatim D-12), tenantId (HOLDS A WORKSPACE ID — F-P45), connectorId, accountId, actionId, verification.provenance{source, method, oracle}",
+      "state_fields": "verdict (string), executed (bool), outcome (string: ACKNOWLEDGED|UNKNOWN|EXECUTION_FAILED|VERIFIED_NOOP|DENIED|HOLD|ESCALATE|NOT_STARTED|VERIFIED_SUCCESS|VERIFIED_FAILURE|DEVIATION), verification.terminal (D-16 classified)",
+      "mutability": "append-only rows; verification attached once (UNRESOLVED->settled only; settled->anything refused and logged)",
+      "persistence": "JSON file, unique tmp + rename (retry on Windows), envelope schemaVersion 1; shutdown flush barrier registered",
+      "evidence": "actionRecord.ts:69-93,115-186,372-397,434-461,487-525,568-582,614; storeEnvelope.ts:87-89",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "CST kernel EvidenceRecord (in-memory only)",
+      "fields": "{transitionId, stage, at, detail}",
+      "stages_observed_in_kernel": [
+        "REQUESTED",
+        "RECOVERY_BYPASS",
+        "DENIED",
+        "RELATIONSHIP_ASSESSMENT",
+        "HOLD",
+        "BLOCKED",
+        "CLAIM_LOST",
+        "CLAIMED",
+        "IDEMPOTENT_REPLAY",
+        "REPLAY_UNRESOLVED",
+        "RECONCILED",
+        "PREFLIGHT_PRIOR_ATTEMPT",
+        "EXECUTION_ERROR",
+        "EXECUTED",
+        "VERIFICATION"
+      ],
+      "digest_fields": "none",
+      "persistence": "none — each desktop adapter constructs `new EvidenceStore()` per call and no non-test caller ever reads `.forTransition(` (grep: 0 hits). The ledger is discarded when the call returns.",
+      "evidence": "stores.js:188-195; kernel.js:63-64,76,81,87,96,119,129,138,143,152,164,173,182,192,196,212,245,252,275,313,322,373; sendTransition.ts:235; governedAction.ts:322; importTransition.ts:225",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "CST TransitionOutcome (returned envelope)",
+      "fields": "transitionId, verdict, reason, claimed, fencingToken, executed, executionId, duplicateSuppressed, observedPostState, verification (VERIFIED|DEVIATION|UNKNOWN|NOT_APPLICABLE), deviation, timeline{requested,decided,claimed,executionStarted,executionCompleted,verified}, relationshipAssessment, verificationProposition{subject,expected,observed,source,at,relation,scope}, outcomeClass",
+      "persisted_projection": "ActionRecord persists only verdict, executed, transitionId, requestId (surfaced separately), semanticOutcome; fencingToken, executionId, timeline, verificationProposition, reason, relationshipAssessment are NOT persisted (readBack.ts NOT_PERSISTED lists relationship, purpose, policyVersion, approval object, claim/fencingToken)",
+      "evidence": "types.d.ts:143-198; kernel.js:378-395; readBack.ts:123-129; actionRecord.ts:517-521",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "BoundDecisionClaim (in-process, workforce path)",
+      "fields": "decisionId (= verdict.requestId), nonce, bindingDigest = sha256(canonicalize({executor,target,accountId,actionId,params,actor,tenantId,decisionId})), issuedAt, expiresAt",
+      "digest_fields": "bindingDigest (64-hex, canonical JSON, recomputed at Boundary B — never trusted from the claim)",
+      "signature": "none — explicitly 'NOT a bearer token — no Ed25519/HMAC'",
+      "excluded_by_design": "policyVersion (no authoritative per-decision policy version exists)",
+      "durable_consumption": "ExecuteEngine reserves decisionId single-use synchronously, stamps ExecutionSession.{decisionId,bindingDigest,claimNonce}, awaits persist BEFORE the effect, rolls back on persist failure",
+      "evidence": "boundDecisionClaim.ts:17-29,52-58,74-76,128-139; boundDecisionClaimMint.ts:56-92; workforce/execution/boundaryB.ts:1-19,42-60; executeEngine.ts:70-79,143-182",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "ExecutionSession (execute-engine-sessions file)",
+      "fields": "tenantId?, id, kind, label, state, steps[], currentStep, startedAt, completedAt, durationMs, error, resultSummary, result, correlationId?, decisionId?, bindingDigest?, claimNonce?",
+      "digest_fields": "bindingDigest only for governed sessions; no row digest, no chain",
+      "evidence": "packages/shared/src/types/executeEngine.ts:76-116; executionStore.ts:186-198",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "DecisionRecord / HoldRecord (decisions subsystem)",
+      "fields": "DecisionRecord{tenantId?,workspaceId?,id `dec_<uuid>`,at,actor,requestedAction,subject,assessment{risk,recommendation,evidence[{label,detail,count}],alternative},outcome,executed,holdId?}; HoldRecord{...,id `hold_<uuid>`,at,actor,title,subject,decisionId,reason,why,known,unknown,resolution,ifProceeding,status,resolvedAt,resolvedOutcome,resolvedNote}",
+      "digest_fields": "none; no chain; capped at 2000 with eviction confined to the writing scope; holds are mutated in place on resolve",
+      "evidence": "packages/shared/src/types/understanding.ts:179-203,255-279; decisionService.ts:96-110; holdStore.ts:42-77; appendOnlyStore.ts:272-292,312-319",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "Workforce governance audit log (workforce-audit.json) — the ONLY hash-chained + signed evidence store",
+      "integrity": "SHA-256 chain (sha256-chain-v1, genesis sha256('neuropause-audit:<ns>'), step sha256(prev+'\\n'+canonical)); base/head checkpointing on bounded rotation; Ed25519 signature over {namespace, chainAlgo, head} with key provisioned in OS keychain via credentialStore; UNSIGNED when keychain unavailable; integrity exposed on IPC 'security:auditIntegrity.status'",
+      "scope": "workforce governance decisions (allow/deny/require_approval) ONLY — not applied to ActionRecord, DecisionRecord, HoldRecord, ExecutionSession",
+      "evidence": "security/auditChain.ts:23-27,31-41,90-101; security/auditSigner.ts:9-24,86-103; security/signedAuditChain.ts:1-18,114-140; workforce/governance/auditLog.ts:5-11,129,171,175-176; workforce/governance/auditInstance.ts:10; workforce/index.ts:192-202; packages/shared/src/ipc/channels.ts:218",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "Backend HumanDecision / PilotEvent (Postgres)",
+      "fields": "HumanDecision{id uuid, actorId, decisionType commercial|pilot|institutional, subject, decision, reason, createdAt}; PilotEvent{id, userId, enrollmentId, eventType (closed 9-value vocabulary), metadata jsonb, createdAt}",
+      "digest_fields": "none; no chain; no signature; plain INSERT; migration defines no append-only trigger or REVOKE",
+      "reachability": "applyHumanDecision is unreachable in production (authority UNKNOWN -> 403) until an AuthorityEvaluator returning ALLOW is designated (MR-04)",
+      "evidence": "pilot/types.ts:24-35,54-71; 0013_pilot.sql:24-42; service.ts:121-131; authority.ts:16-19,46-50",
+      "classification": "MEASURED"
+    },
+    {
+      "name": "Data-import ProvenanceRecord (dataPlane)",
+      "fields": "recordId, moduleId, planId, sourceTrust, tenantId, ... (per-imported-record provenance, separate class from action evidence)",
+      "evidence": "apps/desktop/src/main/dataPlane/importer.ts:134-146; cst/importTransition.ts:239-258",
+      "classification": "MEASURED (header read)"
+    },
+    {
+      "name": "TR-GPR-* certification objects (COMPUTER_B custody)",
+      "fields": "SCHEMA np.pilot.{state-snapshot,claim-register,test-artifact-binding}/v1; MACHINE/CUSTODY COMPUTER_B; HEAD, TREE, BRANCH, SOURCE_DIGEST (rule declared: sha256 over LF-joined '<path>\\t<sha256>' records, LC_ALL=C sorted, terminal LF), BUILD_DEFINITION_DIGEST (4 files), SNAPSHOT_DIGEST; per-run EXIT_STATUS + STDOUT_STDERR_SHA256 (computed at creation) + ENVIRONMENT; self-digest BINDING_DIGEST / REGISTER_DIGEST",
+      "reproducibility": "SOURCE_DIGEST rule is declared; the self-digests (BINDING_DIGEST a19c919b…, SNAPSHOT_DIGEST 63e78575…, REGISTER_DIGEST 6a6609c7…) carry NO declared rule and were NOT reproduced by any of 13 canonicalisation candidates (JSON.stringify indent 0/2, sorted keys, Python-style separators/ensure_ascii, with/without trailing LF); the emitting script is not in the repo (commit 15c9a57 adds only 5 files).",
+      "evidence": "TR-GPR-01:25-31,58; TR-GPR-03:9,20-28,107; git show --stat 15c9a57; node digest experiment",
+      "classification": "MEASURED (non-reproduction) / ABSENT (emitting script)"
+    },
+    {
+      "name": "build-info.json / release-manifest.json",
+      "fields": "build-info: backendUrl, releaseNotes, connectorClientIds, version, channel, commit (7-char short sha, '-dirty' suffix), branch, dirty (bool|null), buildTime. release-manifest: product, channel, version, build, gitCommit, branch, dirty, buildTime, platform, architecture, installerArch, electronVersion, nodeVersion, artifact, artifactBytes, artifactSha256, signingStatus, notarizationStatus, certificationStatus, testSummary",
+      "digest_fields": "artifactSha256 (manifest, Windows only); update feed sha512 (verify-release-artifacts); NO tree hash, NO source digest, NO full 40-hex commit in build-info",
+      "evidence": "generate-build-info.cjs:58-93; make-release-manifest.cjs:112-139; verify-release-artifacts.cjs:67-69,112",
+      "classification": "MEASURED"
+    }
+  ],
+  "chain_representability": {
+    "question": "Is INTENT->AUTHORITY->POLICY->ACTION->EXECUTION->RESULT->EVIDENCE->VERIFICATION representable end-to-end today?",
+    "answer": "PARTIALLY, as a single-row projection with declared gaps. The kernel models every stage in memory; the persisted ActionRecord keeps ACTION, EXECUTION, RESULT, EVIDENCE (record_time) and VERIFICATION, but INTENT is a constant string that is not persisted, AUTHORITY is reduced to a verdict string + actor (the Approval object, approver, expiry, fencing token are discarded), and POLICY has no version anywhere in the product. There is no HUMAN DECISION stage after VERIFICATION in the desktop evidence model, and the backend HumanDecision path is unreachable in production.",
+    "stages": {
+      "INTENT": {
+        "kernel": "TransitionRequest.intent + purpose (types.d.ts:122-123); adapters pass fixed literals, e.g. 'send a single reviewer-confirmed message via the connector' (sendTransition.ts:218)",
+        "persisted": "NO (readBack.ts:125 'purpose' in NOT_PERSISTED). correlationId (asst_<uuid>) persisted optionally as causal-episode identity (actionRecord.ts:118-134); confirmedAt persisted optionally as the human confirm instant (actionRecord.ts:160-169)",
+        "classification": "MEASURED"
+      },
+      "AUTHORITY": {
+        "kernel": "Approval{approvalId,transitionId,approver,action,scope,resourceVersion,purpose,policyVersion,issuedAt,expiresAt,consumed} minted by the adapter from `confirmed:boolean` with approver = the requesting actor (sendTransition.ts:195-209; governedAction.ts:283-297); kernel checks approver.type!=='AI', SoD (only when declared), binding, scope, expiry (kernel.js:122-173)",
+        "persisted": "Only `verdict` (string) and `actor` (verbatim). The approval object, approvalId, expiry and fencing token are NOT persisted (readBack.ts:127-128). BoundDecisionClaim path persists decisionId+bindingDigest+claimNonce into ExecutionSession (executeEngine.ts:155-157).",
+        "note": "AI cannot self-authorize in the kernel (MODEL_SELF_AUTHORIZATION, kernel.js:111-130) — MEASURED. Human self-approval (requester == approver, type HUMAN) is accepted because no sodActions are declared for send/action/import policies (sendTransition.ts:231-234; governedAction.ts:318-321; importTransition.ts:217-222) — DERIVED.",
+        "classification": "MEASURED/DERIVED"
+      },
+      "POLICY": {
+        "kernel": "PolicyStore(grants, version) evaluate(actor, action, consequence); policyVersion literal 'm365-send-policy-1' / 'm365-action-policy-1' (connectors/index.ts:628; governedAction.ts:68)",
+        "persisted": "NO (readBack.ts:126). certification/baseline.json:15-16 records policy_version as ABSENT product-wide; boundDecisionClaim.ts:24-29 excludes policyVersion deliberately.",
+        "classification": "MEASURED"
+      },
+      "ACTION": {
+        "persisted": "connectorId, accountId, actionId, recipients, subject/body fingerprints, transitionId (content-addressed idempotency identity), admissionRef (actionRecord.ts:504-520)",
+        "classification": "MEASURED"
+      },
+      "EXECUTION": {
+        "kernel": "executionId `exec-N`, fencingToken, timeline.executionStarted/Completed (kernel.js:301-322)",
+        "persisted": "executed:boolean, requestId, requestTime (actionRecord.ts:494-496,518); executionId/fencingToken/timeline NOT persisted",
+        "classification": "MEASURED"
+      },
+      "RESULT": {
+        "persisted": "outcome = semanticOutcome (ACKNOWLEDGED is a transport ack, never verified: sendTransition.ts:66-74,274-276)",
+        "classification": "MEASURED"
+      },
+      "EVIDENCE": {
+        "persisted": "the ActionRecord row itself (at = record_time); the kernel's per-stage EvidenceStore ledger is discarded (no persistence, no reader)",
+        "classification": "MEASURED"
+      },
+      "VERIFICATION": {
+        "persisted": "verification{terminal, internetMessageId, at, provenance{source,method,oracle}, effectTime}; monotonic (D3); classified only via D-16 vocabulary (verificationTerminals.ts:26-39)",
+        "producers": "readBackReconciler (production BackgroundService, 60 s tick, mail.send only, M365 Graph Sent Items/Inbox read-back, width bound 120 s), journalPostEvidence (in-kernel post-state re-read), s16VerifyRun (compile-gated, not production)",
+        "classification": "MEASURED"
+      },
+      "HUMAN_DECISION_AFTER_VERIFICATION": {
+        "persisted": "NONE in the desktop evidence model. readBack/readBackFromDisk have no IPC channel, no UI, no CLI consumer (grep channels.ts for ReadBack: 0; grep importers of reconciliation/readBack.ts outside tests: 0). Backend HumanDecision exists in schema but is withheld (403) in production.",
+        "classification": "ABSENT"
+      }
+    }
+  },
+  "what_verification_means_in_code": {
+    "kernel_verification": "Structural equality JSON.stringify(observedPostState) === JSON.stringify(expectedPostState) over the injected ResourceStore, subject-bound (NPL-23), UNKNOWN when UNOBSERVABLE (kernel.js:326-352). The 'authoritative source' is `resource-store:authoritative` — in every desktop adapter this is an in-memory ResourceStore the adapter itself writes via resources.put(...) inside the effect (sendTransition.ts:237,264,287; governedAction.ts:324,343,363; importTransition.ts:232,248). For Profile A (send, governedAction) post-state is set UNOBSERVABLE so VERIFIED is structurally unreachable; for import the post-state is read back from the destination so VERIFIED is reachable.",
+    "independent_read_back_seam22": "reconciliation/readBack.ts reconstructs request -> verdict -> execution -> observation -> verification from PERSISTED ActionRecord rows only, never from an execute() return value; readBackFromDisk(dir, scopeTenantId, ref) uses createActionRecordReader(dir) — a fresh ActionRecordStore over the persisted file with a query-only surface — so it can catch divergence between process memory and durable evidence (readBack.ts:1-35,237-255; actionRecord.ts:616-630). Requires at least one ref (requestId|transitionId|correlationId); listing is refused. Pinned by reconciliation/readBack.test.ts, fp39Closure.test.ts, compositionRoot.test.ts, fanOutIdentity.test.ts.",
+    "reconciler": "readBackReconciler.ts: READ store -> CLASSIFY -> RECORD terminal -> STOP; HOLD is terminal; never executes; never promotes UNKNOWN; provenance {source:'readBackReconciler', method, oracle:'m365ReadBack:sentItems+inbox'}; subject limb compared by hashing the observed subject with recordFingerprint (D2); interval requestTime<=effect<=at bounded to 120 s (D1). Wired as a BackgroundService in serviceManager.ts:146, started by runtimeCore.ts:4130; fan-out perWorkspace:true to compensate F-P45.",
+    "vocabulary_authority": "verificationTerminals.ts: SUCCESS={VERIFIED_SUCCESS}; FAILURE={VERIFY_FAILED, VERIFIED_FAILURE}; everything else (HOLD, UNKNOWN, VERIFY_PENDING, EXECUTED_ACK, VERIFIED_NOOP, unrecognised) is unresolved. Deny-by-default.",
+    "what_verification_is_NOT": "No verifier outside the executing process/custody exists in code. No signature, counter-signature, or attestation is produced over any ActionRecord. 'Computer-A' does not appear anywhere in the repo (grep docs/ certification/: 0 hits); it exists only in the Downloads evidence corpus. VERIFIER_IDENTITY = NOT_DESIGNATED (REVIEWER-BRIEFING-PACK.md:132; GATE-STATUS-BOARD.md:37).",
+    "classification": "MEASURED except the Computer-A statement which is ABSENT-in-repo"
+  },
+  "tamper_evidence_assessment": {
+    "action_records": "NOT tamper-evident. Append-only is a property of the writer code, not of the file: the persisted JSON array carries no per-row digest, no previous-hash, no signature, no monotonic counter. recordFingerprint.ts:10 claims 'TAMPER-EVIDENCE' but the function only proves that a subject/body matches a hash; a row's other fields (verdict, executed, outcome, verification) can be edited on disk without detection. Envelope quarantine (storeEnvelope.ts) detects CORRUPTION, not tampering. (MEASURED + DERIVED)",
+    "decision_records_holds_executions": "NOT tamper-evident; same shape (JSON files, atomic rename, no digest/chain). Holds are mutated in place on resolve. (MEASURED)",
+    "workforce_audit_log": "Tamper-evident (SHA-256 chain) AND signed (Ed25519 over head, key in OS keychain) — the only store with both. Threat model stated honestly: an attacker with write access to entries + head + keychain can still forge. (MEASURED/DECLARED)",
+    "cst_kernel_evidence": "In-memory, frozen records, append-only by class design, discarded per call. (MEASURED)",
+    "backend_pilot_tables": "NOT tamper-evident; no digest, no chain, no DB-level immutability. (MEASURED)",
+    "certification_objects": "Self-digested but with an undeclared, non-reproduced rule; git commits signed by no one; verify-freeze.sh states the repository cannot attribute a change to a human (verify-freeze.sh:24-27,100-107). FREEZE BROKEN at HEAD (rc=1). (MEASURED)"
+  },
+  "transport_to_computer_A_and_pausecloud": {
+    "in_code": "ABSENT. No module uploads, syncs, exports or streams action-records.json, decision-records.json, holds.json, execute-engine-sessions or workforce-audit.json to the backend or any cloud. The backend /sync router carries SyncEntityType changes (apps/backend/src/sync/router.ts:1-14), not evidence stores (grep 'action-records|actionRecord' apps/backend/src apps/cloud/src: 0). PauseCloud is interface-only, NOT_IMPLEMENTED, with zero importers (pausecloud/interfaces.ts:1-13).",
+    "actual_transport_used_by_A_and_B": "Manual file movement (Safari downloads, zip containers, an HTTP PUT upload server in a Windows VM rig). Recorded in the B-authored evidence corpus, not in the repo. (DECLARED — read from /Users/saurabhpatel/Downloads and /Users/saurabhpatel/neuropause-desktop/NP-B-022)",
+    "S166_upload_sink_defect": "DECLARED in /Users/saurabhpatel/Downloads/NP-B-IMPLEMENTATION-EVIDENCE-CHAIN-20260908-003/NP-B-IMPLEMENTATION-EVIDENCE-CHAIN-20260908-003-RESULT.json:456,3758,4953 — '/Users/saurabhpatel/vm-win11/uploadserver.py writes every PUT into ./uploads/ keyed on basename with mode wb, overwriting silently'; three basename-keyed mechanisms (upload sink, s166a.ps1:30 literal path, beta.yml bare subject) combined with a nine-way basename collision on NeuroPause-Setup.exe. The upload server is OUTSIDE the product repo (not read by this mapper). The measured root cause named there — electron-builder.yml nsis.artifactName: NeuroPause-Setup.${ext} — is UNCHANGED at cec399f (electron-builder.yml:99, MEASURED). B-TRANSFER/READ-THIS-FIRST.md:56 (Downloads) states 'the S166 upload sink is unchanged'. Repo-internal grep for 'upload sink' finds only the S166 boot-marker/audit-integrity comments (CHANGELOG.md:79; workforce/authzGate.ts:24) — different S166 meaning.",
+    "custody_declaration": "TR-GPR objects self-declare MACHINE/CUSTODY COMPUTER_B; NP-B-022 (evidence root) measured that authentication is absent corpus-wide: no signature, certificate or attestation anywhere; every authorship claim is self-declared in-band (NP-B-022/10_ADVERSARIAL_REFUTATION.json:89 point 6). (DECLARED)"
+  },
+  "digest_vs_receipt_vs_transport_vs_custody": {
+    "digest_equality": "Proves two byte sequences are identical. Present as: artifactSha256 + .sha256 sidecar (make-release-manifest.cjs:103,164, Windows only); feed sha512 vs file (verify-release-artifacts.cjs:112-172); SOURCE_DIGEST/TREE/HEAD (TR-GPR-01/03); bindingDigest (boundDecisionClaim.ts:74-76); STDOUT_STDERR_SHA256 (TR-GPR-03:20); recordFingerprint sha256-16 (64-bit truncation — adequate for privacy/comparison, not a collision-resistant integrity digest). Digest equality says NOTHING about who produced the bytes, when, or whether they were delivered.",
+    "receipt": "An assertion by a counterparty that it accepted an object. Present only as: Graph HTTP 202 -> 'ACKNOWLEDGED' (explicitly 'accepted for delivery, NOT verified', sendTransition.ts:69), and PauseCloud StorageReceipt (design-only, not implemented). TR-GPR-03 execution records and the ActionRecord row are SELF-issued observer records, not counterparty receipts. No counter-signed receipt exists anywhere.",
+    "transport": "Movement of an object between custodies with an identity-preserving record. In code: NONE for evidence. Update feed + sha512 is transport integrity for BINARIES to end users, not evidence to Computer-A. A/B transport is manual and, per the evidence corpus, basename-keyed and overwrite-prone.",
+    "custody": "Who holds the object and under what control. Expressed only as self-declared JSON fields (CUSTODY: COMPUTER_B) and git author strings of a machine identity ('NeuroPause Gate Closure <noreply@anthropic.com>'). No signature/attestation binds custody; verify-freeze.sh prints that the repo cannot attribute a change to a human. Custody transitions are unrecorded by any instrument in the repo.",
+    "classification": "MEASURED for repo facts; DECLARED for corpus facts; DERIVED for the distinctions"
+  },
+  "build_provenance": {
+    "generation": "apps/desktop/scripts/generate-build-info.cjs runs in every package:* script before electron-vite build (apps/desktop/package.json:16-28); fields: commit = NEUROPAUSE_BUILD_COMMIT || `git rev-parse --short HEAD` || 'unknown' (SHORT sha); branch; dirty = false if NEUROPAUSE_BUILD_COMMIT set ('caller asserts provenance'), null if not a git worktree, else `git status --porcelain` !== ''; '-dirty' suffix appended to commit; buildTime; channel derived from version prerelease tag; releaseNotes from CHANGELOG section (generate-build-info.cjs:58-118).",
+    "ci": "Neither macos-release.yml nor windows-release.yml sets NEUROPAUSE_BUILD_COMMIT/BRANCH (grep: 0) — CI measures commit/dirty from its checkout. Tag must equal package version (macos-release.yml:60-65). Signing is opt-in/fail-open-to-unsigned (macos-release.yml:84-95). Repo variable PUBLISH_TO_SITE unset (HANDOFF §4) so CI never publishes. (MEASURED + DECLARED)",
+    "runtime_surface": "buildInfo.ts GeneratedBuildInfo omits `branch` and `dirty`; getBuildInfo() cannot report a dirty build (buildInfo.ts:17-25,63-82). The '-dirty' commit suffix is the only runtime-visible trace. (MEASURED)",
+    "local_artifact": "apps/desktop/resources/build-info.json (untracked, written 22:30 today): version 1.0.0-rc.30, channel beta, commit cec399f, branch pilot/public-launch, dirty false, buildTime 2026-09-12T17:00:45.102Z; connectorClientIds {} ; backendUrl present (value not printed). (MEASURED, masked)",
+    "manifest": "release/windows/release-manifest.json is for rc.15 (commit aec87bd, branch feat/understanding-holds-motion-system, artifactSha256 693ae976…, signingStatus NOT CONFIGURED, certificationStatus 'PROGRAM 13C — NOT CERTIFIED'); portable manifest testSummary null. No rc.30 manifest exists; no macOS manifest script exists (grep: 0). (MEASURED)",
+    "label_collision": "electron-builder.yml:99 nsis.artifactName 'NeuroPause-Setup.${ext}' (no version/arch/commit) and :79 dmg 'NeuroPause-${arch}.${ext}' (no version). Every Windows NSIS build ever produced shares one basename — the measured root cause of the nine-way collision in the A/B corpus. (MEASURED)",
+    "guards": "verify-release-artifacts.cjs (feed sha512/size vs disk, content-blind), verify-universal-and-deps.cjs (lipo slices + asar contains all prod deps; added 2026-09-12), verify-acceptance-artifact.cjs (feature-marker presence in asar; content), verify-packaged-content.cjs (absence). None binds an artifact to a tree hash or source digest. (MEASURED)",
+    "certification_freeze": "baseline.json CERT-40616b9 frozen 2026-08-21 at 40616b9 (rc.20), 'absent': api_contract_version, policy_version. verify-freeze.sh at cec399f -> rc=1 FREEZE BROKEN (ANCESTRY OK, SOURCE FAIL: 604 files changed; 8 commits since f0ba0e8 listed with authors). gates.json (8 gates: 7 PASS, 1 BLOCKED) is bound to an even older baseline ee7e5579… / commit 1d208cf -> STALE relative to baseline.json. verify-freeze.test.sh PASS 13 FAIL 0 rc=0. TR-GPR-01 snapshot is at 61b1503 (4 commits behind HEAD) and DESIGNATED:false. (MEASURED)"
+  },
+  "facts": [
+    {
+      "fact": "apps/desktop/src/main/evidence/ contains exactly one file, recordFingerprint.ts (sha256-16 of normalized text; '' for empty). It is a privacy fingerprint with a comparison codomain, not a row digest.",
+      "evidence": "apps/desktop/src/main/evidence/recordFingerprint.ts:9-20,38-52; ls apps/desktop/src/main/evidence",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "ActionRecord row schema: id act_<uuid>, correlationId?, at, requestId, transitionId, requestTime?, eventTime?, confirmedAt?, actor, tenantId, connectorId, accountId, actionId, recipients{to,cc,bcc}, subjectFingerprint, bodyFingerprint, verdict, executed, outcome, admissionRef, verification|null; verification = {terminal, internetMessageId, at, provenance?{source,method,oracle}, effectTime?}.",
+      "evidence": "apps/desktop/src/main/connectors/actionRecord.ts:69-93,115-186",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "ActionRecord rows have no per-row digest, no previous-hash, no signature; the file is {schemaVersion:1, records:[…]} written via unique tmp + rename with Windows rename retry.",
+      "evidence": "apps/desktop/src/main/connectors/actionRecord.ts:372-397; apps/desktop/src/main/storage/storeEnvelope.ts:87-89",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "ActionRecordStore declares append-only retention (no cap, TTL, eviction or delete path); observe/observeGovernance only push; recordVerification mutates verification in place with monotonicity (settled terminals never replaced; refusal logged).",
+      "evidence": "actionRecord.ts:38-57,460,524,573-582",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "ActionRecordStore.flush() (S162) awaits every tracked in-flight persist including fire-and-forget governance emits; registered on the shutdown barrier as 'action-records'.",
+      "evidence": "actionRecord.ts:305-329,614; apps/desktop/src/main/shutdownFlush.ts:36-38,66-73",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Three production producers of ActionRecord rows: execution-class observe after governedSend (fire-and-forget), governance-class observeGovernance for DENY/NOT_EVALUATED at the live-brain gate, and journal.post evidence in finance.",
+      "evidence": "apps/desktop/src/main/connectors/index.ts:642-645; apps/desktop/src/main/liveBrain/executionGate.ts:106-130; apps/desktop/src/main/enterprise/modules/finance/journalPostEvidence.ts:24-58",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "ActionRecord.tenantId holds a WORKSPACE id (F-P45): the send observer passes tenantId: deps.workspaceId(); the reconciler compensates with perWorkspace:true and documents a migration owed.",
+      "evidence": "connectors/index.ts:626,645; apps/desktop/src/main/reconciliation/readBackReconcilerInstance.ts:100-126; readBack.ts:32-35",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "transitionId is content-addressed: m365-send:<sha256(tenant|connector|account|action|JSON.stringify(params))>; two runs with identical params share transitionId/idem by design; correlationId (asst_<uuid>) is the only causal separator and is optional.",
+      "evidence": "apps/desktop/src/main/cst/sendTransition.ts:165-169,198,212; actionRecord.ts:118-134",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "The kernel EvidenceStore is an in-memory array of frozen {transitionId, stage, at, detail}; append-only class; no digest; no persistence.",
+      "evidence": "node_modules/@neuropause/cst/dist/src/stores.js:188-195; stores.d.ts:179-191",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Every desktop adapter constructs a fresh EvidenceStore per call and no non-test code reads it (.forTransition( has 0 non-test callers); the kernel's per-stage evidence ledger is discarded.",
+      "evidence": "sendTransition.ts:235; governedAction.ts:322; importTransition.ts:225; grep '\\.forTransition(' apps/desktop/src/main (non-test): 0",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Kernel stage log vocabulary: REQUESTED, RECOVERY_BYPASS, DENIED, RELATIONSHIP_ASSESSMENT, HOLD, BLOCKED, CLAIM_LOST, CLAIMED, IDEMPOTENT_REPLAY, REPLAY_UNRESOLVED, RECONCILED, PREFLIGHT_PRIOR_ATTEMPT, EXECUTION_ERROR, EXECUTED, VERIFICATION.",
+      "evidence": "node_modules/@neuropause/cst/dist/src/kernel.js:64-373 (grep log(')",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Kernel declared order: identify -> govern -> approval -> CLAIM -> revalidate -> idempotency -> execute -> observe -> verify -> evidence; 18 guards all true by default; production must run all on.",
+      "evidence": "kernel.js:4-8,13-21; kernel.d.ts:18-38; node import ALL_GUARDS count=18 all true",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Kernel forbids AI self-authorization: an AI actor needs an approval and an AI approver is BLOCKED (MODEL_SELF_AUTHORIZATION); approval binding/scope/expiry/constraints enforced.",
+      "evidence": "kernel.js:111-173",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "In all three desktop adapters the approval is minted from confirmed:boolean with approver = the requesting actor (type HUMAN), and no separation-of-duties action is declared, so requester == approver is accepted by the kernel.",
+      "evidence": "sendTransition.ts:160,195-209,231-234; governedAction.ts:264,283-297,318-321; importTransition.ts:180-181,217-222",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "All three adapters pass evidence: [] to the kernel, so the evidenceFreshness guard (NP-NC-06) has nothing to evaluate.",
+      "evidence": "sendTransition.ts:224; governedAction.ts:314; importTransition.ts:209; kernel.js:177-183",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "Kernel verification is STRUCTURAL_EQUALITY of JSON.stringify(observed) vs expected over the injected ResourceStore; UNKNOWN when UNOBSERVABLE or subject-mismatch; the proposition source is 'resource-store:authoritative'.",
+      "evidence": "kernel.js:324-364",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "For send and governedAction (Profile A) the adapter writes UNOBSERVABLE into the ResourceStore after the effect, so kernel verification is always UNKNOWN and VERIFIED_SUCCESS is structurally unreachable; ACKNOWLEDGED is a transport ack only.",
+      "evidence": "sendTransition.ts:17-20,66-74,187-190,285-288; governedAction.ts:14-18,276-278,363",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "The kernel's 'authoritative' ResourceStore in every desktop adapter is an in-memory store written by the adapter itself inside the effect; kernel verification is therefore not independent of the executing process.",
+      "evidence": "sendTransition.ts:236-237,264,287; governedAction.ts:323-324,343,363; importTransition.ts:231-232,248",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "importTransition reads the post-state back from the destination, so the kernel can reach VERIFIED; classifyImport splits VERIFIED_SUCCESS into VERIFIED_SUCCESS / VERIFIED_NOOP and passes VERIFIED_FAILURE, DEVIATION, UNKNOWN verbatim.",
+      "evidence": "importTransition.ts:227-250,268-285",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "readBack.ts NOT_PERSISTED = ['relationship','purpose','policyVersion','approval (object; only the verdict it produced is recorded)','claim/fencingToken'] — stated structurally, never inferred.",
+      "evidence": "apps/desktop/src/main/reconciliation/readBack.ts:118-129",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "readBack final-status rungs: REFUSED, GATE_NOT_EVALUATED, REQUESTED, DENIED, AUTHORIZED, EXECUTED, PROVIDER_ACKNOWLEDGED, UNKNOWN, VERIFIED_FAILURE, VERIFIED_SUCCESS; classification goes only through the D-16 authority; a success-looking string outside verification is never trusted.",
+      "evidence": "readBack.ts:8-16,54-64,131-150",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "SEAM-22 §21 independent reader: createActionRecordReader(dir) builds a fresh ActionRecordStore over the persisted file with a query-only surface; readBackFromDisk uses it so a divergence between process memory and durable evidence is catchable.",
+      "evidence": "actionRecord.ts:616-630; readBack.ts:237-255",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No IPC channel, UI, or CLI exposes readBack/readBackFromDisk; the only importers of reconciliation/readBack.ts are its tests.",
+      "evidence": "grep -i readback packages/shared/src/ipc/channels.ts: 0; grep readBackFromDisk|reconstructReadBack|from './readBack' apps/desktop/src/main (non-test): only readBack.ts",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "D-16 vocabulary: SUCCESS_TERMINALS={VERIFIED_SUCCESS}; FAILURE_TERMINALS={VERIFY_FAILED, VERIFIED_FAILURE}; all else unresolved (deny-by-default).",
+      "evidence": "apps/desktop/src/main/verification/verificationTerminals.ts:23-39",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "readBackReconciler is a production BackgroundService (60 s tick) registered in serviceManager and started from runtimeCore; it reads the store, classifies, records a terminal with provenance {source:'readBackReconciler', method, oracle:'m365ReadBack:sentItems+inbox'}, never executes, never resolves a HOLD; corroboration width bounded to 120 s.",
+      "evidence": "readBackReconciler.ts:1-49,292-312; readBackReconcilerInstance.ts:30-38,60-71,121-126; apps/desktop/src/main/services/serviceManager.ts:144-146; apps/desktop/src/main/runtimeCore.ts:4130",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "The Graph read-back reconciler only considers actionId === 'mail.send'; journal.post rows are structurally invisible to it and governedAction cohort rows have no oracle (Profile A), so their verification stays absent.",
+      "evidence": "journalPostEvidence.ts:12-14 (cites readBackReconciler.ts:184); governedAction.ts:14-18",
+      "classification": "DECLARED (comment) / DERIVED"
+    },
+    {
+      "fact": "e2e/s16VerifyRun.ts (the historical first read-back caller) is compile-gated by __NP_E2E__ and structurally absent from release builds; RULE-012 provenance is pinned by constitutionalInvariants.test.ts which notes it is NOT a production path.",
+      "evidence": "apps/desktop/src/main/e2e/s16VerifyRun.ts:1-9,75-88; apps/desktop/src/main/constitutionalInvariants.test.ts:445-491",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Verification monotonicity ruling D3: an observation failure downgrades certainty, never the recorded terminal; settled->settled (late NDR) is also refused pending its own ruling; tenantId is required on recordVerification because transitionId collides by construction.",
+      "evidence": "actionRecord.ts:536-586",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Hash chaining + Ed25519 signing exist only for the workforce governance audit log: AuditChain (sha256-chain-v1), signAuditChainHead over {namespace, chainAlgo, head}, key provisioned in OS keychain via credentialStore, UNSIGNED when keychain unavailable, status on IPC 'security:auditIntegrity.status'. Not applied to action-records, decision-records, holds, or execution sessions.",
+      "evidence": "apps/desktop/src/main/security/auditChain.ts:31-41,90-101; security/signedAuditChain.ts:114-140; workforce/governance/auditLog.ts:5-11,129,171; workforce/index.ts:192-202; packages/shared/src/ipc/channels.ts:218; actionRecord.ts imports (lines 17-32) contain no auditChain",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "AuditChain threat model: detects accidental corruption and casual tampering; an attacker with write access to entries AND head can forge; the signature closes that unless the keychain key is also compromised; recommended mitigation is external WORM/SIEM which does not exist.",
+      "evidence": "security/auditChain.ts:23-27; security/auditSigner.ts:9-14",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "BoundDecisionClaim: bindingDigest = sha256(canonicalize(8 fields)); no signature ('NOT a bearer token'); policyVersion excluded because no authoritative per-decision policy version exists; Boundary B recomputes the digest and never trusts the claim's own digest; ExecuteEngine consumes decisionId single-use and persists the session before the effect.",
+      "evidence": "cst/boundDecisionClaim.ts:17-29,74-76; workforce/execution/boundaryB.ts:1-19; executeEngine.ts:143-182",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "certification/baseline.json records api_contract_version and policy_version as ABSENT in the product: 'G9 (verdict reproducibility) cannot pass without a policy version to reproduce against'.",
+      "evidence": "certification/baseline.json:15-16",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "ExecutionStore persists {sessions:[…]} with a per-tenant cap of 500, tmp+rename, no digest; archiveOlderThan has no production caller.",
+      "evidence": "apps/desktop/src/main/executionStore.ts:35-47,55-60,116-133,186-198",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "DecisionRecordStore/HoldStore extend AppendOnlyJsonStore: capped at 2000 with eviction confined to the writing scope, in-place mutate (holds resolve), fail-quiet persist (a failed write never fails the act it records), no digest/chain.",
+      "evidence": "decisions/appendOnlyStore.ts:10-16,256-319,368-384; decisionService.ts:89-110; holdStore.ts:27,68-77",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Backend HumanDecision {id, actorId, decisionType, subject, decision, reason, createdAt} and PilotEvent rows are plain INSERTs into Postgres tables with no digest, no chain, and no DB-level append-only enforcement in the migration.",
+      "evidence": "apps/backend/src/pilot/types.ts:54-71; apps/backend/src/pilot/repository.ts:47-64; apps/backend/src/db/migrations/0013_pilot.sql:24-42",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Backend applyHumanDecision fails closed on the authority predicate: production supplies no evaluator, resolveAuthority yields UNKNOWN, isPermitted is false, so POST /pilot/decision returns 403 human_decision_required for every caller; own-property and coercion hardening present.",
+      "evidence": "apps/backend/src/pilot/service.ts:101-131; authority.ts:46-50,56-106; router.ts:23-30,103-110",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "PauseCloud is an interface-only, NOT_IMPLEMENTED boundary (EvidenceObject/EvidenceReference/ProvenanceRecord/StorageReceipt/PauseCloudStorageProvider without delete) with zero importers in the backend.",
+      "evidence": "apps/backend/src/pausecloud/interfaces.ts:1-13,14-85; grep pausecloud apps/backend/src -> only the file itself",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No code path exports, uploads or syncs any desktop evidence store to the backend or cloud; the /sync router carries SyncEntityType changes only.",
+      "evidence": "apps/backend/src/sync/router.ts:1-14; grep 'action-records|actionRecord' apps/backend/src apps/cloud/src: 0 hits",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "The phrase 'Computer-A'/'COMPUTER_A' does not occur in the repo's docs/ or certification/; the A/B custody model exists only in the external evidence corpus.",
+      "evidence": "grep -rl 'COMPUTER_A|Computer-A|Computer A' docs certification: 0",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "The 'S166 upload sink' overwrite-by-basename defect is recorded in the B-authored evidence corpus (uploadserver.py in /Users/saurabhpatel/vm-win11 writes each PUT to ./uploads/ keyed on basename, mode wb) and its measured root cause is electron-builder.yml nsis.artifactName 'NeuroPause-Setup.${ext}'.",
+      "evidence": "/Users/saurabhpatel/Downloads/NP-B-IMPLEMENTATION-EVIDENCE-CHAIN-20260908-003/NP-B-IMPLEMENTATION-EVIDENCE-CHAIN-20260908-003-RESULT.json:455-456,3758-3760,4953",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "At cec399f the NSIS artifactName is still the constant 'NeuroPause-Setup.${ext}' and the dmg artifactName 'NeuroPause-${arch}.${ext}' carries no version or commit; the label-collision root cause is unchanged.",
+      "evidence": "apps/desktop/electron-builder.yml:79,99",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Repo-internal 'S166' references are about boot markers and the signed-audit-chain integrity channel, not an upload sink.",
+      "evidence": "CHANGELOG.md:79; apps/desktop/src/main/workforce/authzGate.ts:24; grep 'upload sink' repo: 0 code hits",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "build-info.json fields: backendUrl, releaseNotes, connectorClientIds, version, channel, commit (SHORT sha via `git rev-parse --short HEAD`, '-dirty' suffix when dirty), branch, dirty (true|false|null), buildTime. NEUROPAUSE_BUILD_COMMIT forces dirty=false ('caller asserts provenance').",
+      "evidence": "apps/desktop/scripts/generate-build-info.cjs:58-118",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Neither release workflow sets NEUROPAUSE_BUILD_COMMIT/BRANCH; CI measures commit/dirty from its checkout. Signing is opt-in and fails open to unsigned.",
+      "evidence": "grep NEUROPAUSE_BUILD_COMMIT .github/workflows: 0; .github/workflows/macos-release.yml:84-95,116-120; windows-release.yml:78-88",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Runtime getBuildInfo() does not surface `branch` or `dirty` (GeneratedBuildInfo omits them); a dirty build is visible at runtime only through the '-dirty' commit suffix.",
+      "evidence": "apps/desktop/src/main/buildInfo.ts:17-25,63-82",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Local apps/desktop/resources/build-info.json (untracked build output, 22:30 today): version 1.0.0-rc.30, channel beta, commit cec399f, branch pilot/public-launch, dirty false, buildTime 2026-09-12T17:00:45.102Z, connectorClientIds {}, backendUrl present (value not printed).",
+      "evidence": "apps/desktop/resources/build-info.json (masked node read); ls -la",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No build artifact carries a tree hash, source digest, or full 40-hex commit; the only artifact digests are the Windows manifest sha256 and the update-feed sha512.",
+      "evidence": "generate-build-info.cjs:71; make-release-manifest.cjs:103,134; verify-release-artifacts.cjs:67-69,112",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "make-release-manifest.cjs is Windows-only (platform 'win32' hard-coded, PE Authenticode parsing), refuses without build-info, warns on default local build-info, writes release-manifest.json + .sha256 sidecar. No macOS manifest script exists.",
+      "evidence": "scripts/make-release-manifest.cjs:48-57,87-99,112-139,162-164; grep release-manifest apps/desktop/scripts .github/workflows: 0",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "release/windows/release-manifest.json describes rc.15 (commit aec87bd, branch feat/understanding-holds-motion-system, dirty false, artifactSha256 693ae976…, signingStatus NOT CONFIGURED, certificationStatus 'PROGRAM 13C — NOT CERTIFIED'); the portable manifest has testSummary null. No rc.30 manifest exists.",
+      "evidence": "release/windows/release-manifest.json:1-27; release-manifest-portable.json:1-21",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "certification/baseline.json = CERT-40616b9, frozen 2026-08-21T19:06:39Z at 40616b9 on cert/data-import-cst-integration, desktop 1.0.0-rc.20; certification/ and 7 doc files are excluded from the source spec.",
+      "evidence": "certification/baseline.json:3-9; verify-freeze.sh:36",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "bash certification/verify-freeze.sh at cec399f exits 1 FREEZE BROKEN: ANCESTRY OK, SOURCE FAIL (604 files changed, 233446 insertions since 40616b9); 8 commits since f0ba0e8 listed — 5 authored 'NeuroPause Gate Closure <noreply@anthropic.com>', 3 authored Dishant Dobariya.",
+      "evidence": "command: bash certification/verify-freeze.sh (rc=1)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "bash certification/verify-freeze.test.sh (TMPDIR confined to scratchpad) -> PASS 13 FAIL 0, rc=0.",
+      "evidence": "command: TMPDIR=<scratchpad>/discovery/vf-test2 bash certification/verify-freeze.test.sh",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "certification/gates.json holds 8 gates (7 PASS, 1 BLOCKED) bound to baseline_sha256 ee7e5579… / source_commit 1d208cf — a different, older baseline than baseline.json (40616b9); record-gate.sh would report it STALE.",
+      "evidence": "certification/gates.json:2-4 (node tally); certification/record-gate.sh:64-66",
+      "classification": "MEASURED / DERIVED"
+    },
+    {
+      "fact": "certification-freeze.yml runs verify-freeze.sh and verify-freeze.test.sh in CI.",
+      "evidence": ".github/workflows/certification-freeze.yml:60,66",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "verify-freeze.sh and its test state that the repository cannot attribute a change to a human (single machine git identity; no signed commits).",
+      "evidence": "certification/verify-freeze.sh:24-27,100-107; verify-freeze.test.sh:116-119",
+      "classification": "DECLARED (and observed in output)"
+    },
+    {
+      "fact": "TR-GPR-03 binds three execution records (typecheck; pilot suite 32/32; full backend suite 450/450) to HEAD 61b1503, TREE 36f75c06…, SOURCE_DIGEST a9afa5e1…, BUILD_DEFINITION_DIGEST d224195e…, SNAPSHOT_DIGEST 63e78575…, each with EXIT_STATUS and STDOUT_STDERR_SHA256 computed at creation; CUSTODY COMPUTER_B; MG-01 closure is a human determination; runs executed in the np-pilot-gate-closure worktree (symlinked node_modules per HANDOFF §5).",
+      "evidence": "certification/pilot-gate-closure/TR-GPR-03-TEST-ARTIFACT-BINDING.json:4-9,15,20-28,41,71,100-107",
+      "classification": "MEASURED (file) / DECLARED (content)"
+    },
+    {
+      "fact": "TR-GPR-03 HEAD 61b1503 is 4 commits behind HEAD cec399f; the bound tree is not the current tree.",
+      "evidence": "git log --oneline -12 (cec399f, e7bffd3, 817f975, 15c9a57, 61b1503, …)",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "TR-GPR-01 declares the SOURCE_DIGEST rule and self-declares DESIGNATED:false; TR-GPR-02 records VERIFIER NOT_SELECTED and PC-04 (digest-bound at creation) demonstrated only for the seam's own outputs.",
+      "evidence": "TR-GPR-01-STATE-SNAPSHOT.json:9-14,25-31; TR-GPR-02-PILOT-CLAIM-REGISTER.json:9,45-52",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "The self-digests BINDING_DIGEST (TR-GPR-03), SNAPSHOT_DIGEST (TR-GPR-01) and REGISTER_DIGEST (TR-GPR-02) carry no declared computation rule and were not reproduced by any of 13 canonicalisation candidates; the emitting script is not in the repo (commit 15c9a57 adds only the 5 evidence files).",
+      "evidence": "node digest experiment over the three files; git show --stat 15c9a57; grep 'np.pilot.test-artifact-binding|BINDING_DIGEST' scripts tools: 0",
+      "classification": "MEASURED (non-reproduction) / ABSENT (script)"
+    },
+    {
+      "fact": "GATE-STATUS-BOARD: VERIFIER_DESIGNATION (A.157) NOT_DESIGNATED; PILOT_CLAIM_SET_ADOPTION all NEITHER_ADOPTED_NOR_EXCLUDED; BASELINE_AUTHORITY withheld; standing PUBLIC_LAUNCH/PRODUCTION/COMMERCIAL NOT_ESTABLISHED, AUTHORIZATION_ISSUED FALSE.",
+      "evidence": "certification/pilot-gate-closure/GATE-STATUS-BOARD.md:28-54; REVIEWER-BRIEFING-PACK.md:132",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "packages/certification is hard-coded validation matrix constants + a benchmark harness; it neither reads nor emits digest-bound evidence and is not run by any workflow.",
+      "evidence": "packages/certification/src/validationMatrix.ts:35-135; index.ts:1-13; constants.ts:2; grep certification .github/workflows",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Vendored kernel tgz sha256 293d056047346631c72dd117b50733162b5ae08448f3c2bdedd73703cbceb431; package-lock resolves @neuropause/cst to file:apps/desktop/vendor/neuropause-cst-1.3.0.tgz; the desktop imports dist/src submodules because package main does not resolve and the barrel needs node:sqlite (Node>=22); the SQLite DurableStore is unused.",
+      "evidence": "shasum -a 256 apps/desktop/vendor/neuropause-cst-1.3.0.tgz; package-lock.json:1886-1888; certification/source-update/CST-1.3.0-DEFECTS-FOUND.md:10-46; sendTransition.ts:27-35",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "DurableIdempotencyStore (Node-20 JSON, sync atomic rename, no fsync, fail-closed on corrupt file) backs m365 governed actions (m365-governed-actions.json) and journal posts (journal-post-transitions.json); mail.send governedSend still uses in-memory ports (process-lifetime only).",
+      "evidence": "cst/durableIdempotencyStore.ts:1-28,188-195; connectors/index.ts:419-420; enterprise/modules/finance/journalEntryModuleInstance.ts:29; sendTransition.ts:85-98",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "On this machine the current profile (~/Library/Application Support/@neuropause) contains no action-records.json, decision-records.json, holds.json, m365-governed-actions.json, journal-post-transitions.json or execute-engine-sessions file — no runtime evidence exists locally to verify.",
+      "evidence": "existence probe of the userData directory (counts only)",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "Sandbox execution timeline (S1) is bounded append-only per execution with no hash.",
+      "evidence": "apps/desktop/src/main/sandbox/executionStore.ts:1-7,37-38; grep createHash: 0",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "HANDOFF: R3 baseline f0ba0e8 / porcelain 16 / digest 27302b87 must keep reproducing; TR-GPR-01 PARENT_COMMIT is f0ba0e8; the np-pilot-gate-closure worktree's symlinked node_modules produced an asar missing 4 of 8 prod deps — the new verify:universal guard catches it.",
+      "evidence": "/Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md §2,§5; TR-GPR-01:18; apps/desktop/scripts/verify-universal-and-deps.cjs:1-27",
+      "classification": "DECLARED"
+    }
+  ],
+  "gate_assessments": [
+    {
+      "gate": "EVIDENCE-PROVENANCE",
+      "status": "FAIL",
+      "reason": "Evidence rows carry identity (act_<uuid>), actor, times and verification provenance {source, method, oracle}, and the writer is append-only with monotonic verification — but no evidence store except the workforce audit log is tamper-evident (no row digest, no chain, no signature on action-records/decision-records/holds/executions/backend human_decisions); the kernel's per-stage evidence ledger is discarded; AUTHORITY (approval object, approver, expiry, fencing token), POLICY (no version exists product-wide) and INTENT/purpose are not persisted (readBack NOT_PERSISTED); tenantId holds a workspace id (F-P45); transitionId collides by construction and correlationId is optional. On this machine no evidence rows exist at all."
+    },
+    {
+      "gate": "RELEASE-PROVENANCE (evidence side)",
+      "status": "FAIL",
+      "reason": "build-info binds only a 7-char short commit (no tree hash, no source digest), the dirty flag is not surfaced at runtime, the manifest script is Windows-only and the only manifest on disk is rc.15, no rc.30 artifact manifest exists, artifact basenames carry no version/commit (root cause of the measured nine-way label collision, unchanged at HEAD), the certification freeze is BROKEN (verify-freeze rc=1; gates.json bound to an even older baseline), TR-GPR-03 binds tests to 61b1503 not HEAD, the TR-GPR self-digests are not reproducible and their emitter is not in the repo, and commits are attributable only to a machine git identity. Signing/notarization remain WAITING_FOR_OPERATOR_SECRET (APPLE_CSC_LINK et al.) but that alone would not close the evidence side."
+    },
+    {
+      "gate": "VERIFICATION",
+      "status": "FAIL",
+      "reason": "In-process verification exists and is measured: a production read-back reconciler (mail.send via M365 Graph, monotonic D3, D-16 vocabulary, 120 s width bound), a seam-22 independent reader over the persisted file, and RULE-012 provenance pins. But it does not satisfy the HUMAN->CONTROL->COMPUTE->EVIDENCE->VERIFICATION->HUMAN DECISION invariant: the verifier runs inside the same process/custody as the executor (Computer-B), kernel 'authoritative' observation is an adapter-written in-memory store, governedAction cohorts and journal rows have no oracle, the read-back surface has no IPC/UI/CLI consumer so no human can act on it, no transport delivers evidence to an independent custody (PauseCloud NOT_IMPLEMENTED, no export), VERIFIER_DESIGNATION is NOT_DESIGNATED, and the backend human-decision path is withheld (403) by design until an authority is designated."
+    }
+  ],
+  "gaps": [
+    "No tamper-evidence (digest/chain/signature) on action-records.json, decision-records.json, holds.json, execute-engine-sessions, m365-governed-actions.json, journal-post-transitions.json, or backend human_decisions/pilot_events; only workforce-audit.json is chained + signed.",
+    "The CST kernel's per-stage evidence ledger (REQUESTED…VERIFICATION with fencingToken, executionId, timeline, verificationProposition, reason) is discarded per call; only a thin projection reaches the ActionRecord.",
+    "Approval object (approvalId, approver, issuedAt/expiresAt, consumed), policyVersion, purpose/intent, relationships and claim/fencing token are not persisted (readBack NOT_PERSISTED) — the AUTHORITY and POLICY legs of the chain are unrepresentable from evidence alone.",
+    "No policy version exists anywhere in the product (baseline.json absent list; BoundDecisionClaim excludes it) so verdict reproducibility (G9) is impossible.",
+    "Requester == approver (type HUMAN) is accepted by every desktop adapter because no separation-of-duties action is declared; the human confirmation is a boolean, not an identified approver distinct from the actor.",
+    "ActionRecord.tenantId holds a workspace id (F-P45); a migration is owed and readers must compensate.",
+    "transitionId/admissionRef are content-addressed and collide across causally distinct runs; correlationId is optional so two identical sends may be evidentially inseparable.",
+    "readBack/readBackFromDisk (seam-22) has no IPC channel, UI, or CLI; an operator cannot obtain the independent read-back from the product.",
+    "Read-back oracle coverage is mail.send only (M365 Graph); governedAction cohorts (13+3+9+3 actions) and journal.post have no external oracle and stay unverified/UNKNOWN.",
+    "No evidence export/transport exists: PauseCloud is interface-only with zero importers; /sync carries SyncEntityType changes only; A/B custody transfer is manual and basename-keyed (overwrite-prone upload sink outside the repo).",
+    "No independent-custody verifier exists in code; 'Computer-A' is absent from the repo; VERIFIER_DESIGNATION NOT_DESIGNATED.",
+    "build-info binds only a short commit; no tree hash/source digest; branch/dirty not surfaced by getBuildInfo(); CI does not assert the commit; artifact basenames (NeuroPause-Setup.exe, NeuroPause-universal.dmg) carry no version or commit.",
+    "Release manifest tooling is Windows-only; no macOS manifest/codesign-status recorder; the only manifests on disk describe rc.15.",
+    "Certification freeze is BROKEN at HEAD (verify-freeze rc=1, 604 files changed since 40616b9); gates.json is bound to an even older baseline (ee7e5579…/1d208cf) and would be reported STALE.",
+    "TR-GPR-03 binds tests to 61b1503 (4 commits behind HEAD) and ran in the symlinked-node_modules worktree; its BINDING_DIGEST/SNAPSHOT_DIGEST/REGISTER_DIGEST rules are undeclared, non-reproduced, and the emitting script is not in the repo.",
+    "Git commits since f0ba0e8 are authored by a machine identity; no signed commits; verify-freeze.sh states the repo cannot attribute a change to a human.",
+    "packages/certification is a hard-coded matrix, not an evidence producer, and is not run in CI.",
+    "Backend HumanDecision recording is unreachable in production until an AuthorityEvaluator is designated (MR-04); no human-decision stage exists after VERIFICATION in the desktop evidence model.",
+    "No local evidence exists on this machine (no action-records.json etc.), so end-to-end read-back cannot be exercised here without producing new evidence.",
+    "recordFingerprint (sha256-16) is described as 'TAMPER-EVIDENCE' in its header but only fingerprints content; it provides no integrity for the row."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Add per-row digest + previous-hash chaining to ActionRecordStore (reuse security/auditChain.ts AuditChain with a canonical serializer), optionally sign the head with the existing DurableAuditKeyProvider; expose integrity status on the existing security:auditIntegrity.status pattern.",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/connectors/actionRecord.ts",
+        "apps/desktop/src/main/security/auditChain.ts",
+        "apps/desktop/src/main/security/signedAuditChain.ts",
+        "apps/desktop/src/main/connectors/actionRecord.test.ts"
+      ],
+      "risk": "Schema change to action-records.json (schemaVersion bump + rebuild path for legacy unchained rows); must keep observer best-effort semantics and the flush barrier."
+    },
+    {
+      "action": "Persist the kernel outcome projection that readBack currently lists as NOT_PERSISTED: approvalId/approver/issuedAt/expiresAt, policyVersion, purpose, fencingToken, executionId, reason, outcomeClass, timeline — as additive optional fields on ActionRecord; optionally persist the kernel EvidenceStore stage ledger (forTransition) alongside.",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/connectors/actionRecord.ts",
+        "apps/desktop/src/main/cst/sendTransition.ts",
+        "apps/desktop/src/main/cst/governedAction.ts",
+        "apps/desktop/src/main/reconciliation/readBack.ts"
+      ],
+      "risk": "Additive only; must not enter idem/requestId (evidence, not governance); NOT_PERSISTED constant and its pins must shrink in step."
+    },
+    {
+      "action": "Expose readBackFromDisk through a read-only IPC channel classified governance:read (and/or a CLI in apps/desktop/scripts) plus a JSONL export with a manifest digest so evidence can be handed to an independent custody.",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/reconciliation/readBack.ts",
+        "packages/shared/src/ipc/channels.ts",
+        "apps/desktop/src/main/ipc/runtimeAuthz.ts"
+      ],
+      "risk": "New privileged channel must be classified or the boot invariant fails; must remain query-only."
+    },
+    {
+      "action": "Extend generate-build-info.cjs to record full 40-hex commit, `git rev-parse HEAD^{tree}`, and a source digest computed by the TR-GPR-01 rule; surface branch/dirty in buildInfo.ts; give the dirty warning a consumer (refuse or brand a release-shaped artifact).",
+      "effort": "S",
+      "files": [
+        "apps/desktop/scripts/generate-build-info.cjs",
+        "apps/desktop/src/main/buildInfo.ts",
+        "scripts/make-release-manifest.cjs"
+      ],
+      "risk": "Low; digest computation adds seconds to packaging."
+    },
+    {
+      "action": "Change artifactName templates to carry version + arch (+ short commit) for nsis, portable, zip and dmg; update download.html, update-feed aliasing in the release workflows, and verify-release-artifacts.cjs PLATFORM_RULES.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/electron-builder.yml",
+        ".github/workflows/macos-release.yml",
+        ".github/workflows/windows-release.yml",
+        "website/download.html",
+        "apps/desktop/scripts/verify-release-artifacts.cjs"
+      ],
+      "risk": "Feed/website references to bare basenames break if not updated together; electron-updater file matching must be re-verified."
+    },
+    {
+      "action": "Generalise make-release-manifest.cjs to darwin (codesign -dv / spctl status, lipo archs, sha256 sidecars for dmg+zip) and run it for every packaged platform in CI, attaching the manifest as a workflow artifact.",
+      "effort": "M",
+      "files": [
+        "scripts/make-release-manifest.cjs",
+        ".github/workflows/macos-release.yml",
+        ".github/workflows/windows-release.yml"
+      ],
+      "risk": "Must read facts from artifacts, never assert; keep 'refuse without build-info'."
+    },
+    {
+      "action": "Commit the TR-GPR emitter script and declare/implement the self-digest rule (e.g. sha256 over canonical JSON with the digest field removed) so BINDING_DIGEST/SNAPSHOT_DIGEST/REGISTER_DIGEST are reproducible; re-emit TR-GPR-01/03 against HEAD with a genuine `npm ci` checkout.",
+      "effort": "S",
+      "files": [
+        "certification/pilot-gate-closure/",
+        "scripts/"
+      ],
+      "risk": "Re-emission is measurement, not designation; must keep DESIGNATED:false."
+    },
+    {
+      "action": "Add DB-level immutability for human_decisions and pilot_events (REVOKE UPDATE/DELETE from the app role or BEFORE UPDATE/DELETE triggers) and a content digest column.",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/db/migrations/"
+      ],
+      "risk": "Additive migration; test repositories need the same constraint."
+    },
+    {
+      "action": "Record an explicit `verification: {terminal:'NOT_APPLICABLE'|'NO_ORACLE', provenance:{oracle:'none'}}` or a structured `oracleAvailable:false` marker for governedAction/journal rows so 'unverified because no oracle exists' is distinguishable from 'not yet reconciled'.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/connectors/actionRecord.ts",
+        "apps/desktop/src/main/reconciliation/readBackReconciler.ts"
+      ],
+      "risk": "Must not collapse into a D-16 terminal; deny-by-default classification stays unresolved."
+    },
+    {
+      "action": "Make the reconciler and m365WriteStates read the same key as the writer, or migrate the writer to {tenantId: org, workspaceId: ws} — pending the human ruling recorded below; at minimum add a pinned test that fails if writer/reader keys diverge.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/connectors/index.ts",
+        "apps/desktop/src/main/reconciliation/readBackReconcilerInstance.ts",
+        "apps/desktop/src/main/connectors/m365WriteStates.ts"
+      ],
+      "risk": "Re-keying stored rows is governance-class (changes meaning of existing evidence) — needs the ruling first."
+    },
+    {
+      "action": "Run packages/certification and record its output as a digest-bound artifact in CI, or retire it from the certification narrative (it is currently hard-coded constants).",
+      "effort": "S",
+      "files": [
+        "packages/certification/src/validationMatrix.ts",
+        ".github/workflows/"
+      ],
+      "risk": "None to product runtime."
+    }
+  ],
+  "human_decisions_required": [
+    "VERIFIER_DESIGNATION (A.157): who is the independent verifier / Computer-A custody, and by what instrument (signed export, counter-signed receipt) evidence is transferred and acknowledged.",
+    "BASELINE_AUTHORITY (MG-02): whether to re-freeze certification/baseline.json at cec399f (verify-freeze is BROKEN) or designate the TR-GPR-01 snapshot (which is at 61b1503, not HEAD) — a machine must not designate.",
+    "F-P42/F-P45 ruling: migrate ActionRecord.tenantId from workspace id to {tenantId, workspaceId} (retroactively changes what stored rows mean) or keep the reader accommodation permanently.",
+    "Whether to introduce a product-wide policy version (baseline.json lists it ABSENT) and persist approval/policy provenance in evidence — a product/governance decision, not a code fix.",
+    "Separation of duties: whether a human requester may be their own C3 approver for send/action/import (currently accepted because no sodActions are declared).",
+    "Canonical-artifact designation (C-R013 in the A/B corpus) and approval of the artifactName change (affects update feed, website, and every basename-keyed rig mechanism).",
+    "Operator secrets for signing/notarization (APPLE_CSC_LINK, APPLE_CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD) and PUBLISH_TO_SITE — names only; WAITING_FOR_OPERATOR_SECRET.",
+    "Designation of a backend AuthorityEvaluator (MR-04) so human decisions can be recorded at all; today every POST /pilot/decision is withheld (403).",
+    "D3 open ruling: semantics for settled->settled verification (late NDR after VERIFIED_SUCCESS).",
+    "PauseCloud implementation go/no-go and its retention policy state (RetentionPolicy requires APPROVED_BY_HUMAN before EFFECTIVE)."
+  ]
+}

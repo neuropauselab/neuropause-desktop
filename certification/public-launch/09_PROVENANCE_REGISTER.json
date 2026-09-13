@@ -1,0 +1,108 @@
+{
+  "ARTIFACT": "09_PROVENANCE_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "chain": [
+    {
+      "edge": "SOURCE→COMMIT",
+      "status": "MEASURED",
+      "value": {
+        "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+        "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+        "branch": "pilot/public-launch",
+        "describe": "v1.0.0-rc.29-6-g8331185",
+        "porcelain": 115
+      }
+    },
+    {
+      "edge": "COMMIT→LOCKFILE",
+      "status": "MEASURED",
+      "value": "4a29565e59b5fc93dbf635809104716ecbe8af4573c89f9803b2cdcc96b2b197"
+    },
+    {
+      "edge": "LOCKFILE→INSTALL",
+      "status": "MEASURED",
+      "value": "npm ci exit 0"
+    },
+    {
+      "edge": "INSTALL→BUILD",
+      "status": "MEASURED",
+      "value": {
+        "execution_id": "EXEC-BUILD-mtz9ziid",
+        "command": "npm run build",
+        "exit_code": 0,
+        "duration_ms": 6892,
+        "stdout_sha256": "c6cd0a492e1b79104a0e3c779b65cbe868e674ecd43e32733f7b80328daff872",
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "started_at": "2026-09-13T03:49:47.509Z"
+      }
+    },
+    {
+      "edge": "BUILD→ARTIFACT",
+      "status": "MEASURED",
+      "value": {
+        "mac": [
+          "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+          "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075"
+        ],
+        "win": [
+          "fc13c84d041ece69cae5737126a6e60cfada55491a7a12d759b8bb2e911bb4e4"
+        ]
+      }
+    },
+    {
+      "edge": "ARTIFACT→SIGNATURE",
+      "status": "MEASURED",
+      "value": {
+        "signed": true,
+        "identifier": "com.neuropause.desktop",
+        "team_id": "J3G89MY3QG",
+        "authority_chain": [
+          "Developer ID Application: Dishant Dobariya (J3G89MY3QG)",
+          "Developer ID Certification Authority",
+          "Apple Root CA"
+        ],
+        "hardened_runtime": true,
+        "codesign_verify_deep_strict": true
+      }
+    },
+    {
+      "edge": "SIGNATURE→NOTARIZATION",
+      "status": "ABSENT",
+      "value": {
+        "state": "skipped",
+        "notarized": false,
+        "version": "1.0.0-rc.30",
+        "reason": "one or more Apple credentials are absent",
+        "at": "2026-09-13T03:56:36.641Z"
+      }
+    },
+    {
+      "edge": "ARTIFACT→UPDATE FEED",
+      "status": "MEASURED",
+      "value": "feed sha512 == artifact sha512 (verifier)"
+    },
+    {
+      "edge": "FEED→PUBLIC DOWNLOAD",
+      "status": "BLOCKED",
+      "value": "host HTTP 530; SSH read denied"
+    },
+    {
+      "edge": "BUILD RUNNER IDENTITY",
+      "status": "DECLARED",
+      "value": "COMPUTER_B developer machine; no CI attestation (nothing pushed)"
+    }
+  ],
+  "slsa_note": "No SLSA level claimed. Provenance is local, unsigned metadata bound by digests.",
+  "ab_divergence": "A_RELEASE_IDENTITY == B_RELEASE_IDENTITY NOT_ESTABLISHED — see certification/public-launch-002/28_AB_DIVERGENCE_REGISTER.json"
+}

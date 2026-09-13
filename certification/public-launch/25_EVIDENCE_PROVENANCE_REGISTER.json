@@ -1,0 +1,107 @@
+{
+  "ARTIFACT": "25_EVIDENCE_PROVENANCE_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "loop_chain": [
+    "INTENT",
+    "MODEL_TURN",
+    "POLICY",
+    "ACTION",
+    "EXECUTION",
+    "RESULT",
+    "MODEL_TURN",
+    "POLICY",
+    "ACTION",
+    "EXECUTION",
+    "RESULT",
+    "MODEL_TURN",
+    "TERMINAL"
+  ],
+  "distinctions": {
+    "digest_equality": "DMG bundle digest == ZIP bundle digest (measured)",
+    "receipt": "no receipt from any external party",
+    "transport": "no artifact transported (publish blocked)",
+    "custody": "B custody only; A/B binding LEVEL_0 unchanged",
+    "recommendation_vs_decision": "loop never converts a proposal into a decision"
+  },
+  "evidence_files": {
+    "mac-artifact-verification.json": {
+      "path": "certification/public-launch/evidence/mac-artifact-verification.json",
+      "sha256": "6de4ce7abf4e79f180485d05401e35445f885ebdc1a3566aa265d8a9f32cee40"
+    },
+    "release-manifest.mac.json": {
+      "path": "certification/public-launch/evidence/release-manifest.mac.json",
+      "sha256": "2813e10e79d5a6eb1bbbe7e91f6bfb43c81a4acc9f6bcbf58b83b7681b18d0c4"
+    },
+    "packaged-smoke.json": {
+      "path": "certification/public-launch/evidence/packaged-smoke.json",
+      "sha256": "264111c1fdaefb01551206a229cfdec8594a3ec60a9f6d66c3a18e1e86a3e195"
+    },
+    "packaged-smoke-first-run.png": {
+      "path": "certification/public-launch/evidence/packaged-smoke-first-run.png",
+      "sha256": "0d59b84f3dce69990d23858f3ee04ac0c4643ee8c9962a38ff7ad99fa9cf6504"
+    },
+    "verifier-controls.json": {
+      "path": "certification/public-launch/evidence/verifier-controls.json",
+      "sha256": "e9d741bbd8ee448ebccac2d77a045e405130efe79ca0ee29b7718ac83fc956f6"
+    },
+    "mac-SHA256SUMS.txt": {
+      "path": "certification/public-launch/evidence/mac-SHA256SUMS.txt",
+      "sha256": "3f3630c5600eb97f51e6608b0220b17141e08aa8d585be91527106f26215f73a"
+    },
+    "mac-beta-mac.yml": {
+      "path": "certification/public-launch/evidence/mac-beta-mac.yml",
+      "sha256": "15b7f421a97f67a4aa7f2787a0d38c3db3ca1dde785f937b46398d9a39734f9d"
+    },
+    "mac-notarization-status.json": {
+      "path": "certification/public-launch/evidence/mac-notarization-status.json",
+      "sha256": "7ce2b6012f642d48c23638a610cc5a6fa5642649376fb32141e26398a9de8d95"
+    },
+    "mac-build-info.json": {
+      "path": "certification/public-launch/evidence/mac-build-info.json",
+      "sha256": "967a1c7c9d949bcb8efa5a336ad7070195bc58b5b23bf90466cd1e59a4421d8d"
+    },
+    "win-SHA256SUMS.txt": {
+      "path": "certification/public-launch/evidence/win-SHA256SUMS.txt",
+      "sha256": "effbb3366ac26bac69a95fa18b60da5bf798cd9f004cc2898531e369eac2084f"
+    },
+    "win-beta.yml": {
+      "path": "certification/public-launch/evidence/win-beta.yml",
+      "sha256": "da5fd196c195b9d88c30c7b07311ba965507b3e286776b4580ab1b4e920a6dca"
+    },
+    "win-release-manifest-setup.json": {
+      "path": "certification/public-launch/evidence/win-release-manifest-setup.json",
+      "sha256": "c9a6411d0115820f5fd581a9c8546a5512bd90bbf08b5bee0732237b6f1dd6ee"
+    },
+    "win-release-manifest-portable.json": {
+      "path": "certification/public-launch/evidence/win-release-manifest-portable.json",
+      "sha256": "1a256cb1d08b163eac3ebf5c48f98704dbf7992b73015ecd4928dc32ae26784e"
+    },
+    "win-build-info.json": {
+      "path": "certification/public-launch/evidence/win-build-info.json",
+      "sha256": "967a1c7c9d949bcb8efa5a336ad7070195bc58b5b23bf90466cd1e59a4421d8d"
+    },
+    "live-backend-journey.json": {
+      "path": "certification/public-launch/evidence/live-backend-journey.json",
+      "sha256": "238768c06d6ef657eaa623f1d9ce6357f6a3edcff5b80459e93ab3a7af9a833d"
+    },
+    "live-agent-loop.json": {
+      "path": "certification/public-launch/evidence/live-agent-loop.json",
+      "sha256": "92d1cc7a2de6e47ba66586adfe66d9fd55c2901e87415466589ce397b4fb2744"
+    },
+    "execution-register.json": {
+      "path": "certification/public-launch/evidence/execution-register.json",
+      "sha256": "a38927d8d9065cff72f3c392243652b10ce6f51829663e6a250292ee7199537a"
+    }
+  }
+}

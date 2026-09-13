@@ -1,0 +1,47 @@
+{
+  "ARTIFACT": "14_FIRST_RUN_TESTS",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "state_machine_declared": [
+    "NOT_INSTALLED",
+    "INSTALLED",
+    "FIRST_LAUNCH",
+    "AUTHENTICATION_REQUIRED",
+    "DEVICE_REGISTRATION_REQUIRED",
+    "CONSENT_REQUIRED",
+    "POLICY_BOOTSTRAP",
+    "HEALTH_CHECK",
+    "READY",
+    "DEGRADED",
+    "BLOCKED"
+  ],
+  "implemented": {
+    "FIRST_LAUNCH": "local mode (no wall)",
+    "AUTHENTICATION_REQUIRED": "optional \"Connect an account\"",
+    "DEVICE_REGISTRATION_REQUIRED": "per-organization, after sign-in",
+    "CONSENT_REQUIRED": "ABSENT",
+    "POLICY_BOOTSTRAP": "ABSENT",
+    "HEALTH_CHECK": "backend reachability hub (not a first-run state)",
+    "READY": "measured",
+    "DEGRADED": "local mode on backend failure (transient class widened this branch)"
+  },
+  "measurement": {
+    "visible_text": "Working locally — your data stays on this device. Connect an account to sync NeuroPause Search apps, actions, and your work ⌘ K SA Default ▾ TODAY Mission Control Today's Intent PREVIEW Search Assistant Work Hub Ask NeuroPause Understand Holds BUSINESS Opportunities Organization Business Administrat",
+    "ready_ms": 4604,
+    "page_errors": 0,
+    "screenshot": {
+      "path": "certification/public-launch/evidence/packaged-smoke-first-run.png",
+      "sha256": "0d59b84f3dce69990d23858f3ee04ac0c4643ee8c9962a38ff7ad99fa9cf6504"
+    }
+  }
+}

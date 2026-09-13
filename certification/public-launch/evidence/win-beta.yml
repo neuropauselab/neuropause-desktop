@@ -1,0 +1,8 @@
+version: 1.0.0-rc.30
+files:
+  - url: NeuroPause-Setup.exe
+    sha512: 9zuQd4gCZywwoaeqiL/uM5XGX4T6uDXGlitlaF1P+HDKZXRdy8V7QvjEF2jNBrIJk6f+KlHlMT7BKeEnwf7wsQ==
+    size: 111896057
+path: NeuroPause-Setup.exe
+sha512: 9zuQd4gCZywwoaeqiL/uM5XGX4T6uDXGlitlaF1P+HDKZXRdy8V7QvjEF2jNBrIJk6f+KlHlMT7BKeEnwf7wsQ==
+releaseDate: '2026-09-13T03:57:56.355Z'
