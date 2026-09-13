@@ -188,7 +188,14 @@ export async function completeViaProvider(cfg: GatewayConfig, req: GatewayReques
 
 /** Defense in depth: a response object must never carry an authority claim, whatever a provider returns. */
 export function assertNoAuthorityClaim(resp: GatewayResponse): GatewayResponse {
-  const forbidden = ['authorized', 'approved', 'authorization', 'permission_granted', 'admissible'];
+  // NP-PUBLIC-LAUNCH-003 §15: the forbidden set covers every phrasing an adversarial
+  // model or a compromised provider could use to smuggle an authority claim into the
+  // response envelope (top level AND inside `gateway`). Tool arguments and text are
+  // deliberately NOT scrubbed — they are data the policy engine must be able to see.
+  const forbidden = ['authorized', 'approved', 'authorization', 'permission_granted', 'admissible', 'grant_authority', 'grants_authority_override', 'execute', 'executed', 'human_approved', 'admin_override', 'confirmation_waived'];
   for (const k of Object.keys(resp)) if (forbidden.includes(k.toLowerCase())) throw new GatewayError(500, 'gateway_invariant', `gateway response must not carry "${k}"`);
+  const g = resp.gateway as unknown as Record<string, unknown> | undefined;
+  if (!g || g.policy !== 'AI_PROPOSES_ONLY' || g.executes_tools !== false || g.grants_authority !== false) throw new GatewayError(500, 'gateway_invariant', 'gateway envelope must assert AI_PROPOSES_ONLY / executes_tools:false / grants_authority:false');
+  for (const k of Object.keys(g)) if (!['version', 'policy', 'executes_tools', 'grants_authority'].includes(k)) throw new GatewayError(500, 'gateway_invariant', `gateway envelope must not carry "${k}"`);
   return resp;
 }

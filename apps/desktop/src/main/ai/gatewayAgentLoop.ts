@@ -114,6 +114,10 @@ export type GatewayCall = (req: { messages: GatewayMessage[]; tools?: GatewayToo
 const DEFAULTS = { maxTurns: 6, maxToolCalls: 10, maxDurationMs: 180_000, maxOutputTokens: 1024 };
 
 export async function runGovernedLoop(userMessage: string, gateway: GatewayCall, registry: ReadonlyMap<string, ToolDefinition>, opts: LoopOptions): Promise<LoopResult> {
+  // NP-PUBLIC-LAUNCH-003 §16 — a decision is SINGLE-USE. Proposal ids are minted per
+  // gateway call, but a replaying gateway (or a model echoing an old id) must not be
+  // able to spend one human decision twice within a run.
+  const consumed = new Set<string>();
   const now = opts.now ?? (() => new Date().toISOString());
   const id = opts.id ?? ((p: string) => `${p}_${Math.random().toString(36).slice(2, 12)}`);
   const limits = { ...DEFAULTS, ...opts };
@@ -166,7 +170,8 @@ export async function runGovernedLoop(userMessage: string, gateway: GatewayCall,
       if (opts.stopRequested?.()) return finish('STOPPED', 'stop requested by the user before a tool execution');
       if (tool_calls >= limits.maxToolCalls) return finish('BLOCKED', `maximum tool calls (${limits.maxToolCalls}) reached`);
       const action_id = id('act');
-      const verdict = admissibility(proposal, registry, opts.decisions);
+      const verdict = admissibility(proposal, registry, opts.decisions, consumed);
+      if (verdict.admissibility === 'ADMISSIBLE' && opts.decisions?.has(proposal.proposal_id)) consumed.add(proposal.proposal_id);
       const policyEv = ev('POLICY', { action_id, proposal_id: proposal.proposal_id, tool: proposal.tool, verdict: verdict.admissibility, reason: verdict.reason, policy_version: opts.policy_version });
       const result: ToolResult = { tool_call_id: proposal.proposal_id, action_id, execution_id: null, tool: proposal.tool, status: 'NOT_PERMITTED', admissibility: verdict.admissibility, timestamp: now(), output: '', evidence_id: policyEv };
       if (verdict.admissibility === 'ADMISSIBLE') {
@@ -202,12 +207,13 @@ export async function runGovernedLoop(userMessage: string, gateway: GatewayCall,
 }
 
 /** The authoritative calculation: U_NP(Z_t) = { U ∈ U_cap : Π(Z_t, U) = 1 }. Nothing the model says enters Π. */
-export function admissibility(proposal: ToolProposal, registry: ReadonlyMap<string, ToolDefinition>, decisions?: ReadonlyMap<string, AuthorityDecision>): { admissibility: ToolResult['admissibility']; reason: string; tool?: ToolDefinition } {
+export function admissibility(proposal: ToolProposal, registry: ReadonlyMap<string, ToolDefinition>, decisions?: ReadonlyMap<string, AuthorityDecision>, consumed?: ReadonlySet<string>): { admissibility: ToolResult['admissibility']; reason: string; tool?: ToolDefinition } {
   const tool = registry.get(proposal.tool);
   if (!tool) return { admissibility: 'DENIED_UNKNOWN_TOOL', reason: `"${proposal.tool}" is not a registered tool (default deny)` };
   if (tool.required_authority === 'NONE' && tool.side_effect_class === 'READ_ONLY') return { admissibility: 'ADMISSIBLE', reason: 'read-only capability admitted by policy', tool };
   const decision = decisions?.get(proposal.proposal_id);
   if (!decision) return { admissibility: 'DECISION_REQUIRED', reason: `${tool.side_effect_class} tool "${tool.name}" requires ${tool.required_authority}; no decision object bound to proposal ${proposal.proposal_id}`, tool };
+  if (consumed?.has(proposal.proposal_id)) return { admissibility: 'DECISION_REQUIRED', reason: `decision ${decision.decision_id} for proposal ${proposal.proposal_id} was already consumed; a new action needs a new decision`, tool };
   if (decision.proposal_id !== proposal.proposal_id) return { admissibility: 'DECISION_REQUIRED', reason: 'decision object is bound to a different proposal', tool };
   if (decision.decision !== 'ALLOW') return { admissibility: 'DENIED_BY_DECISION', reason: `human decision ${decision.decision_id} denied`, tool };
   if (tool.required_authority === 'HUMAN_AUTHORITY' && decision.decision_class !== 'HUMAN_AUTHORITY') return { admissibility: 'DECISION_REQUIRED', reason: 'tool requires HUMAN_AUTHORITY; a confirmation is not an authority decision', tool };
