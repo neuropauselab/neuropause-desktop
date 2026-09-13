@@ -40,6 +40,8 @@ export interface AuthAccountRepo {
   consumeToken(tokenHash: string, kind: TokenKind): Promise<{ userId: string } | null>;
   /** Supersede any active (unconsumed) tokens of this kind for the user. */
   invalidateActiveTokens(userId: string, kind: TokenKind): Promise<void>;
+  /** Revoke every refresh session of the user (password reset must log out every device). */
+  revokeAllSessions?(userId: string): Promise<void>;
 }
 
 export interface AuthAccountDeps {
@@ -128,4 +130,8 @@ export async function resetPassword(
     throw new AuthAccountError('invalid', 'This reset link is invalid or has expired.');
   const passwordHash = await deps.hashPassword(newPassword);
   await deps.repo.updatePasswordHash(consumed.userId, passwordHash);
+  // NP-GLOBAL-PUBLIC-LAUNCH-002 §21 — a reset that leaves the old sessions valid
+  // does not evict whoever held the old credential. Every refresh session is
+  // revoked; access tokens expire on their own TTL (JWT_ACCESS_TTL, 15 min).
+  await deps.repo.revokeAllSessions?.(consumed.userId);
 }

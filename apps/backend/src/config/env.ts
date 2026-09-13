@@ -63,6 +63,19 @@ const EnvSchema = z.object({
   RAZORPAY_PLAN_STARTER: z.string().optional(),
   RAZORPAY_PLAN_PROFESSIONAL: z.string().optional(),
   RAZORPAY_PLAN_ENTERPRISE: z.string().optional(),
+
+  // AI gateway (server-side model credentials; the desktop never holds these).
+  // AI_GATEWAY_PROVIDER=none keeps the gateway present but refusing (503).
+  AI_GATEWAY_PROVIDER: z.enum(['none', 'ollama', 'anthropic', 'openai']).default('none'),
+  AI_GATEWAY_MODEL: z.string().optional(),
+  AI_GATEWAY_BASE_URL: z.string().url().optional(),
+  AI_GATEWAY_TIMEOUT_MS: z.coerce.number().int().positive().default(120_000),
+  AI_GATEWAY_MAX_MESSAGES: z.coerce.number().int().positive().default(64),
+  AI_GATEWAY_MAX_INPUT_CHARS: z.coerce.number().int().positive().default(200_000),
+  AI_GATEWAY_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(2048),
+  AI_GATEWAY_USER_RPM: z.coerce.number().int().positive().default(30),
+  ANTHROPIC_API_KEY: z.string().optional(),
+  OPENAI_API_KEY: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -1,0 +1,196 @@
+{
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "ARTIFACT": "00_SNAPSHOT",
+  "SCHEMA": "np.public-launch.snapshot/v1",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T03:17:32.392Z",
+  "PRINCIPLE": "Historical evidence is preserved, not regenerated. R3 must keep reproducing f0ba0e8f / 16 / 27302b87. Launch work is isolated on pilot/public-launch.",
+  "baseline_R3": {
+    "role": "R3 — certified NP-B evidence baseline (IMMUTABLE)",
+    "path": "/Users/saurabhpatel/Desktop/neuropause-desktop",
+    "head": "f0ba0e8faa6fd89e8b73a84f3967ddbdded0a5c6",
+    "branch": "cert/data-import-cst-integration",
+    "describe": "v1.0.0-rc.29",
+    "tree": "8577380edff8e2ddba089f06d473ce5c79910722",
+    "porcelain_count": 16,
+    "porcelain_digest": "27302b8757207bb976dfc628dfd4193e387c6fd6d94fefac2792ee208b93d975",
+    "expected": {
+      "head": "f0ba0e8faa6fd89e8b73a84f3967ddbdded0a5c6",
+      "porcelain_count": 16,
+      "porcelain_digest": "27302b8757207bb976dfc628dfd4193e387c6fd6d94fefac2792ee208b93d975"
+    },
+    "dirty_files_reverified_against": "/Users/saurabhpatel/neuropause-desktop/NP-B-023-RAW-MEASUREMENTS/gate-closure/PRE-MUTATION-BASELINE.json",
+    "reproduces": true,
+    "dirty_file_hashes": {
+      "verified": 15,
+      "mismatch": []
+    }
+  },
+  "gate_closure_worktree": {
+    "role": "gate-closure worktree (previous session; node_modules symlinked into R3 — NEVER package from here)",
+    "path": "/Users/saurabhpatel/Desktop/np-pilot-gate-closure",
+    "head": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "branch": "pilot/gate-closure",
+    "describe": "v1.0.0-rc.29-5-gcec399f",
+    "porcelain_count": 0,
+    "node_modules_is_symlink": true
+  },
+  "launch_worktree": {
+    "role": "ISOLATED PUBLIC-LAUNCH WORKTREE (all launch mutation happens here)",
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "created_from": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "created_at": "2026-09-12T16:52:00Z",
+    "source_head_at_creation": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "source_tree_at_creation": "ed84f9e6d21c64a7aca0f2dc4d1df6a9035c85c9",
+    "describe_at_creation": "v1.0.0-rc.29-5-gcec399f",
+    "head_now": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "porcelain_count_now": 8,
+    "upstream": "NONE (not pushed)",
+    "node_modules_is_symlink": false,
+    "install": {
+      "source_commit": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+      "source_tree": "ed84f9e6d21c64a7aca0f2dc4d1df6a9035c85c9",
+      "branch": "pilot/public-launch",
+      "porcelain_count": 0,
+      "node": "v20.20.2",
+      "npm": "10.8.2",
+      "os": "darwin 25.5.0",
+      "arch": "arm64",
+      "lockfile_sha256": "4a29565e59b5fc93dbf635809104716ecbe8af4573c89f9803b2cdcc96b2b197",
+      "package_json_sha256": "6567ccf49c183e91fb6b81805b99ab9cf385c9feb5684cae55111a2d9c632aa5",
+      "started_at": "2026-09-12T16:58:59.341Z"
+    },
+    "source_digest_cec399f": {
+      "rule": "sha256 over LF-joined \"<path>\\t<sha256>\" records over `git ls-files` at cec399f, LC_ALL=C sorted, terminal LF (TR-GPR-01 rule)",
+      "tracked_file_count": 5625,
+      "preimage_bytes": 655369,
+      "digest": "26f131cf35fa9b41c8fb8ee6f09bba4ce6e60f58bbd8c3db88005f419f60de03",
+      "ls_tree_sha256": "5bc4ea08e99a5705f4d50585d7e6351c57fd3850b15f0e858ca5b23f611b66ad"
+    },
+    "key_file_digests_at_cec399f": {
+      "package.json": "6567ccf49c183e91fb6b81805b99ab9cf385c9feb5684cae55111a2d9c632aa5",
+      "package-lock.json": "4a29565e59b5fc93dbf635809104716ecbe8af4573c89f9803b2cdcc96b2b197",
+      "apps/desktop/package.json": "6d5e8266a41ab90939debbca6f0438661f1da0bd7a5f310dcfab14a3c11670a4",
+      "apps/desktop/electron-builder.yml": "7217e84dff978c361028a7d7afabc5e0d4467e4173bb3042319d03f5b0aca2cf",
+      "apps/backend/package.json": "2ff34317e57c54955f8064ef22b59ae93850f9ad561526b0053d7312f38d0b83",
+      "apps/desktop/vendor/neuropause-cst-1.3.0.tgz": "293d056047346631c72dd117b50733162b5ae08448f3c2bdedd73703cbceb431",
+      ".github/workflows/macos-release.yml": "e90ac04a7f2f36499a62f811c395e8ac5b8c5ac6d2df1ebe4813baacfa5982df",
+      ".github/workflows/windows-release.yml": "30b8ecbaf89f86b93cec0429492bae686ba84dbb35a0c3fdcf840cf18476b6f4",
+      "website/download.html": "81eaf46a1cea49126fbeba5c08cbcfe6acc5a354630cfd9a94d6c66efe9bf6b1",
+      "THIRD-PARTY-NOTICES.md": "6f7b8933a7d38ae09513db76147b8eb2286f4a6aa51fb94ffce9f969f5141e3d",
+      "CHANGELOG.md": "8f07ff62c81445a67b94ce4b93cf6ca1c7f97de9b254136a4fa31171577c4cf3"
+    },
+    "versions": {
+      "root": "1.0.0-rc.30",
+      "desktop": "1.0.0-rc.30",
+      "backend": "0.1.0"
+    }
+  },
+  "remote": {
+    "origin": "https://github.com/neuropauselab/neuropause-desktop.git",
+    "visibility_measured_via_gh": "PUBLIC",
+    "default_branch": "main",
+    "pilot_branches_on_origin": false,
+    "tags_on_origin_latest": "v1.0.0-rc.29 -> f0ba0e8f",
+    "github_releases_latest": "v1.0.0-rc.27 (prerelease, Windows assets only)"
+  },
+  "credentials_presence": {
+    "note": "PRESENCE ONLY (gh secret list / gh variable list). No value was read, printed or stored.",
+    "github_secrets_present": [
+      "APPLE_APP_SPECIFIC_PASSWORD",
+      "APPLE_CSC_KEY_PASSWORD",
+      "APPLE_CSC_LINK",
+      "APPLE_ID",
+      "APPLE_TEAM_ID",
+      "DEPLOY_SSH_KEY"
+    ],
+    "github_secrets_absent": [
+      "WIN_CSC_LINK",
+      "WIN_CSC_KEY_PASSWORD"
+    ],
+    "github_variables_present": [],
+    "github_variables_absent": [
+      "PUBLISH_TO_SITE",
+      "NEUROPAUSE_BACKEND_URL"
+    ],
+    "local_keychain_codesigning_identities": [
+      "Developer ID Application: Dishant Dobariya (J3G89MY3QG)"
+    ],
+    "local_notarytool_keychain_profile": "ABSENT",
+    "local_provider_api_key_env": "ABSENT (no ANTHROPIC_/OPENAI_ env in session)"
+  },
+  "environment": {
+    "hostname_role": "COMPUTER_B (developer MacBook Pro)",
+    "os": "macOS 26.5.2 (25F84) Darwin 25.5.0",
+    "arch": "arm64 (Apple M5 Pro, 18 cores)",
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "xcode_select": "/Applications/Xcode.app/Contents/Developer",
+    "xcrun": "notarytool 1.1.2 (41), stapler present",
+    "git": "git version 2.54.0",
+    "gh": "gh version 2.97.0 (2026-07-31)",
+    "python": "Python 3.14.7",
+    "ollama": {
+      "installed": true,
+      "models": [
+        "qwen3-coder:30b (tools)",
+        "qwen2.5:0.5b",
+        "llama3.1",
+        "phi4",
+        "nomic-embed-text"
+      ]
+    },
+    "docker_local": [
+      "neuropause-prod-backend-1 (127.0.0.1:4000, healthy)",
+      "neuropause-prod-postgres-1",
+      "neuropause-prod-redis-1",
+      "neuropause-postgres",
+      "neuropause-redis",
+      "neuropause-qdrant"
+    ],
+    "public_endpoints_measured_2026_09_12T16_50Z": {
+      "https://neuropause033.com/": "HTTP 530 (Cloudflare: origin unreachable)",
+      "https://api.neuropause033.com/health": "HTTP 530",
+      "droplet 64.227.128.218 ssh read-only probe": "NOT_MEASURED — denied by session permission policy (Production Reads)"
+    }
+  },
+  "historical_evidence": {
+    "np_b_evidence_root": "/Users/saurabhpatel/neuropause-desktop",
+    "dirs": [
+      "NP-B-016",
+      "NP-B-017",
+      "NP-B-018",
+      "NP-B-019",
+      "NP-B-020",
+      "NP-B-021",
+      "NP-B-022",
+      "NP-B-023-RAW-MEASUREMENTS",
+      "NP-B-NEXT-AUTHORITY-INTAKE",
+      "NP-G0-H17-B"
+    ],
+    "handoff": {
+      "path": "/Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md",
+      "sha256": "731b7a8d0f7dbc86badb686b5c3834429ebecaa14c9093cbd3f8cd98eaaf2bed"
+    },
+    "np_auth_records_note": "NP-AUTH-* records live in R1 (Downloads) A-side corpus per NP-B-023; not copied.",
+    "human_decision_form": {
+      "path": "/Users/saurabhpatel/Downloads/attachments-67/NP-GLOBAL-PILOT-003-HUMAN-DECISION-FORM-20260909T041455Z.md",
+      "sha256": "6ab090d46b76109ec75c71cd61a55d8c9e742a79c5e2748645cc1e98ab713f5e",
+      "state": "MODE A — every HUMAN DECISION field blank"
+    },
+    "certification_state": {
+      "gate_status_board": "certification/pilot-gate-closure/GATE-STATUS-BOARD.md",
+      "global_pilot_gate": "BLOCKED",
+      "first_blocking_gate": "GATE-INTENDED-USE",
+      "authorization_issued": false,
+      "tr_gpr_01_snapshot_designated": false,
+      "tr_gpr_01_source_digest": "a9afa5e1f91bf8aa1a59fbbf69994c007a8bfa2c999cbacb48ad3c2de2ad9072"
+    },
+    "rc30_release_state": "version 1.0.0-rc.30 on pilot/gate-closure @ cec399f; NOT tagged, NOT pushed, NOT published",
+    "verify_freeze_sh_on_cec399f": "FREEZE BROKEN (certified source moved since CERT-40616b9; classified in CLAUDE.md §1 as baseline lagging landed work) — read-only observation"
+  },
+  "SNAPSHOT_DIGEST": "a7dd50e2480c94b87531ef96c06ca32ea2f99562755d222b3763d28e707a2e02"
+}

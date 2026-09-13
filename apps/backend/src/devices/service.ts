@@ -34,11 +34,33 @@ function isManager(role: string): boolean {
   return role === 'owner' || role === 'admin';
 }
 
+/**
+ * NP-GLOBAL-PUBLIC-LAUNCH-002 §20 — A REVOKED DEVICE FAILS CLOSED.
+ *
+ * `setTrust(…, 'revoked')` wrote a row that nothing read: a revoked device could
+ * re-register (the upsert preserved trust_status but still answered 201) and
+ * heartbeat (touch() updated last_seen and answered 200). Revocation was a
+ * label, not a control. Both paths now refuse with `device_revoked` (HTTP 403),
+ * and re-registration by a DIFFERENT user of an existing device id is refused
+ * rather than silently rebinding the row.
+ */
+async function assertNotRevoked(deps: DeviceServiceDeps, orgId: string, deviceId: string, userId: string): Promise<Device | null> {
+  const existing = await deps.repo.get(orgId, deviceId);
+  if (existing && (existing.trustStatus === 'revoked' || existing.trustStatus === 'blocked')) {
+    throw new DeviceError('revoked', `This device is ${existing.trustStatus}. Contact an organization owner or admin.`);
+  }
+  if (existing && existing.userId !== userId) {
+    throw new DeviceError('forbidden', 'This device id is registered to a different user.');
+  }
+  return existing;
+}
+
 export async function registerDevice(
   deps: DeviceServiceDeps,
   input: RegisterDeviceInput,
 ): Promise<Device> {
   await assertMember(deps, input.orgId, input.userId);
+  await assertNotRevoked(deps, input.orgId, input.deviceId, input.userId);
   const device = await deps.repo.upsert(input);
   // Additive: emit a domain event only when a publisher is wired (default off).
   await deps.publish?.publish({
@@ -65,6 +87,7 @@ export async function heartbeatDevice(
   input: { orgId: string; deviceId: string; userId: string; appVersion: string },
 ): Promise<Device> {
   await assertMember(deps, input.orgId, input.userId);
+  await assertNotRevoked(deps, input.orgId, input.deviceId, input.userId);
   const device = await deps.repo.touch(
     input.orgId,
     input.deviceId,

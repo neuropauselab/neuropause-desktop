@@ -146,8 +146,14 @@ describe('P13C Gate 19 — macOS shell chrome + driven workflow', () => {
     expect(screen.queryByText('Finance')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Business' }));
     await waitFor(() => expect(document.querySelector('.np-skeleton')).toBeTruthy());
+    // rc.29 windows-release (run 34126195497) failed here with "resolveModules is not
+    // a function": on the slower Windows runner the skeleton is already on screen
+    // before the EnterpriseModulesList request has been issued, so the resolver had
+    // not been captured yet. Wait for the request itself, not for a pixel that can
+    // precede it — the same commit passed on ubuntu only by timing.
+    await waitFor(() => expect(typeof resolveModules).toBe('function'), { timeout: 5000 });
     resolveModules([financeModule()]);
-    await waitFor(() => expect(screen.getAllByText(/Finance/).length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getAllByText(/Finance/).length).toBeGreaterThan(0), { timeout: 5000 });
   });
 
   it('the membership-gated workspace switch works through the macOS shell', async () => {

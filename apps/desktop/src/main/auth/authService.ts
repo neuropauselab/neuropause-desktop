@@ -18,6 +18,9 @@ import { config } from '../config';
 import { createLogger } from '../logger';
 import { secureStore } from '../security/secureStore';
 import { backendClient, BackendError } from './backendClient';
+import { isTransientBackendFailure } from './backendFailure';
+
+
 import { startLoopbackServer } from './loopbackServer';
 import { localPrincipalStore } from './localPrincipalStore';
 
@@ -55,7 +58,7 @@ function messageFor(err: unknown): string {
  */
 function causeFor(err: unknown): AuthErrorCause {
   if (err instanceof BackendError) {
-    return err.code === 'network_error' ? 'unreachable' : 'rejected';
+    return isTransientBackendFailure(err) ? 'unreachable' : 'rejected';
   }
   return 'unknown';
 }
@@ -204,7 +207,7 @@ class AuthService extends EventEmitter {
       });
       log.info('Re-restored cloud session after the backend became reachable');
     } catch (err) {
-      const isNetwork = err instanceof BackendError && err.status === 0;
+      const isNetwork = isTransientBackendFailure(err);
       if (isNetwork) {
         // The backend went away again mid-restore: stay local, keep the token,
         // and wait for the next reachable edge. No status change.
@@ -263,7 +266,7 @@ class AuthService extends EventEmitter {
         log.info('Restored session from stored credentials', { attempt });
         return;
       } catch (err) {
-        const isNetwork = err instanceof BackendError && err.status === 0;
+        const isNetwork = isTransientBackendFailure(err);
         if (isNetwork && attempt < maxAttempts) {
           log.warn(
             `Backend unreachable during session restore (attempt ${attempt}/${maxAttempts}); retrying`,
@@ -419,7 +422,7 @@ class AuthService extends EventEmitter {
        * here: keep the credentials on a network failure and let a later call
        * (or the next launch) retry. Only a genuine rejection clears.
        */
-      const isNetwork = err instanceof BackendError && err.status === 0;
+      const isNetwork = isTransientBackendFailure(err);
       if (isNetwork) {
         log.warn('Token refresh failed on a network error; keeping credentials', messageFor(err));
         return null;

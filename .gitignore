@@ -95,3 +95,6 @@ apps/desktop/resources/THIRD-PARTY-NOTICES.md
 
 # S131 — generated SBOM/provenance artifacts (derived from package-lock.json; regenerated in CI)
 apps/desktop/dist-sbom/
+
+# A built bundle was committed by mistake at cec399f (161,690 lines); the app main is out/main/index.js.
+apps/desktop/index.js

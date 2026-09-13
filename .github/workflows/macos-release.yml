@@ -29,7 +29,15 @@ permissions:
 
 jobs:
   macos:
-    runs-on: macos-latest
+    # NP-GLOBAL-PUBLIC-LAUNCH-002 — PINNED, NOT FLOATING. rc.29 (run 34126195486)
+    # died in electron-builder's temporary-keychain step on a `macos-latest` runner
+    # reporting os=25.6.0 (macOS 26): `security set-key-partition-list …
+    # SecKeychainUnlock: The user name or passphrase you entered is not correct`.
+    # The same secrets signed rc.16 on 13 Aug. A floating label moved the runner
+    # OS under a signing path that cannot be exercised locally; pin the last
+    # release that signed, and move deliberately. UNVERIFIED until a CI run at a
+    # pushed commit proves it — recorded as such in certification/public-launch-002.
+    runs-on: macos-15
     # P13C ROUND 25 — W-3. Evaluated at JOB level, where the `secrets` context
     # is available. Holds a boolean, never the key: a step `if:` can read `env`,
     # cannot read `secrets`, and must not need the secret's value to decide

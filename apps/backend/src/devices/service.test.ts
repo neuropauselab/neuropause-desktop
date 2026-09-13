@@ -115,3 +115,27 @@ describe('device service (V6.5)', () => {
     expect(device.deviceId).toBe('dev-1');
   });
 });
+
+describe('NP-GLOBAL-PUBLIC-LAUNCH-002 §20 — revoked devices fail closed', () => {
+  const owner = deps('owner');
+  it('a revoked device is refused on heartbeat and on re-registration (403 device_revoked)', async () => {
+    await registerDevice(owner, base);
+    await revokeDevice(owner, { orgId: base.orgId, deviceId: base.deviceId, userId: base.userId });
+    await expect(heartbeatDevice(owner, { orgId: base.orgId, deviceId: base.deviceId, userId: base.userId, appVersion: '1.0.0-rc.30' })).rejects.toMatchObject({ code: 'revoked' });
+    await expect(registerDevice(owner, base)).rejects.toMatchObject({ code: 'revoked' });
+    const rows = await listDevices(owner, base.orgId, base.userId);
+    expect(rows[0].trustStatus).toBe('revoked');
+  });
+  it('a different user cannot rebind an existing device id (403 forbidden)', async () => {
+    const d = deps('member');
+    await registerDevice(d, base);
+    await expect(registerDevice(d, { ...base, userId: 'user-2' })).rejects.toMatchObject({ code: 'forbidden' });
+    await expect(heartbeatDevice(d, { orgId: base.orgId, deviceId: base.deviceId, userId: 'user-2', appVersion: 'x' })).rejects.toMatchObject({ code: 'forbidden' });
+  });
+  it('positive control: a trusted device still registers and heartbeats', async () => {
+    const d = deps('member');
+    await registerDevice(d, base);
+    const hb = await heartbeatDevice(d, { orgId: base.orgId, deviceId: base.deviceId, userId: base.userId, appVersion: '1.0.0-rc.30' });
+    expect(hb.trustStatus).toBe('trusted');
+  });
+});

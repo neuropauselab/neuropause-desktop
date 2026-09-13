@@ -36,7 +36,8 @@
     "bootstrap:env": "node scripts/bootstrap-env.cjs",
     "docs:validate": "node scripts/docs-validate.cjs",
     "docs:build": "node scripts/docs-build.cjs",
-    "verify:workflow-perms": "node scripts/verify-workflow-permissions.cjs"
+    "verify:workflow-perms": "node scripts/verify-workflow-permissions.cjs",
+    "neuropause:public-launch:verify": "node scripts/public-launch-verify.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

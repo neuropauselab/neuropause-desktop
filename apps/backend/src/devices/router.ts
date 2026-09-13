@@ -27,6 +27,7 @@ import { HeartbeatBody, OrgScopeBody, RegisterDeviceBody } from './schemas';
 
 const STATUS: Record<DeviceErrorCode, number> = {
   forbidden: 403,
+  revoked: 403,
   not_found: 404,
   invalid: 400,
 };

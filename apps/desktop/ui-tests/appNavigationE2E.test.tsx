@@ -172,6 +172,9 @@ describe('P13C Gate 18 — driven-UI navigation into a section (real App shell)'
     expect(screen.queryByText('Finance')).toBeNull();
 
     // The read completes → SUCCESS: the family rail renders.
+    // Under full-suite load the skeleton can precede the modules request; wait for
+    // the request itself (the resolver is captured when the route handler runs).
+    await waitFor(() => expect(typeof resolveModules).toBe('function'), { timeout: 5000 });
     resolveModules([financeModule()]);
     await waitFor(() => expect(screen.getAllByText(/Finance/).length).toBeGreaterThan(0));
     expect(container.querySelector('.np-skeleton')).toBeNull();

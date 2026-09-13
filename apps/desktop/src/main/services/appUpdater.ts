@@ -86,9 +86,12 @@ class AppUpdater extends EventEmitter<{ status: [UpdateStatus] }> {
     if (this.wired) return;
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = false;
-    autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = allowsPrerelease(this.channel);
     autoUpdater.channel = feedChannel(this.channel);
+    // AFTER `channel`: electron-updater's channel setter re-evaluates allowDowngrade
+    // from the version's prerelease tag, so a value set before it can be silently
+    // overridden. Set last so a feed can never walk a user to an older build.
+    autoUpdater.allowDowngrade = false;
     autoUpdater.logger = {
       info: (m: unknown) => log.debug(String(m)),
       warn: (m: unknown) => log.warn(String(m)),
@@ -161,6 +164,7 @@ class AppUpdater extends EventEmitter<{ status: [UpdateStatus] }> {
     if (app.isPackaged && this.wired) {
       autoUpdater.allowPrerelease = allowsPrerelease(this.channel);
       autoUpdater.channel = feedChannel(this.channel);
+      autoUpdater.allowDowngrade = false; // see wire(): must follow the channel assignment
     }
     // Reset discovered state; the next check refills it against the new channel.
     this.available = null;
