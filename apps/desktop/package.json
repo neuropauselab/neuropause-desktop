@@ -19,7 +19,7 @@
     "bench": "NP_BENCH=1 vitest run src/main/knowledgeAssets/knowledgeBench.test.ts",
     "test:watch": "vitest",
     "generate:build-info": "node scripts/generate-build-info.cjs",
-    "package:mac": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release && npm run verify:universal",
+    "package:mac": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release && npm run verify:universal && npm run verify:artifact",
     "verify:release": "node scripts/verify-release-artifacts.cjs",
     "sbom": "node scripts/generate-sbom.cjs",
     "verify:sbom": "node scripts/generate-sbom.cjs && node scripts/verify-sbom.cjs",
@@ -28,7 +28,10 @@
     "package:mac:universal": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release && npm run verify:universal",
     "test:ui": "vitest run --config vitest.ui.config.ts",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
-    "verify:universal": "node scripts/verify-universal-and-deps.cjs"
+    "verify:universal": "node scripts/verify-universal-and-deps.cjs",
+    "verify:artifact": "node scripts/verify-mac-artifact.cjs --dist dist --out dist/verification",
+    "verify:artifact:controls": "node scripts/verify-mac-artifact.controls.cjs --dist dist --out dist/verification",
+    "smoke:packaged": "node scripts/packaged-smoke.cjs --zip dist/*-universal-mac.zip --out dist/verification"
   },
   "dependencies": {
     "@neuropause/companion-protocol": "*",

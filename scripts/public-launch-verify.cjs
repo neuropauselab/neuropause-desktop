@@ -77,7 +77,8 @@ function evaluate({ finalGate, artifacts, master001 }) {
     seen.add(g.gate);
     const status = String(g.status || '').toUpperCase();
     const cls = String(g.class || 'TECHNICAL').toUpperCase();
-    const mandatory = g.mandatory !== false;
+    // HARD_BLOCK_GATES can never be opted out with `mandatory:false`.
+    const mandatory = g.mandatory !== false || HARD_BLOCK_GATES.includes(String(g.gate).toUpperCase());
     if (!mandatory) continue;
     if (OK_STATES.has(status)) {
       if (status === 'PASS' && (!g.evidence_id || !g.execution_id)) push(3, `${g.gate}: PASS without evidence_id/execution_id`);

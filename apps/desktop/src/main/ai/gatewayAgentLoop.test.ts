@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { admissibility, runGovernedLoop, type AuthorityDecision, type GatewayCall, type ToolDefinition } from './gatewayAgentLoop';
+import { admissibility, argumentsDigest, runGovernedLoop, type AuthorityDecision, type GatewayCall, type ToolDefinition } from './gatewayAgentLoop';
 import type { GatewayResponse } from './gatewayClient';
 
 const GW = { version: 'np.ai.gateway/v1', policy: 'AI_PROPOSES_ONLY' as const, executes_tools: false as const, grants_authority: false as const };
@@ -65,7 +65,7 @@ describe('governed agent loop — the AI never authorizes itself', () => {
   });
   it('a decision object binds to ONE proposal, must be ALLOW, and must carry enough authority', () => {
     const p = { proposal_id: 'p9', tool: 'pay', arguments: {} };
-    const conf: AuthorityDecision = { decision_id: 'd1', actor: 'user', authority_basis: 'owner', decision_class: 'HUMAN_CONFIRMATION', decision: 'ALLOW', proposal_id: 'p9', time: 't', policy_version: 'np-policy-test-1' };
+    const conf: AuthorityDecision = { decision_id: 'd1', actor: 'user', authority_basis: 'owner', decision_class: 'HUMAN_CONFIRMATION', decision: 'ALLOW', proposal_id: 'p9', tool: 'pay', arguments_sha256: argumentsDigest({}), time: 't', policy_version: 'np-policy-test-1' };
     expect(admissibility(p, registry, new Map([['p9', conf]])).admissibility).toBe('DECISION_REQUIRED'); // confirmation ≠ authority
     const auth: AuthorityDecision = { ...conf, decision_class: 'HUMAN_AUTHORITY' };
     expect(admissibility(p, registry, new Map([['p9', auth]])).admissibility).toBe('ADMISSIBLE');
@@ -74,7 +74,7 @@ describe('governed agent loop — the AI never authorizes itself', () => {
   });
   it('with a bound human decision the write executes exactly once and is evidenced', async () => {
     executed.length = 0;
-    const decisions = new Map<string, AuthorityDecision>([['p0', { decision_id: 'd7', actor: 'operator', authority_basis: 'PILOT_OPERATOR', decision_class: 'HUMAN_CONFIRMATION', decision: 'ALLOW', proposal_id: 'p0', time: 't', policy_version: 'np-policy-test-1' }]]);
+    const decisions = new Map<string, AuthorityDecision>([['p0', { decision_id: 'd7', actor: 'operator', authority_basis: 'PILOT_OPERATOR', decision_class: 'HUMAN_CONFIRMATION', decision: 'ALLOW', proposal_id: 'p0', tool: 'write_file', arguments_sha256: argumentsDigest({ path: 'x' }), time: 't', policy_version: 'np-policy-test-1' }]]);
     const gw = scripted([resp('', [{ tool: 'write_file', arguments: { path: 'x' } }]), resp('done')]);
     const r = await runGovernedLoop('write x', gw.call, registry, { ...base, decisions });
     expect(r.state).toBe('COMPLETED'); expect(executed).toEqual(['write:x']);

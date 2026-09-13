@@ -53,10 +53,13 @@ export async function gatewayChat(opts: GatewayClientOptions, req: { messages: G
   } finally { clearTimeout(timer); }
   const json = (await res.json().catch(() => ({}))) as Partial<GatewayResponse> & { error?: string; message?: string };
   if (!res.ok) throw new GatewayUnavailableError(res.status, json.error ?? `http_${res.status}`, json.message ?? `AI gateway answered HTTP ${res.status}`);
-  if (!json.gateway || json.gateway.policy !== 'AI_PROPOSES_ONLY' || json.gateway.grants_authority !== false) {
-    throw new GatewayUnavailableError(502, 'gateway_invariant', 'AI gateway response lacked the AI_PROPOSES_ONLY marker.');
+  const g = json.gateway as unknown as Record<string, unknown> | undefined;
+  if (!g || g.policy !== 'AI_PROPOSES_ONLY' || g.grants_authority !== false || g.executes_tools !== false) {
+    throw new GatewayUnavailableError(502, 'gateway_invariant', 'AI gateway response lacked a valid AI_PROPOSES_ONLY envelope.');
   }
-  return { ...json, tool_proposals: Array.isArray(json.tool_proposals) ? json.tool_proposals : [], text: typeof json.text === 'string' ? json.text : '', usage: json.usage ?? { input_tokens: 0, output_tokens: 0 } } as GatewayResponse;
+  // Re-shape strictly: unknown top-level keys are dropped, proposals are validated per entry.
+  const proposals: ToolProposal[] = (Array.isArray(json.tool_proposals) ? json.tool_proposals : []).filter((p) => p && typeof p === 'object' && typeof p.proposal_id === 'string' && typeof p.tool === 'string').map((p) => ({ proposal_id: p.proposal_id, tool: p.tool, arguments: p.arguments && typeof p.arguments === 'object' && !Array.isArray(p.arguments) ? p.arguments : {} }));
+  return { id: String(json.id ?? ''), provider: String(json.provider ?? ''), model: String(json.model ?? ''), text: typeof json.text === 'string' ? json.text : '', tool_proposals: proposals, finish_reason: (['stop', 'tool_proposal', 'length', 'unknown'] as const).includes(json.finish_reason as never) ? (json.finish_reason as GatewayResponse['finish_reason']) : 'unknown', usage: { input_tokens: Number(json.usage?.input_tokens ?? 0) || 0, output_tokens: Number(json.usage?.output_tokens ?? 0) || 0 }, latency_ms: Number(json.latency_ms ?? 0) || 0, gateway: { version: String(g.version ?? ''), policy: 'AI_PROPOSES_ONLY', executes_tools: false, grants_authority: false } };
 }
 
 export class GatewayModelClient implements ModelClient {

@@ -118,9 +118,14 @@ export function validateRequest(cfg: GatewayConfig, req: unknown): GatewayReques
   if (chars > cfg.maxInputChars) throw new GatewayError(413, 'input_too_large', `Input exceeds ${cfg.maxInputChars} characters.`);
   if (r.tools !== undefined) {
     if (!Array.isArray(r.tools) || r.tools.length > 32) throw new GatewayError(400, 'invalid_tools', 'tools must be an array of at most 32 entries.');
-    for (const t of r.tools) if (!t || typeof t.name !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(t.name)) throw new GatewayError(400, 'invalid_tool', 'tool names are [a-z][a-z0-9_]{0,63}.');
+    for (const t of r.tools) {
+      if (!t || typeof t.name !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(t.name)) throw new GatewayError(400, 'invalid_tool', 'tool names are [a-z][a-z0-9_]{0,63}.');
+      chars += (typeof t.description === 'string' ? t.description.length : 0) + JSON.stringify(t.parameters ?? {}).length;
+    }
+    if (chars > cfg.maxInputChars) throw new GatewayError(413, 'input_too_large', `Input (messages + tools) exceeds ${cfg.maxInputChars} characters.`);
   }
-  const maxOutputTokens = Math.min(Math.max(1, Number(r.maxOutputTokens ?? cfg.maxOutputTokens)), cfg.maxOutputTokens);
+  const requested = Number(r.maxOutputTokens);
+  const maxOutputTokens = Number.isFinite(requested) && requested > 0 ? Math.min(Math.floor(requested), cfg.maxOutputTokens) : cfg.maxOutputTokens;
   return { messages: r.messages, tools: r.tools, maxOutputTokens };
 }
 

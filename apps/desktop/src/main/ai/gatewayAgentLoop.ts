@@ -28,6 +28,7 @@
  * Pure: the gateway call, tool executors, clock and id source are injected, so
  * the whole loop is unit-testable and the live test uses the real gateway.
  */
+import { createHash } from 'node:crypto';
 import type { GatewayMessage, GatewayResponse, GatewayTool, ToolProposal } from './gatewayClient';
 
 export type ToolClass = 'READ_ONLY' | 'REVERSIBLE_WRITE' | 'IRREVERSIBLE_WRITE' | 'EXTERNAL_COMMUNICATION' | 'FINANCIAL' | 'IDENTITY' | 'SECURITY' | 'SYSTEM' | 'DEVICE';
@@ -56,8 +57,43 @@ export interface AuthorityDecision {
   decision: 'ALLOW' | 'DENY';
   /** The proposal this decision binds to — a decision without a proposal_id binds nothing. */
   proposal_id: string;
+  /** The exact tool the human saw. A decision for read_file never admits write_file under a reused id. */
+  tool: string;
+  /** sha256 of canonicalJson(proposal.arguments) — the human approved THESE arguments, not the id. */
+  arguments_sha256: string;
   time: string;
   policy_version: string;
+  /** Optional: bind to one run; a decision minted for another run is stale. */
+  run_id?: string;
+  /** Optional ISO time after which the decision is stale regardless of binding. */
+  expires_at?: string;
+}
+
+/** Deterministic JSON (sorted keys) so an argument digest is stable across producers. */
+export function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  const o = value as Record<string, unknown>;
+  return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${canonicalJson(o[k])}`).join(',')}}`;
+}
+export function argumentsDigest(args: unknown): string {
+  return createHash('sha256').update(canonicalJson(args ?? {})).digest('hex');
+}
+
+/**
+ * Class → minimum authority FLOOR. A registry author cannot lower a tool below its
+ * class: anything irreversible, external, financial, identity/security/system/device
+ * needs HUMAN_AUTHORITY; a reversible write needs at least HUMAN_CONFIRMATION.
+ */
+export function minimumAuthorityFor(cls: ToolClass): RequiredAuthority {
+  if (cls === 'READ_ONLY') return 'NONE';
+  if (cls === 'REVERSIBLE_WRITE') return 'HUMAN_CONFIRMATION';
+  return 'HUMAN_AUTHORITY';
+}
+const AUTHORITY_RANK: Record<RequiredAuthority, number> = { NONE: 0, HUMAN_CONFIRMATION: 1, HUMAN_AUTHORITY: 2 };
+export function effectiveAuthority(tool: ToolDefinition): RequiredAuthority {
+  const floor = minimumAuthorityFor(tool.side_effect_class);
+  return AUTHORITY_RANK[tool.required_authority] >= AUTHORITY_RANK[floor] ? tool.required_authority : floor;
 }
 
 export type LoopState = 'COMPLETED' | 'BLOCKED' | 'STOPPED' | 'FAILED' | 'TIMEOUT' | 'HUMAN_DECISION_REQUIRED';
@@ -103,7 +139,7 @@ export interface LoopResult {
   turns: number;
   tool_calls: number;
   final_text: string | null;
-  pending_decisions: Array<{ proposal_id: string; tool: string; arguments: Record<string, unknown>; required_authority: RequiredAuthority; side_effect_class: ToolClass }>;
+  pending_decisions: Array<{ proposal_id: string; tool: string; arguments: Record<string, unknown>; arguments_sha256: string; run_id: string; policy_version: string; required_authority: RequiredAuthority; side_effect_class: ToolClass }>;
   tool_results: ToolResult[];
   evidence: LoopEvidence[];
   usage: { input_tokens: number; output_tokens: number };
@@ -166,11 +202,15 @@ export async function runGovernedLoop(userMessage: string, gateway: GatewayCall,
 
     messages.push({ role: 'assistant', content: resp.text || `[proposed ${resp.tool_proposals.map((p) => p.tool).join(', ')}]` });
     let blocked = false;
-    for (const proposal of resp.tool_proposals) {
+    for (const raw of resp.tool_proposals) {
       if (opts.stopRequested?.()) return finish('STOPPED', 'stop requested by the user before a tool execution');
       if (tool_calls >= limits.maxToolCalls) return finish('BLOCKED', `maximum tool calls (${limits.maxToolCalls}) reached`);
       const action_id = id('act');
-      const verdict = admissibility(proposal, registry, opts.decisions, consumed);
+      // Shape validation: a malformed proposal (from a compromised/buggy gateway) is refused,
+      // never thrown — every run must end in exactly one terminal state.
+      const proposal: ToolProposal = { proposal_id: typeof raw?.proposal_id === 'string' && raw.proposal_id ? raw.proposal_id : id('badprop'), tool: typeof raw?.tool === 'string' ? raw.tool : '', arguments: raw && raw.arguments && typeof raw.arguments === 'object' && !Array.isArray(raw.arguments) ? raw.arguments : {} };
+      const malformed = !raw || typeof raw.proposal_id !== 'string' || typeof raw.tool !== 'string' || (raw.arguments !== undefined && (raw.arguments === null || typeof raw.arguments !== 'object' || Array.isArray(raw.arguments)));
+      const verdict = malformed ? { admissibility: 'DENIED_UNKNOWN_TOOL' as const, reason: 'malformed proposal shape (refused, not executed)' } : admissibility(proposal, registry, opts.decisions, consumed, { run_id, now: now(), policy_version: opts.policy_version });
       if (verdict.admissibility === 'ADMISSIBLE' && opts.decisions?.has(proposal.proposal_id)) consumed.add(proposal.proposal_id);
       const policyEv = ev('POLICY', { action_id, proposal_id: proposal.proposal_id, tool: proposal.tool, verdict: verdict.admissibility, reason: verdict.reason, policy_version: opts.policy_version });
       const result: ToolResult = { tool_call_id: proposal.proposal_id, action_id, execution_id: null, tool: proposal.tool, status: 'NOT_PERMITTED', admissibility: verdict.admissibility, timestamp: now(), output: '', evidence_id: policyEv };
@@ -191,7 +231,7 @@ export async function runGovernedLoop(userMessage: string, gateway: GatewayCall,
       } else if (verdict.admissibility === 'DECISION_REQUIRED') {
         result.status = 'DECISION_REQUIRED';
         result.output = `NOT EXECUTED — ${verdict.reason}`;
-        pending.push({ proposal_id: proposal.proposal_id, tool: proposal.tool, arguments: proposal.arguments, required_authority: verdict.tool!.required_authority, side_effect_class: verdict.tool!.side_effect_class });
+        pending.push({ proposal_id: proposal.proposal_id, tool: proposal.tool, arguments: proposal.arguments, arguments_sha256: argumentsDigest(proposal.arguments), run_id, policy_version: opts.policy_version, required_authority: effectiveAuthority(verdict.tool!), side_effect_class: verdict.tool!.side_effect_class });
         blocked = true;
       } else {
         result.status = 'NOT_PERMITTED';
@@ -207,15 +247,22 @@ export async function runGovernedLoop(userMessage: string, gateway: GatewayCall,
 }
 
 /** The authoritative calculation: U_NP(Z_t) = { U ∈ U_cap : Π(Z_t, U) = 1 }. Nothing the model says enters Π. */
-export function admissibility(proposal: ToolProposal, registry: ReadonlyMap<string, ToolDefinition>, decisions?: ReadonlyMap<string, AuthorityDecision>, consumed?: ReadonlySet<string>): { admissibility: ToolResult['admissibility']; reason: string; tool?: ToolDefinition } {
+export interface AdmissibilityContext { run_id?: string; now?: string; policy_version?: string }
+export function admissibility(proposal: ToolProposal, registry: ReadonlyMap<string, ToolDefinition>, decisions?: ReadonlyMap<string, AuthorityDecision>, consumed?: ReadonlySet<string>, ctx: AdmissibilityContext = {}): { admissibility: ToolResult['admissibility']; reason: string; tool?: ToolDefinition } {
   const tool = registry.get(proposal.tool);
   if (!tool) return { admissibility: 'DENIED_UNKNOWN_TOOL', reason: `"${proposal.tool}" is not a registered tool (default deny)` };
-  if (tool.required_authority === 'NONE' && tool.side_effect_class === 'READ_ONLY') return { admissibility: 'ADMISSIBLE', reason: 'read-only capability admitted by policy', tool };
+  const required = effectiveAuthority(tool);
+  if (required === 'NONE') return { admissibility: 'ADMISSIBLE', reason: 'read-only capability admitted by policy', tool };
   const decision = decisions?.get(proposal.proposal_id);
-  if (!decision) return { admissibility: 'DECISION_REQUIRED', reason: `${tool.side_effect_class} tool "${tool.name}" requires ${tool.required_authority}; no decision object bound to proposal ${proposal.proposal_id}`, tool };
+  if (!decision) return { admissibility: 'DECISION_REQUIRED', reason: `${tool.side_effect_class} tool "${tool.name}" requires ${required}; no decision object bound to proposal ${proposal.proposal_id}`, tool };
   if (consumed?.has(proposal.proposal_id)) return { admissibility: 'DECISION_REQUIRED', reason: `decision ${decision.decision_id} for proposal ${proposal.proposal_id} was already consumed; a new action needs a new decision`, tool };
   if (decision.proposal_id !== proposal.proposal_id) return { admissibility: 'DECISION_REQUIRED', reason: 'decision object is bound to a different proposal', tool };
+  if (decision.tool !== proposal.tool) return { admissibility: 'DECISION_REQUIRED', reason: `decision ${decision.decision_id} was made for tool "${decision.tool}", not "${proposal.tool}"`, tool };
+  if (decision.arguments_sha256 !== argumentsDigest(proposal.arguments)) return { admissibility: 'DECISION_REQUIRED', reason: `decision ${decision.decision_id} was made for different arguments (digest mismatch)`, tool };
+  if (ctx.policy_version && decision.policy_version !== ctx.policy_version) return { admissibility: 'DECISION_REQUIRED', reason: `decision ${decision.decision_id} was made under policy ${decision.policy_version}, run is ${ctx.policy_version} (stale policy)`, tool };
+  if (decision.run_id && ctx.run_id && decision.run_id !== ctx.run_id) return { admissibility: 'DECISION_REQUIRED', reason: `decision ${decision.decision_id} is bound to run ${decision.run_id}, not this run`, tool };
+  if (decision.expires_at && ctx.now && decision.expires_at <= ctx.now) return { admissibility: 'DECISION_REQUIRED', reason: `decision ${decision.decision_id} expired at ${decision.expires_at}`, tool };
   if (decision.decision !== 'ALLOW') return { admissibility: 'DENIED_BY_DECISION', reason: `human decision ${decision.decision_id} denied`, tool };
-  if (tool.required_authority === 'HUMAN_AUTHORITY' && decision.decision_class !== 'HUMAN_AUTHORITY') return { admissibility: 'DECISION_REQUIRED', reason: 'tool requires HUMAN_AUTHORITY; a confirmation is not an authority decision', tool };
+  if (required === 'HUMAN_AUTHORITY' && decision.decision_class !== 'HUMAN_AUTHORITY') return { admissibility: 'DECISION_REQUIRED', reason: `tool class ${tool.side_effect_class} requires HUMAN_AUTHORITY; a confirmation is not an authority decision`, tool };
   return { admissibility: 'ADMISSIBLE', reason: `admitted by human decision ${decision.decision_id} (${decision.authority_basis})`, tool };
 }
