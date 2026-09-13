@@ -1,0 +1,77 @@
+{
+  "ARTIFACT": "00_SNAPSHOT",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "taken_before_output_dir_created": true,
+  "branch": {
+    "head": "8fe44d194408864c1448b716662602e01da7bf53",
+    "branch": "pilot/public-launch",
+    "porcelain": 1,
+    "describe": "v1.0.0-rc.29-10-g8fe44d1",
+    "ahead_of_cec399f": 5,
+    "commits": [
+      "8fe44d1 feat(observability): AI gateway + build identity metrics; edge denies /metrics; gateway env documented",
+      "cd196fb fix(ai): decisions bind the action (tool + arguments digest + policy + run + expiry); authority floor per class; strict envelopes",
+      "1692e3a fix(ai): gateway envelope invariant covers every authority phrasing; human decisions are single-use per run",
+      "8a253b6 chore(certification): NP-GLOBAL-PUBLIC-LAUNCH-001/002 + NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE evidence for 8331185",
+      "8331185 feat(launch): server-side AI gateway + governed tool loop, fail-closed device/session fixes, artifact verifiers, launch docs"
+    ]
+  },
+  "source_commit_of_release": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+  "evidence_commit_002": "8a253b6a922f585cd5c1356cc90897715cbedd09",
+  "release_id": "NP-OS-1.0.0-rc.30-8a253b6a922f",
+  "R3_baseline": "f0ba0e8 porcelain=16 digest=27302b8757207bb9 (reproduces)",
+  "artifacts_durable": {
+    "path": "/Users/saurabhpatel/neuropause-desktop/NP-PUBLIC-LAUNCH-ARTIFACTS",
+    "mac_checksums_verified": 7,
+    "win_checksums_verified": 6
+  },
+  "verify_command_before_seam": {
+    "exit": 6,
+    "verdict": "SECURITY BLOCK",
+    "reasons_code_6": [
+      "SECURITY: FAIL — no SAST/secret-scan/DAST wired in CI; open: trust proxy, OAuth auto-link, public AssistantAsk IPC, unrevocable 15-min access tokens",
+      "DEVICE: FAIL — device identity is a client-minted UUID with no key material / proof of possession and no enrollment lifecycle"
+    ]
+  },
+  "authorization_artifact": "ABSENT (only PUBLIC_RELEASE_AUTHORIZATION.template.json, DECISION=AWAITING)",
+  "environment": {
+    "hostname_role": "COMPUTER_B (developer MacBook Pro)",
+    "os": "macOS 26.5.2 (25F84) Darwin 25.5.0",
+    "arch": "arm64 (Apple M5 Pro, 18 cores)",
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "xcode_select": "/Applications/Xcode.app/Contents/Developer",
+    "xcrun": "notarytool 1.1.2 (41), stapler present",
+    "git": "git version 2.54.0",
+    "gh": "gh version 2.97.0 (2026-07-31)",
+    "python": "Python 3.14.7",
+    "ollama": {
+      "installed": true,
+      "models": [
+        "qwen3-coder:30b (tools)",
+        "qwen2.5:0.5b",
+        "llama3.1",
+        "phi4",
+        "nomic-embed-text"
+      ]
+    },
+    "docker_local": [
+      "neuropause-prod-backend-1 (127.0.0.1:4000, healthy)",
+      "neuropause-prod-postgres-1",
+      "neuropause-prod-redis-1",
+      "neuropause-postgres",
+      "neuropause-redis",
+      "neuropause-qdrant"
+    ],
+    "public_endpoints_measured_2026_09_12T16_50Z": {
+      "https://neuropause033.com/": "HTTP 530 (Cloudflare: origin unreachable)",
+      "https://api.neuropause033.com/health": "HTTP 530",
+      "droplet 64.227.128.218 ssh read-only probe": "NOT_MEASURED — denied by session permission policy (Production Reads)"
+    }
+  }
+}

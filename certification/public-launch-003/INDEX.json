@@ -1,0 +1,99 @@
+{
+  "ARTIFACT": "INDEX",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "written": [
+    {
+      "file": "certification/public-launch-003/00_SNAPSHOT.json",
+      "sha256": "e956499f0a2caabe9736cc0989c9c421774b428e632e0742b1e824531cad9778"
+    },
+    {
+      "file": "certification/public-launch-003/01_RELEASE_BLOCKER_REGISTER.json",
+      "sha256": "ba2155a4ee2b7e7f525b50467f1f8899cdf2e05452f6fae7710e63b261a8dbb7"
+    },
+    {
+      "file": "certification/public-launch-003/02_RELEASE_GATE_MATRIX.md",
+      "sha256": "2bed438e1df87d970d2436d2dde65e22222df06d7e4839d74904f8ffeae9d034"
+    },
+    {
+      "file": "certification/public-launch-003/03_CLOSURE_PLAN.md",
+      "sha256": "114798f9d6886627825e489ce90b81c6bd47e209137e1f9cb38d37ed3396286c"
+    },
+    {
+      "file": "certification/public-launch-003/04_HUMAN_HANDOFF.md",
+      "sha256": "5516966e63466141e0d2905672ccbd65e46f1773b098d64226824832f95d595b"
+    },
+    {
+      "file": "certification/public-launch-003/05_OPERATOR_ACTION_QUEUE.json",
+      "sha256": "fd2312cf39b96deff78c421a75a96367bb58ca7aea74bdbdaa37cfa89ed9445b"
+    },
+    {
+      "file": "certification/public-launch-003/06_ARTIFACT_IDENTITY_REGISTER.json",
+      "sha256": "60a4698a92fcf0047a86e70b5094af3696423d686cd8e03d46df01a4ffda7838"
+    },
+    {
+      "file": "certification/public-launch-003/07_PROVENANCE_CHAIN.json",
+      "sha256": "478c99b0988d07bc4867da3a80327899f86f9d48b2d27d8650206e970f9c201f"
+    },
+    {
+      "file": "certification/public-launch-003/08_APPLE_DISTRIBUTION.json",
+      "sha256": "c938ce11bbb962e881e0dd4b613fec54b5943f8130190ca5154a96028aac57cd"
+    },
+    {
+      "file": "certification/public-launch-003/09_WINDOWS_DISTRIBUTION.json",
+      "sha256": "9c479bd8d42e89081cc562ddc0f994e3392eeafa9119f5429029641984cde3a8"
+    },
+    {
+      "file": "certification/public-launch-003/10_PUBLIC_INFRASTRUCTURE.json",
+      "sha256": "2fc94b06f21b910e64e131c4f9968a4e31da0597980ffde12ba40223092e02f3"
+    },
+    {
+      "file": "certification/public-launch-003/11_UPDATE_ROLLBACK.json",
+      "sha256": "74e1b28bab9111968d2695f4f41f8d9b4b081781d90f3b84b6c9508285c161be"
+    },
+    {
+      "file": "certification/public-launch-003/12_CLEAN_MACHINE.json",
+      "sha256": "c4edddc1f311395e9c5c349d0a6a7ddfc4f33358fadeb8a3668b5a47033bbf98"
+    },
+    {
+      "file": "certification/public-launch-003/13_AI_GATEWAY_SECURITY.json",
+      "sha256": "71e4c37f97e1d7a484942ea85a0c25eedebc2a01a03fe4d07814858779aebd8b"
+    },
+    {
+      "file": "certification/public-launch-003/14_AI_TOOL_GOVERNANCE.json",
+      "sha256": "34db4d90e630cbcfca07c9e0690a50a67ba07f4d91105a851b1be3944ddcddb6"
+    },
+    {
+      "file": "certification/public-launch-003/15_DEPENDENCY_SECURITY.json",
+      "sha256": "2e81ae761308cb6d72c8aba55708ca8ffc224ca453c8d517fefff2349b52264f"
+    },
+    {
+      "file": "certification/public-launch-003/16_SUPPORT_PRIVACY.json",
+      "sha256": "5c885bd0241f1d355efe42d96d89e6906f0a69f4849ae8a3e01e5f5690fd8aa6"
+    },
+    {
+      "file": "certification/public-launch-003/17_REGULATORY_FACTS.json",
+      "sha256": "7558fe5b7217e271982a802a278bf03feb48d59126460c4d489cc9da2948ba97"
+    },
+    {
+      "file": "certification/public-launch-003/18_HUMAN_DECISION_STATUS.json",
+      "sha256": "2fd41f160e499ea10fa427990c6ada505e9171bb297f420cf1c1a9f11bb5fe71"
+    },
+    {
+      "file": "certification/public-launch-003/19_NEGATIVE_CONTROLS.json",
+      "sha256": "490eebaffb6f0d14a92e66a3a8bc05a001b10309a58b3d0e91dac2454cf91bbb"
+    },
+    {
+      "file": "certification/public-launch-003/20_RECONCILIATION.json",
+      "sha256": "16d844817e5ecf125d2c482c18fbc0864857ccc9e8a0aa75c1e7bd6a0b262f3f"
+    },
+    {
+      "file": "certification/public-launch-003/21_FINAL_STATE.md",
+      "sha256": "3fe324ff5d6e723e9e39f3c29560f9c7f31f98ed415dddac9267f64d5dfc7150"
+    }
+  ]
+}

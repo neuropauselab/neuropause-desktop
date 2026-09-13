@@ -1,0 +1,232 @@
+{
+  "ARTIFACT": "20_RECONCILIATION",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "no_regression_reviewer": {
+    "summary": "Diff cec399f..8331185 (49 files, +3197/-161700) audited read-only on branch pilot/public-launch (HEAD 8a253b6, descendant of 8331185). Every non-test/non-doc/non-certification source hunk was read. VERDICT: NO WEAKENING FOUND. apps/backend/src/pilot/*, auth/requireAuth.ts, auth/jwt.ts and the desktop renderer/preload are untouched by the diff (empty diff --stat). Authority-relevant changes are all STRENGTHENED or NEUTRAL: revoked/blocked devices now fail closed on register+heartbeat (403 device_revoked); refresh-token reuse burn now survives the transaction ROLLBACK; password reset revokes every refresh session; electron-updater allowDowngrade=false is now set AFTER the channel setter (MEASURED: electron-updater 6.8.9 `set channel` forces allowDowngrade=true, so at cec399f downgrade was effectively allowed); the new AI gateway keeps provider keys server-side only, returns a fixed AI_PROPOSES_ONLY/grants_authority:false envelope, and the desktop governed loop denies unknown tools by default and never admits a side-effect tool without a caller-supplied human decision bound to the proposal_id (gatewayAgentLoop.test.ts 11/11 MEASURED; devices/service.test.ts 10/10 MEASURED). The new governed loop and GatewayModelClient are NOT wired into any production caller at 8331185. The CI runner is pinned macos-latest -> macos-15 (only hunk in the workflow). apps/desktop/index.js removal is SAFE (built bundle; package.json main=./out/main/index.js; electron-builder files=out/**/*; zero references at cec399f). Release gate scripts/public-launch-verify.cjs is new and read-only; MEASURED run at HEAD exits 6 SECURITY BLOCK / launch_status NOT_READY (23 gates: 5 PASS, 5 WAITING_FOR_HUMAN, 4 FAIL, 3 BLOCKED, 2 WAITING_FOR_OPERATOR_SECRET, 4 NOT_MEASURED) — Human Authority is not bypassed. Findings are on NEW code only (not regressions): (1) MEASURED: the gate script returns exit 0 if every HARD_BLOCK gate is marked mandatory:false even when FAIL (register at HEAD has 0 such markers); (2) AuthorityDecision binds by proposal_id only (no args digest/TTL/run binding; proposal_id is provider-supplied for anthropic/openai); (3) no unit test pins the allowDowngrade ordering; (4) new artifact verifiers are not wired into CI; (5) assertNoAuthorityClaim inspects top-level keys only at 8331185 (both clients compensate; an UNCOMMITTED working-tree change tightens it). Working tree is dirty vs HEAD (M gateway.ts, M gateway.test.ts, ?? gatewayAuthorityPhrases.test.ts) — those edits are outside the audited commits.",
+    "verdicts": [
+      {
+        "item": ".github/workflows/macos-release.yml",
+        "status": "STRENGTHENED",
+        "reason": "Only hunk: runs-on macos-latest → macos-15 (line 40) with rationale comment. Pins the runner OS under the signing path (determinism). No permission/secret/action change. DECLARED unverified until a CI run; stale 'macos-latest' prose remains at lines 4 and 16."
+      },
+      {
+        "item": ".gitignore",
+        "status": "NEUTRAL",
+        "reason": "Adds anchored rule apps/desktop/index.js (line 100) so the mistakenly committed bundle cannot return; does not affect out/main/index.js (covered by pre-existing line 30)."
+      },
+      {
+        "item": "package.json (root)",
+        "status": "STRENGTHENED",
+        "reason": "Adds script neuropause:public-launch:verify → scripts/public-launch-verify.cjs (line 40). Exposes the read-only release gate; no other change."
+      },
+      {
+        "item": "apps/backend/src/app.ts",
+        "status": "STRENGTHENED",
+        "reason": "Mounts /ai behind requireAuth + per-IP rateLimit(ai_chat,120/60s) (line 117). New surface is authenticated, rate-limited, and defaults to 503 (provider none). No existing route/middleware order changed."
+      },
+      {
+        "item": "apps/backend/src/ai/gateway.ts (new)",
+        "status": "STRENGTHENED",
+        "reason": "Establishes the server-side key custody boundary: keys from env only (95-108), never in responses; fixed AI_PROPOSES_ONLY/executes_tools:false/grants_authority:false envelope (60,138-140); assertNoAuthorityClaim on top-level keys (190-195); bounded inputs/timeouts. Observation: nested envelope keys are not inspected at 8331185 (clients compensate; uncommitted working tree tightens)."
+      },
+      {
+        "item": "apps/backend/src/ai/router.ts (new)",
+        "status": "STRENGTHENED",
+        "reason": "/ai/status exposes configured/provider/model/limits only (41); /ai/chat 401s without req.userId (45), per-user 30 rpm window (46-47), assertNoAuthorityClaim applied (56), audit line without bodies (57)."
+      },
+      {
+        "item": "apps/backend/src/config/env.ts",
+        "status": "STRENGTHENED",
+        "reason": "AI_GATEWAY_PROVIDER enum defaults to 'none' (69) → gateway present but refusing; keys optional and server-side (77-78); numeric bounds positive-int coerced (72-76). Default DENY preserved."
+      },
+      {
+        "item": "apps/backend/src/auth/accountService.ts",
+        "status": "STRENGTHENED",
+        "reason": "resetPassword now revokes every refresh session (133-136) — evicts holders of the old credential. Minor: revokeAllSessions is optional on the interface (43-44) and optional-chained, so an implementation omitting it degrades silently."
+      },
+      {
+        "item": "apps/backend/src/auth/accountRepository.ts",
+        "status": "STRENGTHENED",
+        "reason": "Pg revokeAllSessions: UPDATE auth_sessions SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL (31-33). Schema has both columns (0001_init.sql:35-47)."
+      },
+      {
+        "item": "apps/backend/src/auth/accountRepository.memory.ts",
+        "status": "NEUTRAL",
+        "reason": "In-memory revokeAllSessions records userId into an exported array for tests (24, 41-43). Test support only."
+      },
+      {
+        "item": "apps/backend/src/auth/session.ts",
+        "status": "STRENGTHENED",
+        "reason": "Refresh-reuse burn moved from the transaction client to pool query() (76-80) so it survives the ROLLBACK caused by the 401 throw; previously (per MEASURED-LIVE comment) reuse detection revoked nothing. DERIVED lock safety: the FOR UPDATE row always has revoked_at set in that branch (98-100, 115-118)."
+      },
+      {
+        "item": "apps/backend/src/devices/service.ts",
+        "status": "STRENGTHENED",
+        "reason": "assertNotRevoked (47-56) applied to registerDevice (63) and heartbeatDevice (90): revoked/blocked devices → DeviceError('revoked'); different-user rebind of an existing device id → 'forbidden'. Revocation becomes a control instead of a label. MEASURED: service.test.ts 10/10."
+      },
+      {
+        "item": "apps/backend/src/devices/router.ts",
+        "status": "STRENGTHENED",
+        "reason": "STATUS map adds revoked: 403 (30) → AppError code device_revoked (36-37). Fails closed at the HTTP boundary."
+      },
+      {
+        "item": "apps/backend/src/devices/types.ts",
+        "status": "NEUTRAL",
+        "reason": "DeviceErrorCode union extended with 'revoked' (54). Type-only."
+      },
+      {
+        "item": "apps/desktop/index.js (deleted)",
+        "status": "STRENGTHENED",
+        "reason": "Removes a 161,690-line built bundle committed by mistake. SAFE: package.json main=./out/main/index.js; electron-builder files=out/**/*,package.json; zero references in scripts/configs/workflows at cec399f; .gitignore rule anchored."
+      },
+      {
+        "item": "apps/desktop/scripts/live-agent-loop.ts (new)",
+        "status": "NEUTRAL",
+        "reason": "Evidence script (not packaged; apps/desktop/scripts not in builder files) that registers a throwaway user on a local backend and drives runGovernedLoop with sandboxed read_file/write_file; asserts writes never execute without a human decision and prompt injection does not unlock a write."
+      },
+      {
+        "item": "apps/desktop/scripts/packaged-smoke.cjs (new)",
+        "status": "STRENGTHENED",
+        "reason": "Evidence tool: launches the real packaged app from ZIP/DMG on a fresh profile, measures isPackaged, module loads, first window, clean exit; exit 1 on failure. Read-only apart from temp dirs. Not wired into CI."
+      },
+      {
+        "item": "apps/desktop/scripts/verify-mac-artifact.cjs (new)",
+        "status": "STRENGTHENED",
+        "reason": "New byte-level verifier over the published containers: FEED sha512/path/size binding (129-136), SIGNING deep/strict + Developer ID + hardened runtime + nested objects (323-345), NOTARIZATION stapler/spctl blocking (348-356), CONFIG no dev endpoints/dirty=false (359-367), SECRETS scan (370-405); exit 1 on any blocking failure (444). Not wired into CI at 8331185."
+      },
+      {
+        "item": "apps/desktop/scripts/verify-mac-artifact.controls.cjs (new)",
+        "status": "STRENGTHENED",
+        "reason": "Positive + six negative controls prove the verifier detects missing deps, missing entry, non-universal binary, byte flip (FEED), wrong feed filename, and localhost backend URL; exits 1 if any control misbehaves. Nit: NEG-NAME hard-codes the rc.30 filename (126); fails loudly on other versions."
+      },
+      {
+        "item": "apps/desktop/src/main/ai/aiEngine.ts",
+        "status": "STRENGTHENED",
+        "reason": "AiBudget (50-84) refuses a run before any model call when rpm/day budgets are exhausted (147-153) and records output tokens after (163); refusal is audited as 'fallback' and returned deterministically. Adds a cost/rate bound; no authority path touched."
+      },
+      {
+        "item": "apps/desktop/src/main/ai/gatewayAgentLoop.ts (new)",
+        "status": "STRENGTHENED",
+        "reason": "Governed loop: unknown tool → default deny (202); only READ_ONLY+NONE admissible without a decision (203); side-effect tools → HUMAN_DECISION_REQUIRED unless a caller-supplied decision bound to the proposal_id with ALLOW and sufficient class exists (204-209); envelope marker enforced (136-138); bounded turns/tool calls/duration and cooperative STOP (114, 128-130, 150-151). MEASURED 11/11 tests. Not wired to production callers. Finding: decision binds by proposal_id only (no args digest/TTL/run binding; provider-supplied ids for anthropic/openai)."
+      },
+      {
+        "item": "apps/desktop/src/main/ai/gatewayClient.ts (new)",
+        "status": "STRENGTHENED",
+        "reason": "Desktop holds no provider key on this lane: bearer session token only (49); signed-out → fail closed (43); refuses responses lacking the AI_PROPOSES_ONLY/grants_authority:false marker (55-57). GatewayModelClient is defined but not registered anywhere."
+      },
+      {
+        "item": "apps/desktop/src/main/auth/authService.ts",
+        "status": "NEUTRAL",
+        "reason": "Four sites now use isTransientBackendFailure instead of status===0 (61, 210, 269, 425): 429/5xx (incl. Cloudflare 52x/53x) keep the stored refresh token and stay local instead of destroying it; genuine 4xx rejections still clear. Availability/correctness fix; no local authority is granted and the backend remains authoritative on refresh."
+      },
+      {
+        "item": "apps/desktop/src/main/auth/backendFailure.ts (new)",
+        "status": "NEUTRAL",
+        "reason": "Pure structural classifier: network_error/status 0/429/>=500 → transient (12-20). No Electron import; mock-proof."
+      },
+      {
+        "item": "apps/desktop/src/main/services/appUpdater.ts",
+        "status": "STRENGTHENED",
+        "reason": "allowDowngrade=false now set AFTER autoUpdater.channel in wire() (93) and added after channel in setChannel() (167). MEASURED: electron-updater 6.8.9 set channel forces allowDowngrade=true (AppUpdater.js:44), so cec399f effectively allowed downgrades. Finding: no unit test pins this ordering."
+      },
+      {
+        "item": "scripts/public-launch-verify.cjs (new)",
+        "status": "STRENGTHENED",
+        "reason": "Read-only release gate: unknown status → evidence missing, PASS requires evidence_id+execution_id, absent hard-block gates → code 3, class-aware exit codes with SECURITY-first precedence. MEASURED at HEAD: exit 6 SECURITY BLOCK, HUMAN_RELEASE_AUTHORITY WAITING_FOR_HUMAN. Finding: mandatory:false on hard-block gates bypasses evaluation (PROBE-A exit 0); register at HEAD has none."
+      },
+      {
+        "item": "INVARIANT: authority semantics (pilot/*, devices/service.ts, auth/*)",
+        "status": "STRENGTHENED",
+        "reason": "pilot/* and requireAuth/jwt untouched (empty diff); devices revocation now enforced fail-closed; refresh-reuse burn now persists; password reset revokes all sessions."
+      },
+      {
+        "item": "INVARIANT: default DENY",
+        "status": "STRENGTHENED",
+        "reason": "AI provider default 'none' → 503; unknown tool → DENIED_UNKNOWN_TOOL; signed-out desktop → 401 error; revoked device → 403; unknown gate status → EVIDENCE MISSING."
+      },
+      {
+        "item": "INVARIANT: provider-key custody (no key reaches desktop/renderer)",
+        "status": "STRENGTHENED",
+        "reason": "New lane keeps keys in the backend env only; desktop sends a session bearer; no renderer/preload file changed. Pre-existing main-process BYOK lane (claudeClient/aiConfigIpc) is baseline and unchanged by this diff."
+      },
+      {
+        "item": "INVARIANT: AI output → authority",
+        "status": "STRENGTHENED",
+        "reason": "Gateway never executes or authorizes; fixed envelope; admissibility computed from registry + caller decisions only; injected 'AUTHORIZATION_GRANTED' text is data (test PASS). Residual: server-side assertNoAuthorityClaim is top-level-only at 8331185 (both clients enforce the nested marker)."
+      },
+      {
+        "item": "INVARIANT: human confirmation bypass",
+        "status": "STRENGTHENED",
+        "reason": "No path admits a side-effect tool without a caller-supplied AuthorityDecision bound to the proposal; HUMAN_AUTHORITY cannot be satisfied by HUMAN_CONFIRMATION; the model cannot populate decisions. Residual: proposal_id-only binding (no args digest/TTL)."
+      },
+      {
+        "item": "INVARIANT: stale approval cannot authorize a new action",
+        "status": "NEUTRAL",
+        "reason": "Decisions are bound to proposal_id and a mismatched id is DECISION_REQUIRED (test PASS), but there is no expiry, no arguments digest, no run_id binding, and decisions are not consumed; proposal_id is provider-supplied for anthropic/openai. Latent (no production caller constructs decisions at 8331185)."
+      },
+      {
+        "item": "INVARIANT: Human Authority decides",
+        "status": "STRENGTHENED",
+        "reason": "HUMAN_RELEASE_AUTHORITY is a hard-block gate that cannot be implicitly PASS; MEASURED verdict at HEAD is SECURITY BLOCK / NOT_READY with that gate WAITING_FOR_HUMAN. Residual: mandatory:false register edit bypass (PROBE-A)."
+      },
+      {
+        "item": "INVARIANT: updater downgrade safety",
+        "status": "STRENGTHENED",
+        "reason": "Ordering fix closes an effective allowDowngrade=true at cec399f; autoDownload/autoInstallOnAppQuit remain false."
+      },
+      {
+        "item": "INVARIANT: signature/feed verification",
+        "status": "STRENGTHENED",
+        "reason": "New verifier + negative controls bind feed sha512/path/size to the exact ZIP and enforce Developer ID, hardened runtime, stapler and spctl; pre-existing verify-release-artifacts.cjs/verify-universal-and-deps.cjs unchanged."
+      },
+      {
+        "item": "INVARIANT: evidence gates / release gates",
+        "status": "STRENGTHENED",
+        "reason": "New gate script requires evidence ids for PASS and blocks on unknown states; MEASURED exit 6 at HEAD. Residual: mandatory:false bypass; verifiers not wired into CI."
+      },
+      {
+        "item": "INVARIANT: CI workflow runner pin",
+        "status": "STRENGTHENED",
+        "reason": "macos-latest → macos-15 is the sole change; DECLARED unverified until a CI run."
+      }
+    ],
+    "findings": [
+      "F1 [MEASURED, new code, not a regression] scripts/public-launch-verify.cjs:77-80,102-104 — a gate marked `mandatory:false` is skipped before status classification and HARD_BLOCK_GATES are only checked for presence; PROBE-A (all hard-block gates FAIL + mandatory:false) returns exit 0 MACHINE-GREEN. The register at HEAD has zero mandatory:false entries, so this is latent, but it lets a register edit neutralize HUMAN_RELEASE_AUTHORITY.",
+      "F2 [DERIVED, new code, not a regression] apps/desktop/src/main/ai/gatewayAgentLoop.ts:53-62,204-209 — AuthorityDecision binds by proposal_id only: no digest of (tool, arguments), no expiry/TTL, no run_id binding, decisions are not consumed after use; proposal_id is provider-supplied for anthropic/openai (gateway.ts:151,165). A caller that reuses a decisions map across runs, or a compromised provider replaying an id with different arguments, could reuse an approval. No production caller constructs decisions at 8331185.",
+      "F3 [ABSENT] apps/desktop/src/main/services/appUpdater.ts:93,167 — the allowDowngrade-after-channel ordering that fixes an effective allowDowngrade=true (electron-updater 6.8.9 AppUpdater.js:44) is not pinned by any test in the diff; a future refactor could silently reintroduce it.",
+      "F4 [MEASURED] apps/desktop/scripts/verify-mac-artifact.cjs, verify-mac-artifact.controls.cjs and packaged-smoke.cjs are not referenced by .github/workflows/macos-release.yml or any package.json script at 8331185; they are manual evidence tools, so CI can still publish bytes the verifier would reject.",
+      "F5 [MEASURED] apps/backend/src/ai/gateway.ts:190-195 — assertNoAuthorityClaim inspects only top-level response keys at 8331185; a nested `gateway.grants_authority:true` passes the server check (both desktop consumers reject it: gatewayClient.ts:55-57, gatewayAgentLoop.ts:136-138). The uncommitted working-tree edit (NP-PUBLIC-LAUNCH-003 §15) closes this but is outside the audited commits.",
+      "F6 [MEASURED] Working tree is dirty vs HEAD 8a253b6 (M apps/backend/src/ai/gateway.ts, M gateway.test.ts, ?? gatewayAuthorityPhrases.test.ts); any evidence generated from this tree would not correspond to 8331185.",
+      "F7 [MEASURED, minor] apps/backend/src/auth/accountService.ts:43-44,136 — revokeAllSessions is optional on AuthAccountRepo and optional-chained; a repo that omits it silently skips the reset-time revocation.",
+      "F8 [MEASURED, cosmetic] .github/workflows/macos-release.yml:4,16 still describe a 'macos-latest runner' after the pin to macos-15; apps/desktop/scripts/verify-mac-artifact.controls.cjs:126 hard-codes the rc.30 zip filename (fails loudly, not silently, on other versions).",
+      "F9 [MEASURED, baseline] The pre-existing desktop BYOK lane (apps/desktop/src/main/ai/claudeClient.ts:35,59; aiConfigIpc.ts:400,407) holds provider keys in the desktop MAIN process at both cec399f and 8331185; this diff neither adds nor removes it, and no renderer/preload exposure is introduced."
+    ]
+  },
+  "handoff_2026_09_13_facts_preserved": {
+    "engineering": "unchanged (no packaged-source change; backend hardening only in ai/gateway.ts envelope check)",
+    "live_backend": "26/26 (8331185)",
+    "live_ai": "preserved",
+    "security_fixes": "preserved",
+    "package_verification": "preserved; re-measured this seam",
+    "negative_controls": "re-run: 6/6 detected",
+    "packaged_smoke": "preserved (8331185)",
+    "release_result": "NOT_READY (unchanged)",
+    "release_id": "NP-OS-1.0.0-rc.30-8a253b6a922f",
+    "nothing_pushed_tagged_published_authorized": true
+  },
+  "this_seam_changes": {
+    "source": [
+      "apps/backend/src/ai/gateway.ts (envelope invariant widened)",
+      "apps/desktop/src/main/ai/gatewayAgentLoop.ts (single-use decisions)",
+      "tests added"
+    ],
+    "direction": "STRENGTHENED only",
+    "packaged_desktop_payload_affected": false,
+    "reason": "gatewayAgentLoop is not imported by the main entry (0 occurrences in out/main/index.js); backend is not packaged"
+  }
+}

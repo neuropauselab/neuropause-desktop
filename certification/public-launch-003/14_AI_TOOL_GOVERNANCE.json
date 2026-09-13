@@ -1,0 +1,176 @@
+{
+  "ARTIFACT": "14_AI_TOOL_GOVERNANCE",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "reviewer": {
+    "summary": "Governed loop (apps/desktop/src/main/ai/gatewayAgentLoop.ts @8331185) implements default-DENY registry lookup, READ_ONLY+NONE auto-admit, and a caller-supplied per-proposal AuthorityDecision for every other class; model text/arguments/tool output never enter admissibility() (24/24 unit tests pass, MEASURED). Model cannot execute (gateway returns proposals only), gateway cannot execute (no fs/exec; envelope executes_tools:false; assertNoAuthorityClaim), and the loop is NOT wired to any IPC channel or main-process module — reachable only from apps/desktop/scripts/live-agent-loop.ts (ABSENT: not wired), so renderer bypass of the governed lane is moot today. Gaps MEASURED by probe: decision.time/policy_version are carried but never evaluated; no run_id binding and no single-use consumption (same decisions map + same proposal_id executes in two runs); no class->minimum-authority floor (IRREVERSIBLE_WRITE/EXTERNAL_COMMUNICATION with required_authority NONE are admitted by a HUMAN_CONFIRMATION decision); explicit-undefined limits disable bounds; refusals do not count toward maxToolCalls; no resume path exists so in the live topology (provider/uuid proposal_ids) the ALLOW path is unreachable. pending_decisions is an in-memory LoopResult field with no persistence in the module (only the live script writes it into an evidence JSON). Legacy lanes unchanged in the source commit: AssistantAsk is PUBLIC (sender-frame trust only) but proposal-only (single deps.execute call site is decideStep); AssistantPlanDecide and execute:run are RBAC 'workforce:operate' with main-side actor resolution; execute:run needs no approval object at all (schema strict: no params/confirmed), the 'automation' executor runs actions with no further confirmation, and persisted 'waiting' plan steps have no expiry. Registry entries exist only for READ_ONLY (read_file) and REVERSIBLE_WRITE (write_file); IRREVERSIBLE_WRITE, EXTERNAL_COMMUNICATION, IDENTITY, SECURITY, DEVICE exist only as type-union members (test registries cover EXTERNAL_COMMUNICATION and FINANCIAL). No backend/Computer-A authority evaluator exists; the desktop main process is the sole evaluator and executor of the governed lane.",
+    "verdicts": [
+      {
+        "item": "Model cannot execute tools directly",
+        "status": "PASS",
+        "reason": "MEASURED: gateway returns proposals only (gateway.ts:142-145,160,173,185); execution occurs solely at gatewayAgentLoop.ts:178 after ADMISSIBLE; model text/args/output never enter admissibility() (205-215); 24/24 tests pass."
+      },
+      {
+        "item": "Gateway cannot execute tools",
+        "status": "PASS",
+        "reason": "MEASURED: no fs/exec/spawn in apps/backend/src/ai; envelope executes_tools:false (gateway.ts:151); assertNoAuthorityClaim (190-201) applied at router.ts:56; gateway has no registry and cannot see classes."
+      },
+      {
+        "item": "Renderer cannot bypass main-process policy on the governed loop",
+        "status": "ABSENT (not wired)",
+        "reason": "MEASURED: runGovernedLoop/gatewayChat are referenced by no IPC handler, no runtimeCore wiring, no preload/renderer code — only tests and apps/desktop/scripts/live-agent-loop.ts. The governed lane is unreachable from the app today; bypass is moot, and so is use."
+      },
+      {
+        "item": "Legacy lane: AssistantAsk IPC authority",
+        "status": "GAP (public, proposal-only)",
+        "reason": "MEASURED: on PUBLIC_CHANNELS (runtimeAuthz.ts:1174) with sender-frame trust only; ask() never calls deps.execute (single call site is decideStep :716); risk is unauthenticated model use over tenant-scoped stores, not execution."
+      },
+      {
+        "item": "Legacy lane: AssistantPlanDecide / execute:run approval binding",
+        "status": "PARTIAL",
+        "reason": "MEASURED: both RBAC 'workforce:operate' with main-side actor; decideStep binds to (conversation,message,step) and is single-use by state (653). But execute:run needs no approval object at all (strict schema, RBAC is the authority), the 'automation' executor runs actions with no further confirmation (runtimeCore.ts:2467-2483), the 'decision' executor advances decision status (2484-2497), dispatch carries no confirmed/claim, and waiting steps persist without expiry."
+      },
+      {
+        "item": "Injected content cannot grant permission",
+        "status": "PASS",
+        "reason": "MEASURED unit (8 phrases × text/args/output; SYSTEM/ADMIN/AUTHORIZATION_GRANTED in tool output) + DECLARED live run 3 (executed_writes [], doc_unchanged true); backend envelope invariant covers top-level/envelope keys while deliberately passing text/args as data."
+      },
+      {
+        "item": "A decision object bound to one proposal cannot authorize another",
+        "status": "PASS with gaps",
+        "reason": "MEASURED: proposal_id mismatch → DECISION_REQUIRED (211). Gaps MEASURED by probe: decision.time and policy_version never evaluated; no run_id binding; decisions map is never consumed (same map+id executes in two runs); AuthorityDecision has no signature/expiry/nonce."
+      },
+      {
+        "item": "Stale approval cannot authorize a new action",
+        "status": "PARTIAL",
+        "reason": "Holds only via proposal_id uniqueness (provider ids / prop_<uuid>); staleness by time or policy version is not checked; the pinned test differs the id rather than the age. DERIVED: in the live topology no resume path exists, so the ALLOW path is currently unreachable outside tests."
+      },
+      {
+        "item": "pending_decisions after run end / replayable persistence",
+        "status": "PASS (loop) / GAP (legacy)",
+        "reason": "MEASURED: loop keeps pending only in the returned LoopResult; no module persistence; the live script writes it to an evidence JSON that nothing reads back. Legacy assistant 'waiting' steps are persisted indefinitely and remain decidable after restart (single-use by state, no expiry)."
+      },
+      {
+        "item": "Default DENY",
+        "status": "PASS",
+        "reason": "MEASURED: unregistered tool → DENIED_UNKNOWN_TOOL (207); non-READ_ONLY without bound ALLOW → DECISION_REQUIRED (210)."
+      },
+      {
+        "item": "Class → minimum authority invariant",
+        "status": "FAIL (not enforced)",
+        "reason": "MEASURED probe: IRREVERSIBLE_WRITE/EXTERNAL_COMMUNICATION/DEVICE with required_authority NONE or HUMAN_CONFIRMATION are admitted by a HUMAN_CONFIRMATION decision; only the registry author's required_authority field selects HUMAN_AUTHORITY. Launch registry has no entries for these classes (ABSENT), so no live exposure today."
+      },
+      {
+        "item": "Client is never final authority (governed lane)",
+        "status": "NOT ESTABLISHED",
+        "reason": "DECLARED/DERIVED: no backend/Computer-A evaluator exists (12_CONTROL_PLANE_REGISTER evaluator NO_AUTHORITY_CONFIGURED; 24 register 'no A channel exists'); the desktop main process supplies the decisions map, evaluates, and executes. Renderer is excluded only because nothing is wired."
+      },
+      {
+        "item": "Human Authority decides",
+        "status": "PASS in code, ABSENT in wiring",
+        "reason": "Decision objects must be caller-supplied (never model/tool/loop — gatewayAgentLoop.ts:11-14, 91-92); but no UI, IPC, or resume flow exists to collect or apply a human decision to a pending proposal."
+      },
+      {
+        "item": "Loop bounds terminate every run",
+        "status": "PASS with caveat",
+        "reason": "MEASURED: maxTurns/maxToolCalls/maxDuration/stop/FAILED all pinned; caveat: explicit-undefined limits disable bounds (probe D) and refusals do not count toward maxToolCalls (probe F)."
+      },
+      {
+        "item": "Evidence generated for every proposal",
+        "status": "PASS",
+        "reason": "MEASURED: POLICY+RESULT for every proposal, ACTION+EXECUTION on admit, INTENT/MODEL_TURN/TERMINAL per run (170,176,181,184,196; test :36)."
+      }
+    ],
+    "findings": [
+      "F1 (MEASURED, gatewayAgentLoop.ts:205-215): AuthorityDecision.time and .policy_version are recorded but never compared; a 1999-dated decision under policy 'ANCIENT' bound to the matching proposal_id is ADMISSIBLE. 23_POLICY_ENFORCEMENT_REGISTER's 'decision bound to proposal_id' is true but incomplete.",
+      "F2 (MEASURED, gatewayAgentLoop.ts:92, 209-214): decisions is a ReadonlyMap the loop never consumes; the same decision admitted the same proposal_id in two separate runs. Single-use is not enforced in the loop (contrast executeEngine.ts consumedDecisions for claim-bearing requests).",
+      "F3 (MEASURED, gatewayAgentLoop.ts:208, 213): no class→minimum-authority floor; side_effect_class only matters for the READ_ONLY fast path. IRREVERSIBLE_WRITE/EXTERNAL_COMMUNICATION/DEVICE with required_authority NONE are admitted by HUMAN_CONFIRMATION. Registry validation of (class, required_authority) pairs is ABSENT.",
+      "F4 (MEASURED, grep): the governed loop and gateway client are not wired into the Electron app — no IPC channel, handler def, runtimeCore, preload, or renderer reference. Reachable only from apps/desktop/scripts/live-agent-loop.ts with a backend session bearer. Docs (AI-ARCHITECTURE.md, ARCHITECTURE.md) describe the lane without stating it is unwired.",
+      "F5 (DERIVED, gateway.ts:144/160/173/185 + loop 130-147): no resume API; each run re-queries the gateway so live proposal_ids are always fresh; the human-ALLOW path is exercised only by unit tests with fixed ids. HUMAN_DECISION_REQUIRED is currently a dead end, not a checkpoint.",
+      "F6 (MEASURED, gatewayAgentLoop.ts:119, 142-143, 167; tsconfig.base.json:13): explicit undefined for maxTurns/maxToolCalls/maxDurationMs overrides DEFAULTS and disables bounds (51 turns observed). No current caller does this.",
+      "F7 (MEASURED, gatewayAgentLoop.ts:165-200): later admissible proposals in the same turn execute after an earlier DECISION_REQUIRED proposal (reads only, so no invariant breach, but HUMAN_DECISION_REQUIRED does not halt the turn).",
+      "F8 (MEASURED, gatewayAgentLoop.ts:173): refused proposals do not count toward maxToolCalls; bounded only by maxTurns/maxDurationMs.",
+      "F9 (MEASURED, gatewayAgentLoop.ts:118): default ids use Math.random; ToolResult lacks run_id; evidence ids are not collision-resistant or verifiable.",
+      "F10 (MEASURED, gatewayAgentLoop.ts:51-61): AuthorityDecision lacks SIGNATURE/expiry/nonce/evidence refs; the desktop caller is the sole evaluator — no backend/Computer-A authority evaluator exists (12_CONTROL_PLANE_REGISTER).",
+      "F11 (MEASURED, gatewayAgentLoop.ts:33 vs registries): IRREVERSIBLE_WRITE, IDENTITY, SECURITY, DEVICE, SYSTEM have no tool definition anywhere; EXTERNAL_COMMUNICATION and FINANCIAL exist only in tests. The 22 register lists nine classes but only two tools.",
+      "F12 (MEASURED, runtimeAuthz.ts:1174; secureBridge.ts:182; router.ts:128-133): AssistantAsk is PUBLIC — an unauthenticated trusted-frame caller can drive the legacy assistant model over tenant-scoped stores; proposal-only (assistantService.ts single deps.execute site at :716 inside decideStep).",
+      "F13 (MEASURED, contracts.ts:113-131; runtimeAuthz.ts:275; runtimeCore.ts:2467-2497): execute:run under 'workforce:operate' triggers automation runs and decision status advances with no approval object, no policy_version, no expiry — RBAC permission is the whole authority. Strict schema blocks renderer-supplied claim/confirmed (good), but that also means the assistant's approved dispatch carries no claim and is outside the ExecuteEngine single-use ledger.",
+      "F14 (MEASURED, conversationStore.ts:228-307; assistantService.ts:653): legacy 'waiting' plan steps persist across restarts with no expiry; single-use is by state transition only.",
+      "F15 (ABSENT, 21_AI_SECURITY_REGISTER absent[]): renderer prompt-injection regression on legacy lanes, system-prompt extraction tests, cross-user/cross-device AI request tests."
+    ]
+  },
+  "matrix": [
+    {
+      "class": "READ_ONLY",
+      "model_may_propose": true,
+      "runtime_evaluates": true,
+      "policy_gate": "registry lookup, default DENY",
+      "human_required": "none",
+      "evidence_generated": "POLICY + ACTION + EXECUTION + RESULT",
+      "execution_allowed": "yes, immediately",
+      "refusal_state": "n/a"
+    },
+    {
+      "class": "REVERSIBLE_WRITE",
+      "model_may_propose": true,
+      "runtime_evaluates": true,
+      "policy_gate": "registry lookup, default DENY",
+      "human_required": "HUMAN_CONFIRMATION (registry)",
+      "evidence_generated": "POLICY + ACTION + EXECUTION + RESULT",
+      "execution_allowed": "only with a bound, unconsumed decision object",
+      "refusal_state": "DECISION_REQUIRED → HUMAN_DECISION_REQUIRED"
+    },
+    {
+      "class": "IRREVERSIBLE_WRITE",
+      "model_may_propose": true,
+      "runtime_evaluates": true,
+      "policy_gate": "registry lookup, default DENY",
+      "human_required": "HUMAN_AUTHORITY (registry; confirmation insufficient)",
+      "evidence_generated": "POLICY + ACTION + EXECUTION + RESULT",
+      "execution_allowed": "only with a bound, unconsumed decision object",
+      "refusal_state": "DECISION_REQUIRED → HUMAN_DECISION_REQUIRED"
+    },
+    {
+      "class": "EXTERNAL_SIDE_EFFECT",
+      "model_may_propose": true,
+      "runtime_evaluates": true,
+      "policy_gate": "registry lookup, default DENY",
+      "human_required": "HUMAN_AUTHORITY (registry; confirmation insufficient)",
+      "evidence_generated": "POLICY + ACTION + EXECUTION + RESULT",
+      "execution_allowed": "only with a bound, unconsumed decision object",
+      "refusal_state": "DECISION_REQUIRED → HUMAN_DECISION_REQUIRED"
+    },
+    {
+      "class": "CREDENTIAL_OPERATION",
+      "model_may_propose": true,
+      "runtime_evaluates": true,
+      "policy_gate": "registry lookup, default DENY",
+      "human_required": "HUMAN_AUTHORITY (registry; confirmation insufficient)",
+      "evidence_generated": "POLICY + ACTION + EXECUTION + RESULT",
+      "execution_allowed": "only with a bound, unconsumed decision object",
+      "refusal_state": "DECISION_REQUIRED → HUMAN_DECISION_REQUIRED"
+    },
+    {
+      "class": "DEVICE_OPERATION",
+      "model_may_propose": true,
+      "runtime_evaluates": true,
+      "policy_gate": "registry lookup, default DENY",
+      "human_required": "HUMAN_AUTHORITY (registry; confirmation insufficient)",
+      "evidence_generated": "POLICY + ACTION + EXECUTION + RESULT",
+      "execution_allowed": "only with a bound, unconsumed decision object",
+      "refusal_state": "DECISION_REQUIRED → HUMAN_DECISION_REQUIRED"
+    }
+  ],
+  "invariants": {
+    "model_executes_directly": false,
+    "gateway_executes": false,
+    "renderer_bypass": "loop not wired to IPC (ABSENT surface); legacy lanes gated by runtimeAuthz except AssistantAsk (public, read/model-call only)",
+    "injected_content_grants": false,
+    "stale_approval_authorizes": false,
+    "decision_single_use": true
+  }
+}

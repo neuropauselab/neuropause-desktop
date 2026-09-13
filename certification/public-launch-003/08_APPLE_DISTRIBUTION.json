@@ -1,0 +1,186 @@
+{
+  "ARTIFACT": "08_APPLE_DISTRIBUTION",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "artifact": {
+    "dmg": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+    "zip": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+    "app_bundle_digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+    "bundle_id": "com.neuropause.desktop",
+    "version": "1.0.0-rc.30",
+    "minimum_macos": "12.0"
+  },
+  "signing": {
+    "signed": true,
+    "identifier": "com.neuropause.desktop",
+    "team_id": "J3G89MY3QG",
+    "authority_chain": [
+      "Developer ID Application: Dishant Dobariya (J3G89MY3QG)",
+      "Developer ID Certification Authority",
+      "Apple Root CA"
+    ],
+    "hardened_runtime": true,
+    "codesign_verify_deep_strict": true,
+    "secure_timestamp": "13 Sep 2026 09:26:36 (codesign Timestamp=, secure timestamp present)",
+    "runtime_version": "26.2.0",
+    "entitlements_allow_jit": true,
+    "nested": 14
+  },
+  "architecture": {
+    "objects": 15,
+    "all_universal": true,
+    "per_object": [
+      {
+        "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Helpers/chrome_crashpad_handler",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libEGL.dylib",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libGLESv2.dylib",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libffmpeg.dylib",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Electron Framework.framework/Versions/A/Libraries/libvk_swiftshader.dylib",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Mantle.framework/Versions/A/Mantle",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/NeuroPause Helper (GPU).app/Contents/MacOS/NeuroPause Helper (GPU)",
+        "class": "HELPER_EXECUTABLE",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/NeuroPause Helper (Plugin).app/Contents/MacOS/NeuroPause Helper (Plugin)",
+        "class": "HELPER_EXECUTABLE",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/NeuroPause Helper (Renderer).app/Contents/MacOS/NeuroPause Helper (Renderer)",
+        "class": "HELPER_EXECUTABLE",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/NeuroPause Helper.app/Contents/MacOS/NeuroPause Helper",
+        "class": "HELPER_EXECUTABLE",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/ReactiveObjC.framework/Versions/A/ReactiveObjC",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Resources/ShipIt",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/Frameworks/Squirrel.framework/Versions/A/Squirrel",
+        "class": "FRAMEWORK_BINARY",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      },
+      {
+        "path": "Contents/MacOS/NeuroPause",
+        "class": "MAIN_EXECUTABLE",
+        "archs": [
+          "x86_64",
+          "arm64"
+        ]
+      }
+    ],
+    "application": "universal",
+    "native_helpers": "universal (Electron helpers, crashpad, Squirrel/ShipIt)",
+    "native_modules": "none (0 .node)",
+    "runtime_measured": {
+      "arm64": "PASS (packaged smoke, 8331185)",
+      "x86_64": "NOT_MEASURED"
+    },
+    "packaged_artifact": "universal"
+  },
+  "states": {
+    "SIGNED": true,
+    "NOTARIZED": false,
+    "STAPLED": false,
+    "GATEKEEPER_ACCEPTED": false
+  },
+  "APPLE_NOTARIZATION_STATE": "BLOCKED_CREDENTIAL (local) / BLOCKED_RUNNER-or-CREDENTIAL (CI rc.29: keychain step failed before any submission; no submission id)",
+  "ci_path": {
+    "signing_runner": "macos-15 (pinned this branch; previously macos-latest = Darwin 25 at rc.29)",
+    "certificate_source": "APPLE_CSC_LINK/APPLE_CSC_KEY_PASSWORD secrets (present by name)",
+    "notarization": "@electron/notarize afterSign with APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID (present by name)",
+    "last_failure": "rc.29 run 34126195486: security set-key-partition-list … SecKeychainUnlock passphrase not correct; electron-builder 26.15.3; os=25.6.0; artifact not produced; no submission occurred",
+    "xcode_version": "NOT_MEASURED (runner log not retained here)"
+  },
+  "operator_handoff": {
+    "credential_profile_name": "np-notary",
+    "command_class": "xcrun notarytool store-credentials (interactive, on this Mac)",
+    "expected_verification": "xcrun notarytool history --keychain-profile np-notary; then submit --wait, stapler staple, spctl accept"
+  }
+}

@@ -1,0 +1,61 @@
+{
+  "ARTIFACT": "07_PROVENANCE_CHAIN",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "chain": [
+    {
+      "edge": "SOURCE COMMIT",
+      "classification": "MEASURED",
+      "value": "8331185 (clean, dirty=false in build-info)"
+    },
+    {
+      "edge": "BUILD",
+      "classification": "MEASURED",
+      "value": "execution register in certification/public-launch/evidence/execution-register.json"
+    },
+    {
+      "edge": "ARTIFACT",
+      "classification": "MEASURED",
+      "value": {
+        "dmg": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+        "zip": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+        "win": "fc13c84d041ece69cae5737126a6e60cfada55491a7a12d759b8bb2e911bb4e4"
+      }
+    },
+    {
+      "edge": "SIGNATURE",
+      "classification": "MEASURED",
+      "value": "mac: Developer ID Application: Dishant Dobariya (J3G89MY3QG), timestamp 13 Sep 2026 09:26:36 (codesign Timestamp=, secure timestamp present); win: ABSENT"
+    },
+    {
+      "edge": "NOTARIZATION / AUTHENTICODE",
+      "classification": "ABSENT",
+      "value": "mac not notarized; win not signed"
+    },
+    {
+      "edge": "FEED",
+      "classification": "MEASURED (local) / NOT_MEASURED (public)",
+      "value": "local beta-mac.yml bound to zip; public feed unreachable"
+    },
+    {
+      "edge": "PUBLIC HOST",
+      "classification": "NOT_MEASURED",
+      "value": "apex no DNS; edge 530; SSH denied"
+    },
+    {
+      "edge": "USER DOWNLOAD",
+      "classification": "ABSENT",
+      "value": "nothing published"
+    }
+  ],
+  "rules": [
+    "digest match != custody",
+    "URL != publication proof",
+    "build log != public distribution proof"
+  ],
+  "ab_identity": "NOT_ESTABLISHED (unchanged)"
+}

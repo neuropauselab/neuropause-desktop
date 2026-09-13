@@ -1,0 +1,471 @@
+{
+  "ARTIFACT": "16_SUPPORT_PRIVACY",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "reviewer": {
+    "summary": "Source 8331185 / evidence 8a253b6 on pilot/public-launch. (A) OBSERVABILITY: backend exposes an unauthenticated Prometheus /metrics with 7 metric families (backend_up, uptime, rss, heap, pg_pool_connections, http_requests_total{method,status}, ratelimit_fallback_total, health_alerts_total); deploy/observability declares 27 alert rules + 4 SLO burn alerts + 4 Grafana dashboards (33 panels) and Slack-only Alertmanager receivers, all DECLARED and self-described as not deployed (README.md:96-98; register 28 = NOT_MEASURED). Of the 15 required signals only backend health and aggregate API error rate are PRESENT as metrics; auth failures, device revocations, AI gateway failures, AI latency, token usage, AI cost, tool refusal, tool execution, authorization denial, update failure, release version and deployment version are ABSENT as metrics (AI signals exist only as pino log fields, router.ts:57/61/65). Crash is PRESENT only via k8s kube-state-metrics rules. The single-host Caddy edge proxies every path to the backend (Caddyfile:14), so /metrics is not network-restricted on that deployment path (only the k8s HTTPRoute denies it). Production edge answers HTTP 530 (MEASURED 2026-09-13T04:17Z) so nothing is observable live. (B) SUPPORT: production password-reset delivery is ABSENT — the only Mailer implementation is createLoggingMailer (app.ts:128; mailer.ts:4 'does NOT send email'), no SMTP/provider dependency or env key exists, and in production the link is redacted from the log so the token never leaves the server. DNS MEASURED: MX = neuropause033-com.mail.protection.outlook.com (Microsoft 365) with SPF; apex has no A record; api.neuropause033.com resolves to Cloudflare and returns 530. A mail domain exists (EXISTS_UNVERIFIED); no support@/security@/abuse@/privacy@ address is published anywhere (ABSENT) and USER-SUPPORT.md:13 misstates DNS by omitting the live MX. (C) PRIVACY: the backend gateway persists no prompt/completion bodies (audit line = ids/provider/model/token counts, router.ts:57; grep confirms no DB/file writes in ai/*); Qdrant stores only {memoryId, orgId} (embeddingPipeline.ts:106). The desktop persists prompts+completions in plaintext JSON assistant-conversations.json (mode 0600, per-tenant cap 100x200, secret-screened) and question text in memory.json (no cap/TTL); AiAuditLog is in-memory only. Telemetry and crash reporting are local-only with no endpoint (telemetry.ts:2-5; crashReporter.ts:108 uploadToServer:false); no analytics SDK dependency exists. Device-direct lanes send content to api.anthropic.com / api.openai.com / localhost:11434. The gateway lane (gatewayClient/gatewayAgentLoop) is NOT wired into the desktop app — only apps/desktop/scripts/live-agent-loop.ts imports it — and the k8s HTTPRoute does not route /ai. The in-app privacy notice (docs/legal/PRIVACY.md) is a DRAFT dated 2026-08-07 with zero mention of AI providers and asserts 'no telemetry' while an opt-in local telemetry module exists. No audited invariant (AI != authority, default deny, client never final, stale approval, Human Authority) is contradicted by anything in this scope.",
+    "verdicts": [
+      {
+        "item": "backend health",
+        "status": "PRESENT",
+        "reason": "neuropause_backend_up (metrics.ts:78-80), neuropause_backend_uptime_seconds (:82-84), neuropause_health_alerts_total{component,state} (:117-124); /live app.ts:88-90, /health app.ts:92-103; alerts BackendNoHealthyReplicas, BackendTargetDown, EdgeDown, DatabaseUnavailable, RedisUnavailable (prometheusrules-nems.yaml:32-60, 162-190) — metric MEASURED in source, alerting DECLARED/not deployed."
+      },
+      {
+        "item": "API error rate",
+        "status": "PRESENT (aggregate only)",
+        "reason": "neuropause_http_requests_total{method,status} metrics.ts:102-107, recorded app.ts:78-83; HighErrorRate >5%/10m and HighErrorRateCritical >15%/5m (prometheusrules-nems.yaml:64-86); SLO rules nems:slo_app_errors:* (prometheusrules-slo.yaml:47-58). No route/path label."
+      },
+      {
+        "item": "auth failures",
+        "status": "ABSENT",
+        "reason": "No dedicated metric or log in requireAuth.ts (grep empty); only status=401 in the aggregate counter without route; rules file states OAuth failures cannot be isolated (prometheusrules-nems.yaml:14-17)."
+      },
+      {
+        "item": "device revocations",
+        "status": "ABSENT",
+        "reason": "devices/router.ts:104-107 revoke route and devices/service.ts have no logger/metric calls; no counter."
+      },
+      {
+        "item": "AI gateway failures",
+        "status": "ABSENT (log-only)",
+        "reason": "Only pino lines ai_gateway.refused / ai_gateway.error (router.ts:61, 65); no metric; 503/500 visible only in the aggregate status counter. Console/pino logging is not observability per audit rule."
+      },
+      {
+        "item": "AI latency",
+        "status": "ABSENT (log-only)",
+        "reason": "ms field in the ai_gateway.chat log line (router.ts:57) and latency_ms in the response (gateway.ts:59); no histogram or metric."
+      },
+      {
+        "item": "token usage",
+        "status": "ABSENT (log-only)",
+        "reason": "input_tokens/output_tokens in the ai_gateway.chat log line (router.ts:57); no metric. Desktop routingUsageStore holds counts only, local."
+      },
+      {
+        "item": "AI cost",
+        "status": "ABSENT",
+        "reason": "No backend cost calculation or metric; desktop usageTracker.ts computes USD in memory only (no file write) and is never exported."
+      },
+      {
+        "item": "tool refusal",
+        "status": "ABSENT",
+        "reason": "Gateway never executes tools (router.ts:45); only proposals count is logged (router.ts:57). Desktop gatewayAgentLoop produces refusal evidence in memory but is not wired into the app (only scripts/live-agent-loop.ts:22-23)."
+      },
+      {
+        "item": "tool execution",
+        "status": "ABSENT (centrally)",
+        "reason": "No backend metric. Desktop records executions locally (executions.json runtimeCore.ts:2444; action-records.json storePaths.ts:117) with no central export."
+      },
+      {
+        "item": "authorization denial",
+        "status": "ABSENT",
+        "reason": "No metric; 403s only in the aggregate counter. Desktop IPC audit.log records channel/ok/durationMs locally (secureBridge.ts:188-195)."
+      },
+      {
+        "item": "update failure",
+        "status": "ABSENT (centrally)",
+        "reason": "appUpdater.ts:120-122 sets a local 'error' status; update-history.json local; feed host neuropause033.com has no A record (MEASURED) and returned 530 (register 002/23); no server-side signal."
+      },
+      {
+        "item": "crash",
+        "status": "PRESENT (k8s only) / ABSENT (desktop central)",
+        "reason": "BackendCrashLooping and BackendOOMKilled alerts from kube-state-metrics (prometheusrules-nems.yaml:125-157) — DECLARED, k8s path only, not the Caddy path. Desktop crashes.log is local-only, uploadToServer:false (crashReporter.ts:108)."
+      },
+      {
+        "item": "release version",
+        "status": "ABSENT",
+        "reason": "No build_info metric, no version in /live or /health (app.ts:88-103); register 17 VERSION 'UNKNOWN'. Desktop build-info.json is local (RELEASE-PROCESS.md:24)."
+      },
+      {
+        "item": "deployment version",
+        "status": "ABSENT",
+        "reason": "No version label on scrape target or dashboards; kube_deployment metrics used only for replica counts."
+      },
+      {
+        "item": "alert destination",
+        "status": "DECLARED / ABSENT in committed config",
+        "reason": "Alertmanager Slack receivers #nems-oncall-critical and #nems-oncall via Secret alertmanager-slack (alertmanager-config.yaml:55-80), stack self-described as not deployed (README.md:96-98); backend ALERT_WEBHOOK_URL optional (env.ts:56) and set nowhere in compose/k8s/.env.example."
+      },
+      {
+        "item": "retention",
+        "status": "DECLARED (Prometheus) / ABSENT (backend logs)",
+        "reason": "Prometheus 30d/40GB, Alertmanager 120h (values.yaml:38-39, 74); backend pino to stdout with no retention config (logger.ts:6-15); desktop log rotations measured (index.ts:289-292; secureBridge.ts:108; crashReporter.ts:65); timeline.jsonl never trimmed; telemetry.log unbounded."
+      },
+      {
+        "item": "access",
+        "status": "DECLARED (k8s) / GAP (Caddy)",
+        "reason": "Grafana admin via secret (values.yaml:106-109); /metrics denied by k8s HTTPRoute (httproute-production.yaml:15-19) and DenylistLeak probe; on the single-host Caddy path every path is proxied (Caddyfile:14) so unauthenticated /metrics is publicly reachable (DERIVED)."
+      },
+      {
+        "item": "incident workflow",
+        "status": "DECLARED",
+        "reason": "Process + templates in docs/operations/incident/ (records no incidents); 12 runbooks exist for every runbook_url; on-call rotation 'proposed' (SRE.md:51); runbook_url pins branch phase-2 (prometheusrules-nems.yaml:40)."
+      },
+      {
+        "item": "production password-reset delivery",
+        "status": "ABSENT",
+        "reason": "Only createLoggingMailer exists and is wired (app.ts:128); it does not send (mailer.ts:4) and redacts the link in production (mailer.ts:29-41); no SMTP/provider dependency or env key."
+      },
+      {
+        "item": "account recovery",
+        "status": "ABSENT (production)",
+        "reason": "Endpoint flow exists (accountService.ts:97-114) but the token is never delivered; USER-SUPPORT.md:8 and register 31 agree ('mail undeliverable')."
+      },
+      {
+        "item": "mail domain (MX for neuropause033.com)",
+        "status": "EXISTS_UNVERIFIED",
+        "reason": "MX resolves to Microsoft 365 with SPF (MEASURED dig); mailbox existence cannot be verified by HTTPS GET/HEAD and SMTP probing is out of policy."
+      },
+      {
+        "item": "support@ address",
+        "status": "ABSENT",
+        "reason": "Not published in SUPPORT.md, USER-SUPPORT.md, website/*.html; USER-SUPPORT.md:13 deliberately asserts none; register 31 CONTACT NOT_VERIFIED."
+      },
+      {
+        "item": "security@ address",
+        "status": "ABSENT",
+        "reason": "SECURITY.md:10-11 names 'the NeuroPause security team' with no address; docs/public-launch/SECURITY.md:33 asserts none."
+      },
+      {
+        "item": "abuse@ address",
+        "status": "ABSENT",
+        "reason": "No occurrence in any doc or website file."
+      },
+      {
+        "item": "privacy@ address / privacy request path",
+        "status": "ABSENT",
+        "reason": "No address; USER-SUPPORT.md:10 'Privacy request / data export: absent'; register 31 PRIVACY_REQUEST ABSENT."
+      },
+      {
+        "item": "AI prompts/completions persisted by backend",
+        "status": "NOT PERSISTED",
+        "reason": "router.ts:57 logs ids/provider/model/token counts only; no DB/file writes in ai/* (grep); Qdrant payload {memoryId, orgId} only (embeddingPipeline.ts:106). Content is transmitted to the configured provider (external for anthropic/openai)."
+      },
+      {
+        "item": "AI prompts/completions persisted by desktop",
+        "status": "PERSISTED (local, plaintext, 0600)",
+        "reason": "assistant-conversations.json (conversationStore.ts:303-309; cap 100x200 per tenant; secret-screened; scoped delete); question text into memory.json (conversationMemory.ts:344; no cap/TTL for longterm; tombstones on forget); AiAuditLog in-memory only (auditLog.ts:2-8)."
+      },
+      {
+        "item": "telemetry / crash destinations",
+        "status": "LOCAL ONLY",
+        "reason": "telemetry.ts:2-5 no endpoint, opt-in; crashReporter.ts:104-113 uploadToServer:false, submitURL invalid.localhost; no analytics SDK dependencies (MEASURED). Only egress: update feed version query (electron-builder.yml:44) and AI provider/backend traffic."
+      },
+      {
+        "item": "Invariant: AI reasoning != authority; default DENY; client never final; stale approval; Human Authority",
+        "status": "NOT CONTRADICTED in scope",
+        "reason": "Gateway forbids authority fields (gateway.ts:7-9; router.ts:56); observability/support/privacy surfaces neither grant nor record authority. Note: the governed loop that enforces default-deny on tool proposals is not wired into the shipped desktop app (only a script), so its guarantees are not exercised by app usage."
+      }
+    ],
+    "facts": [
+      {
+        "fact": "Branch pilot/public-launch; HEAD 8a253b6 (evidence) on top of 8331185 (source); diff base cec399f. The observability, mailer and AI-gateway files audited are those at 8331185.",
+        "evidence": "git log --oneline -3 in /Users/saurabhpatel/Desktop/np-public-launch",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "/Users/saurabhpatel/neuropause-desktop is not a git checkout of the product repo (contains deploy/, HANDOFF-*.md, NP-B-0xx dirs; no apps/backend/src/app.ts).",
+        "evidence": "ls /Users/saurabhpatel/neuropause-desktop; shasum on apps/backend/src/app.ts -> No such file; git rev-parse -> not a git repository",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Backend metrics module exposes exactly seven metric families: neuropause_backend_up, neuropause_backend_uptime_seconds, neuropause_backend_resident_memory_bytes, neuropause_backend_heap_used_bytes, neuropause_pg_pool_connections{state}, neuropause_http_requests_total{method,status}, neuropause_ratelimit_fallback_total{bucket}, neuropause_health_alerts_total{component,state}.",
+        "evidence": "apps/backend/src/observability/metrics.ts:78-124",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Only three recorder functions exist (recordHttpRequest, recordRateLimitFallback, recordHealthAlert); there is no counter or histogram for auth, devices, AI, tools, authorization, updates or versions.",
+        "evidence": "apps/backend/src/observability/metrics.ts:18-48",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "GET /metrics is mounted with no authentication middleware and serves renderMetrics with live pg pool counts; the comment says 'Network-restrict in prod'.",
+        "evidence": "apps/backend/src/app.ts:105-110",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "GET /live returns {status:'alive', uptime}; GET /health pings Postgres and Redis, calls reportHealthSnapshot, and returns 200/503 with components {database, redis} and uptime. Neither exposes a version.",
+        "evidence": "apps/backend/src/app.ts:88-103",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "HTTP request counting excludes /metrics, /health and /live and records method+status only (no route/path label).",
+        "evidence": "apps/backend/src/app.ts:77-83; metrics.ts:14-21",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Health alerting is edge-triggered per backend instance, records neuropause_health_alerts_total and a structured pino line, and dispatches to registered sinks; 'none is wired by default'.",
+        "evidence": "apps/backend/src/observability/healthAlerts.ts:13-16, 53-73",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "ALERT_WEBHOOK_URL (optional, validated URL) and ALERT_WEBHOOK_TIMEOUT_MS (default 5000) are the only alert-destination env keys; when set, health transitions are POSTed as JSON {source, component, state, at, text}.",
+        "evidence": "apps/backend/src/config/env.ts:51-57; alertWebhookSink.ts:26-45, 103-115",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "installWebhookAlertSink() is invoked once at boot before the server listens; it is a no-op returning false when ALERT_WEBHOOK_URL is unset.",
+        "evidence": "apps/backend/src/index.ts:11, 16-19; alertWebhookSink.ts:104-106",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "ALERT_WEBHOOK_URL is not set or documented in any committed deploy configuration: absent from docker-compose.prod.yml, docker-compose.edge.yml, .env.example, apps/backend/.env.example, deploy/kubernetes/*, deploy/helm/*.",
+        "evidence": "grep -rn ALERT_WEBHOOK deploy docker-compose*.yml apps/backend/.env.example .env.example -> no matches",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Unit tests for metrics exposition and the webhook sink pass: 2 files, 11 tests, 144ms (vitest 1.6.1).",
+        "evidence": "npx vitest run src/observability/metrics.test.ts src/observability/alertWebhookSink.test.ts in apps/backend -> 'Test Files 2 passed (2) / Tests 11 passed (11)'",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "deploy/observability contains 15 files: README.md, kube-prometheus-stack.values.yaml, servicemonitor-nems-backend.yaml, servicemonitor-cilium.yaml, blackbox-exporter.yaml, probe-nems-endpoints.yaml, prometheusrules-nems.yaml, prometheusrules-slo.yaml, alertmanager-config.yaml, dashboards-configmap.yaml, gen_dashboards.py, dashboards/{nems-backend-overview,nems-dependencies,nems-kubernetes,nems-slo}.json.",
+        "evidence": "find deploy/observability -type f",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "prometheusrules-nems.yaml declares 23 alerts with thresholds: BackendNoHealthyReplicas (available replicas==0 for 1m, critical), BackendTargetDown (up==0 for 3m, critical), EdgeDown (probe_success==0 for 2m, critical), HighErrorRate (5xx ratio>5% for 10m, warning), HighErrorRateCritical (>15% for 5m, critical), HighLatency (avg probe_duration>1s for 10m, warning), HighLatencyCritical (>3s for 5m, critical), BackendHighMemory (working_set/limit>90% for 10m, warning), BackendOOMKilled (last_terminated_reason==OOMKilled for 1m, critical), BackendCPUSaturation (>90% of limit for 15m, warning), BackendCrashLooping (CrashLoopBackOff for 5m, critical), DatabaseUnavailable (health_alerts{database,down} increase>0, critical), DatabasePoolSaturated (pool waiting>0 for 10m, warning), RedisUnavailable (health_alerts{redis,down} increase>0, critical), RedisFallbackEngaged (ratelimit_fallback increase>0, warning), CertificateExpiringSoon (<21d for 1h, warning), CertificateExpiringCritical (<7d for 30m, critical), DenylistLeak (/metrics 404 probe fails for 5m, warning), NodeNotReady (5m, critical), NodeDiskPressure (5m, critical), NodeFilesystemLow (<15% for 10m, warning), PersistentVolumeFillingUp (<15% for 10m, warning), NodeCPUSaturation (>90% for 15m, warning), PrometheusTargetMissing (up==0 for 5m, warning).",
+        "evidence": "deploy/observability/prometheusrules-nems.yaml:32-301",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "prometheusrules-slo.yaml declares recording rules nems:slo_edge_errors:ratio_rate{5m,30m,1h,6h}, nems:edge_probe_fast, nems:slo_edge_latency:ratio_rate{30m,6h}, nems:slo_app_errors:ratio_rate{5m,1h,6h} and 4 burn alerts: SLOAvailabilityFastBurn (14.4x of 0.1% over 5m&1h, critical), SLOAvailabilitySlowBurn (6x over 30m&6h, warning), SLOAppSuccessFastBurn (14.4x of 0.5% over 5m&1h, critical), SLOLatencyBudgetBurn (fast fraction<99% over 30m&6h, warning). SLO targets: availability 99.9%, latency 99% <=0.5s, app-success 99.5%.",
+        "evidence": "deploy/observability/prometheusrules-slo.yaml:8-9, 29-110",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "The rules file itself states what is deliberately absent: queue-failure alerts and OAuth-specific failure alerts, because neuropause_http_requests_total has no route label.",
+        "evidence": "deploy/observability/prometheusrules-nems.yaml:12-17",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "README documents gaps: no per-route latency histogram, no OAuth/Store/Business/AI-runtime/Queue metrics, no managed-database internals, Cilium metrics no-op.",
+        "evidence": "deploy/observability/README.md:26-52",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Dashboard panels — NEMS Backend Overview: Backend target up; Available replicas; Uptime; Edge availability (/health probe); TLS cert days remaining; HTTP request rate by status; 5xx error ratio; Memory: RSS & heap; Working set vs 512Mi limit; Rate-limit fallback (Redis degraded); PG pool connections. NEMS Database & Redis: Dependencies healthy (/health 200); Liveness (/live 200); PG pool waiting; PostgreSQL pool connections; Dependency up/down transitions (1h); Redis fallback engagements. NEMS Kubernetes Resources: Nodes Ready; Backend pod restarts (total); Node CPU utilisation; Node memory used; Node filesystem free; Backend pod CPU; Backend pod memory (working set); PVC free (monitoring storage). NEMS SLO / Latency / Availability: Edge availability now; Edge availability (24h); Latency SLI (30m, <=0.5s); App success (1h); Probe success over time; Edge HTTP duration; Availability error-budget burn (1h window); App 5xx ratio (5m/1h/6h).",
+        "evidence": "jq '.panels[].title' deploy/observability/dashboards/*.json",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Alertmanager routing: default receiver nems-ticket; severity=critical -> nems-page (repeat 1h); severity=warning -> nems-ticket (repeat 12h); both receivers are slackConfigs reading apiURL from Secret alertmanager-slack key url; channels '#nems-oncall-critical' and '#nems-oncall'; inhibit critical->warning on same alertname+service. Comment: 'Current delivery landscape: Slack only'; PagerDuty 'can be added later'.",
+        "evidence": "deploy/observability/alertmanager-config.yaml:10-17, 28-89",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Stack values: Prometheus retention 30d / retentionSize 40GB / 50Gi PVC, scrape 30s; Alertmanager retention 120h; Grafana admin from existingSecret grafana-admin, 5Gi persistence, dashboards sidecar; fallback inline route to a 'null' receiver until AlertmanagerConfig is applied.",
+        "evidence": "deploy/observability/kube-prometheus-stack.values.yaml:38-41, 74, 90-100, 106-125",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "The observability README states the stack 'has not been deployed by this change, and no dashboard data or alert history is claimed'; register 28 records status NOT_MEASURED and 'alert_rules: deploy/observability (DECLARED; mapper did not complete)'.",
+        "evidence": "deploy/observability/README.md:94-98; certification/public-launch/28_OBSERVABILITY_REGISTER.json",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "ServiceMonitor scrapes nems-backend port http path /metrics every 30s in namespace nems-prod; blackbox Probes target https://api.neuropause033.com/health and /live (tier=edge) every 30s and a /metrics http_404 denylist probe every 5m.",
+        "evidence": "deploy/observability/servicemonitor-nems-backend.yaml:16-32; probe-nems-endpoints.yaml:13-51",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Every runbook_url in the alert rules points at github .../blob/phase-2/docs/operations/runbooks/<name>.md; all 12 referenced runbooks exist in the repo (backend-down, database-down, redis-down, gateway-failure, certificate-expiry, high-latency, deployment-rollback, disk-full, memory-exhaustion, node-failure, cluster-failure, oauth-outage) plus SLO.md.",
+        "evidence": "prometheusrules-nems.yaml:40 et seq.; ls docs/operations/runbooks",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Incident workflow is DECLARED as process + blank templates (severity levels, IC/Operator/Scribe/Comms roles, comms and postmortem templates) that 'records no incidents'; on-call rotation is 'the proposed default'.",
+        "evidence": "docs/operations/incident/README.md:1-12; incident-template.md:1-12; docs/operations/SRE.md:46-51",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "k8s HTTPRoute enumerates public prefixes /auth /billing /devices /health /license /live /memory/semantic /organizations /store /sync; /metrics is deliberately absent; /ai is also absent.",
+        "evidence": "deploy/kubernetes/httproute-production.yaml:15-19, 46-75 (grep value:)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "The single-host production path (docker-compose.prod.yml + docker-compose.edge.yml + Caddyfile) reverse-proxies api.neuropause033.com to backend:4000 for all paths with no path filter; the backend published port is removed so TLS is the only ingress.",
+        "evidence": "Caddyfile:10-17; docker-compose.edge.yml:14-33; docker-compose.prod.yml:62-63",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "On the Caddy single-host path, GET /metrics (unauthenticated) is reachable from the public internet because Caddy forwards every path and app.ts applies no auth to it.",
+        "evidence": "Caddyfile:14 + apps/backend/src/app.ts:106",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "Backend logging is pino to stdout (no file/transport in production), level info, redacting req.headers.authorization, password, *.password, refreshToken, accessToken; no log retention/shipping configuration exists in the repo.",
+        "evidence": "apps/backend/src/config/logger.ts:6-15; grep for log shipping in deploy -> none",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "AI gateway router writes one pino line per call: 'ai_gateway.chat' {requestId, userId, provider, model, input_tokens, output_tokens, proposals, finish, ms}; refusals 'ai_gateway.refused' {userId, code, status, ms}; errors 'ai_gateway.error' {userId, err.message}. No metric is recorded.",
+        "evidence": "apps/backend/src/ai/router.ts:8-10, 57, 61, 65",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "No file in apps/backend/src/ai performs a database query, INSERT, or file write; the only persistence-adjacent calls are logger.info/warn/error.",
+        "evidence": "grep -nE 'INSERT|insert\\(|query\\(|writeFile|appendFile|persist' apps/backend/src/ai/*.ts (non-test) -> only logger lines",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Gateway response carries usage{input_tokens,output_tokens} and latency_ms per call and a fixed gateway block {policy:'AI_PROPOSES_ONLY', executes_tools:false, grants_authority:false}; provider endpoints are Anthropic /v1/messages, OpenAI /v1/chat/completions, or Ollama /api/chat.",
+        "evidence": "apps/backend/src/ai/gateway.ts:15-19, 51-61",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "requireAuth.ts, devices/router.ts and devices/service.ts contain no logger or metric calls; the device revoke route (POST /:deviceId/revoke) emits no dedicated signal.",
+        "evidence": "grep -nE 'logger\\.|recordHttp|metric' on those files -> no matches; devices/router.ts:104-107",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "No release/deployment version signal exists in the backend: no build_info metric, no APP_VERSION/GIT_SHA/npm_package_version usage; register 17 records production VERSION 'UNKNOWN' and register 002/11 api_version 'UNKNOWN'.",
+        "evidence": "grep -rnE 'build_info|APP_VERSION|GIT_SHA|npm_package_version' apps/backend/src -> no matches; certification/public-launch/17_BACKEND_PRODUCTION_REGISTER.json; certification/public-launch-002/11_BACKEND_REGISTER.json",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Production edge: HEAD https://api.neuropause033.com/health -> HTTP/2 530; HEAD /metrics -> HTTP/2 530; HEAD https://neuropause033.com -> no response (no A record). Measured 2026-09-13T04:17:51Z.",
+        "evidence": "curl -sI --max-time 10 (three URLs); date -u",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "DNS: MX neuropause033.com = '0 neuropause033-com.mail.protection.outlook.com.'; TXT includes 'v=spf1 include:secureserver.net include:spf.protection.outlook.com ~all' and 'MS=ms50523528'; NS max/norah.ns.cloudflare.com; apex A: none; api.neuropause033.com A = 104.21.22.28, 172.67.202.47.",
+        "evidence": "dig +short MX/A/TXT/NS neuropause033.com; dig +short A api.neuropause033.com (2026-09-13)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "USER-SUPPORT.md asserts 'the domain neuropause033.com had no apex DNS record' and 'no mailbox could be verified'; the apex-A claim is consistent with measurement but the document does not record the existing MX/SPF records.",
+        "evidence": "docs/public-launch/USER-SUPPORT.md:13 vs dig MX result",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "The only Mailer implementation is createLoggingMailer, which 'does NOT send email — it logs the link'; app.ts wires it unconditionally as the account mailer; there is no SMTP/SES/Postmark/nodemailer dependency (backend deps: cloud-core, runtime, shared, shared-cloud, argon2, cors, dotenv, express, express-async-errors, helmet, ioredis, jose, jsonwebtoken, pg, pino, pino-http, razorpay, zod).",
+        "evidence": "apps/backend/src/auth/mailer.ts:4-7, 28-44; app.ts:35, 128; jq '.dependencies|keys' apps/backend/package.json; grep -rniE 'nodemailer|smtp|postmark|sendgrid|ses' apps/backend/src -> only comments in mailer.ts",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "In production (NODE_ENV=production, set by docker-compose.prod.yml:50) the logging mailer redacts the reset/verify URL ('[redacted]') and logs only the recipient, so the single-use token is never delivered to the user nor to the log.",
+        "evidence": "apps/backend/src/auth/mailer.ts:29-41; docker-compose.prod.yml:50",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Password reset flow: POST /auth/request-password-reset (rate-limited 5/h per IP) creates a hashed token and calls mailer.sendPasswordReset(email, `${appUrl}/auth/reset-password?token=...`); POST /auth/reset-password consumes it; all account routes are POST.",
+        "evidence": "apps/backend/src/app.ts:119-132; auth/accountService.ts:97-130; auth/accountRouter.ts:50-80",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "env.ts defines no mail/SMTP/provider keys; the schema covers runtime, DB/Redis, JWT, OAuth providers, ALERT_WEBHOOK_*, Razorpay, AI_GATEWAY_* and provider API keys only.",
+        "evidence": "apps/backend/src/config/env.ts:7-79",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "No support@, security@, abuse@ or privacy@ address (or any mailto:) appears in SUPPORT.md, SECURITY.md, docs/public-launch/USER-SUPPORT.md, docs/public-launch/SECURITY.md, website/index.html or website/download.html; SECURITY.md says 'Contact the NeuroPause security team' without an address; website footer 'Support' links to #contact (a download CTA band) and Status/Privacy/Terms/Security link to '#'.",
+        "evidence": "grep -nEi 'mailto|@...' over those files -> none; SECURITY.md:10-11; docs/public-launch/SECURITY.md:33; website/index.html:1098-1108, 1131-1137",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "SUPPORT.md states there is 'no public support channel, forum, chat, or ticketing SLA yet' and support is self-service docs plus agreement-defined channels; USER-SUPPORT.md records SUPPORT-READINESS = FAIL; register 31 records CONTACT/BUG_REPORT/SECURITY_REPORT NOT_VERIFIED, PRIVACY_REQUEST/DATA_EXPORT/ACCOUNT_DELETION ABSENT, mailboxes_created NONE, status FAIL.",
+        "evidence": "SUPPORT.md:6-13, 64-73; docs/public-launch/USER-SUPPORT.md:15; certification/public-launch/31_SUPPORT_READINESS_REGISTER.json",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "docs/public-launch/PRIVACY.md is 'an engineering inventory, not a privacy policy' requiring legal review (WAITING_FOR_HUMAN); it states gateway prompts are 'not stored by the gateway; audit line carries ids and token counts only', that the provider receives message content, that device-lane conversations live under userData, and that backend at-rest encryption/backup/retention are NOT_MEASURED (host HTTP 530). Register 32 status: 'FAIL (no deletion/export; policy not reviewed)'.",
+        "evidence": "docs/public-launch/PRIVACY.md:3, 13-27; certification/public-launch/32_PRIVACY_DATA_REGISTER.json",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Semantic memory backfill embeds memory content server-side but the Qdrant point payload is only {memoryId, orgId}; memory text is not stored in the vector store.",
+        "evidence": "apps/backend/src/semantic/api/backfillService.ts:48, 71; semantic/pipeline/embeddingPipeline.ts:106; semantic/qdrant/qdrantVectorStore.ts:116-117",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Desktop assistant conversations are persisted to userData/assistant-conversations.json as plaintext JSON via atomic temp-file+rename with mode 0600; retention is capped per tenant at MAX_CONVERSATIONS=100 and MAX_MESSAGES=200; delete(id) is tenant-scoped; unscoped writes are refused.",
+        "evidence": "apps/desktop/src/main/assistant/conversationStore.ts:71-73, 228-295, 303-309; assistant/index.ts:168-172",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "AssistantMessage.text holds 'User text (possibly redacted) or the assistant's short text' plus an envelope; user text is passed through screenMemory (secret/PHI patterns) before storage.",
+        "evidence": "packages/shared/src/types/assistant.ts:375-383; apps/desktop/src/main/assistant/assistantService.ts:302; assistant/index.ts:377",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "AiAuditLog is an in-memory ring of 1000 records carrying tokens, cost, latency, model, prompt version, outcome — 'NEVER prompts, context text, responses, or secrets'; it is not written to disk.",
+        "evidence": "apps/desktop/src/main/ai/auditLog.ts:1-33; aiEngine.ts:27, 101",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Executive conversation memory stores the user's question text (content: question.trim()) as a MemoryItem in memory.json; temporary items expire in ~8h, 'today' at end of day, project/longterm never; secret screening refuses patterned credentials/cards/SSN/IBAN and best-effort medical text.",
+        "evidence": "apps/desktop/src/main/ai/conversationMemory.ts:169-270, 308-312, 341-344",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "memory.json (MemoryStore) has 'No cap, no TTL, no eviction'; forget() appends a deletion tombstone for synced items so history stays recoverable; persisted as plaintext JSON mode 0600; memory-audit.json is capped at 5000 entries per tenant, mode 0600.",
+        "evidence": "apps/desktop/src/main/memory/memoryStore.ts:54-95, 280-281; memory/memoryAuditLog.ts:80, 141-142",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Device-direct AI lanes wired in providerManager send content to https://api.anthropic.com/v1/messages, https://api.openai.com/v1/chat/completions, or http://localhost:11434; none of the provider clients log prompt/message content.",
+        "evidence": "apps/desktop/src/main/ai/providerManager.ts:17-20; claudeClient.ts:10; openaiClient.ts:17; ollamaClient.ts:14; grep for log.*(prompt|messages|content) in those files -> none",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "gatewayClient.ts and gatewayAgentLoop.ts are imported by no production module in apps/desktop/src or packages; the only non-test importer is apps/desktop/scripts/live-agent-loop.ts. The gateway lane is therefore not exercised by the shipped desktop app.",
+        "evidence": "grep -rnE \"gatewayClient'|gatewayAgentLoop'\" apps packages (non-test) -> scripts/live-agent-loop.ts:22-23 and the loop's own type import only",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "AI-ARCHITECTURE.md lists 'Gateway client' and 'Governed agent loop' as components alongside 'Legacy device-direct lanes' without stating that the gateway lane is not wired into the app.",
+        "evidence": "docs/public-launch/AI-ARCHITECTURE.md:5-11",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "Desktop usage/cost tracking: usageTracker (tokens + USD cost from pricing.ts) is in-memory (no file write); routingUsageStore persists only counts and timestamps to ai-routing-usage.json ('no prompts, no responses').",
+        "evidence": "apps/desktop/src/main/ai/usageTracker.ts:1-6; routingUsageStore.ts:1-10, 124; grep writeFile usageTracker.ts -> none",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Desktop update failures are recorded only locally: autoUpdater 'error' transitions to status 'error' in memory; update-history.json stores version strings for rollback; the generic feed URL is https://neuropause033.com/updates, whose apex host has no A record and answered HTTP 530 in the register.",
+        "evidence": "apps/desktop/src/main/services/appUpdater.ts:30-33, 120-122, 228-240; apps/desktop/electron-builder.yml:43-44; dig A neuropause033.com -> empty; certification/public-launch-002/23_UPDATE_FEED_REGISTER.json reachable 'HTTP 530'",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Desktop telemetry is opt-in (default off), appends JSONL to userData/telemetry.log with no size bound, and 'there is no telemetry endpoint'; the settings file telemetry.json is mode 0600.",
+        "evidence": "apps/desktop/src/main/services/telemetry.ts:1-6, 38, 49-56",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Desktop crash reporting is local-only: uncaughtException/unhandledRejection/render-process-gone/child-process-gone are redacted via buildCrashRecord and appended to logs/crashes.log (2 MiB x 2 generations); native minidumps are opt-in with uploadToServer:false and submitURL 'https://invalid.localhost/'.",
+        "evidence": "apps/desktop/src/main/services/crashReporter.ts:65, 78-86, 104-113, 116-124",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "No analytics/crash SDK (sentry, posthog, mixpanel, segment, datadog, bugsnag, amplitude) is a dependency of apps/desktop, apps/backend or the root package; the only 'Datadog' strings are catalog labels in packages/reliability.",
+        "evidence": "grep -nEi over the three package.json files -> none; grep -rniE over src -> packages/reliability constants/evidence only",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Desktop log retention: logs/app.log 5 MiB x 2, logs/audit.log (IPC privileged-action audit: channel, ok, durationMs) 5 MiB x 3, logs/crashes.log 2 MiB x 2; timeline.jsonl is append-only and 'never trimmed'; credential redaction is enforced at the logger boundary.",
+        "evidence": "apps/desktop/src/main/index.ts:289-292; ipc/secureBridge.ts:97-111, 188-195; services/crashReporter.ts:65; platform/timelineService.ts:60-75; logger.ts:4-45",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Support bundles are written to a caller-supplied outDir with redactText applied to every file and mode 0600; there is no upload path.",
+        "evidence": "apps/desktop/src/main/support/supportBundle.ts:68, 103-149",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "userData files written by the desktop (175 getPath('userData') call sites): manifest in storePaths.ts — configuration: telemetry.json, crash-reporting.json, update-prefs.json, update-history.json, window-state.json, connectors.json, onboarding.json, feature-flags.json, pilot.json, license-status.json, companion-devices.json, tenant-ai-preference.json, local-principal.json, vault.bin, connector-vault.bin, experience-profile.json, ai-config.json, ai-routing-usage.json, identity.json, workspace-contexts.json, webhooks.json, delivery-preferences.json, sync-state.json; registry.json; enterprise-workspaces.json, enterprise-org.json; graph.json, unified-store.json; workforce-registry.json, workforce-jobs.json, workforce-audit.json; plugins.json, plugins/, plugin-data/; memory.json, memory-audit.json; timeline/; business: enterprise-module-*.json, executive-decisions.json, enterprise-governance.json, automations.json, health-history.json, decision-records.json, holds.json, opportunity-decisions.json, outcome-revisions.json, erp-document-lines.json, erp-approvals.json, platform-command-journal.json, platform-command-journal.intents.json, platform-delivered-events.json, medical-device-traceability.json, data-plane-provenance.json, data-plane-mappings.json, data-plane-relationships.json, notification-inbox.json, action-records.json, m365-governed-actions.json, connector-controls.json, enterprise-personalization.json, platform-operators.json, marketplace-policy.json, documents.json, documents/, sandbox/; assistant-conversations.json, feedback.json.",
+        "evidence": "apps/desktop/src/main/storage/storePaths.ts:29-128; grep -rnE getPath\\('userData'\\) apps/desktop/src (175 matches)",
+        "classification": "MEASURED"
+      }
+    ]
+  },
+  "mx_measured": "0 neuropause033-com.mail.protection.outlook.com.",
+  "password_reset_production_delivery": "ABSENT (logging mailer)",
+  "support_security_privacy_addresses": "EXISTS_UNVERIFIED (mail provider MX present; mailboxes not verified; none published by this seam)",
+  "ai_prompt_persistence": "gateway: not persisted (audit ids/tokens only); desktop device lanes: conversation store under userData (per reviewer facts)",
+  "legal_conclusions": "NONE (human review)"
+}

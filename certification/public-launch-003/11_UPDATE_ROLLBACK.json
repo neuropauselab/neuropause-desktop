@@ -1,0 +1,298 @@
+{
+  "ARTIFACT": "11_UPDATE_ROLLBACK",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:22.961Z",
+  "branch_head": "8fe44d194408864c1448b716662602e01da7bf53",
+  "reviewer": {
+    "summary": "Update/rollback facts for pilot/public-launch @ source 8331185 (evidence 8a253b6). electron-updater 6.8.9 wrapped by apps/desktop/src/main/services/appUpdater.ts. Effective allowDowngrade=false at 8331185 (ordering fix present; executed in-process harness confirms the channel setter flips it to true and the post-set clamp restores false). Interrupted download: no resume, temp file lives in <cache>/@neuropausedesktop-updater/pending/temp-<name>, on failure the whole pending dir is emptied (no partial file left), next download starts from zero. Corrupt artifact: ERR_CHECKSUM_MISMATCH from DigestTransform, pending dir emptied, nothing installed, installed app untouched; a cached artifact from a prior launch is re-hashed and discarded on mismatch or feed change. Incompatible OS: electron-updater compares os.release() (kernel version) to feed minimumSystemVersion with strict semver; neither published feed carries the field and electron-builder never emits it, so no OS-floor gate exists at update time (a macOS-style '12.0' value would be rejected as invalid and the update offered). Arch: mac feed is universal-only and filterFilesForArch keeps it on both arches; Windows is x64-only with no arch filter. Previous version: neither electron-updater nor the app keeps a copy of the old binary; Squirrel.Mac ShipIt strings show an owned-bundle temporary URL with restore-on-abort (semantics INFERRED); NSIS uninstalls the old version before extracting the new one; the release workflows OVERWRITE downloads/NeuroPause.dmg and downloads/NeuroPause-Setup.exe at fixed names (contradicts UPDATE-ROLLBACK.md:24 'kept immutable'). Explicit rollback: pickRollbackTarget is pure and tested (14/14 vitest at HEAD); rollbackTarget() has zero callers and is on no IPC channel; no downgrade/reinstall/revert code path exists. UPDATE_TRANSITION = NOT_MEASURED and ROLLBACK = NOT_MEASURED: no executed old->new transition or rollback exists anywhere under certification/public-launch*; registers 26/27/38 and 002/20/21/32 say the same.",
+    "verdicts": [
+      {
+        "item": "UPDATE_TRANSITION",
+        "status": "NOT_MEASURED",
+        "reason": "No executed old->new update on any machine is evidenced in certification/public-launch*, 002, or docs; feed host recorded HTTP 530 (002/23). Mechanism facts were measured in-process only (harness against electron-updater 6.8.9 with a fake app adapter)."
+      },
+      {
+        "item": "ROLLBACK",
+        "status": "NOT_MEASURED",
+        "reason": "AUTOMATIC_ROLLBACK = NOT_SUPPORTED (allowDowngrade=false effective; no revert code; rollbackTarget() unwired). No feed-freeze or manual-reinstall rollback was exercised; registers 27/38/002-32 agree."
+      },
+      {
+        "item": "DOWNGRADE_POLICY",
+        "status": "MEASURED",
+        "reason": "Effective allowDowngrade=false at 8331185 in wire() and setChannel(); channel-setter override reproduced and the post-set clamp verified by execution; older feed -> 'update-not-available'."
+      },
+      {
+        "item": "FAILED_UPDATE_RECOVERY",
+        "status": "MEASURED_IN_PROCESS",
+        "reason": "Check/download/precondition/native-error paths executed: app stays running, disk untouched, phase 'error'. Real ShipIt/NSIS failure on a machine NOT_MEASURED; Windows failures after spawn are unobservable by design."
+      },
+      {
+        "item": "INTERRUPTED_DOWNLOAD",
+        "status": "MEASURED_IN_PROCESS",
+        "reason": "No resume; temp file in pending/ ; on failure pending/ emptied (no partial left); next attempt is a full re-download from byte 0."
+      },
+      {
+        "item": "CORRUPT_ARTIFACT",
+        "status": "MEASURED_IN_PROCESS",
+        "reason": "sha512 mismatch -> ERR_CHECKSUM_MISMATCH, pending/ emptied, nothing installed, installed app intact; cached artifacts re-hashed and discarded on mismatch or feed change."
+      },
+      {
+        "item": "INCOMPATIBLE_UPDATE_OS",
+        "status": "ABSENT_GATE",
+        "reason": "Library supports minimumSystemVersion (kernel-version semver compare, invalid values pass), but neither feed carries it and electron-builder never emits it; no OS floor is applied at update time."
+      },
+      {
+        "item": "INCOMPATIBLE_UPDATE_ARCH",
+        "status": "DERIVED",
+        "reason": "Universal-only mac feed passes filterFilesForArch on both arches; Windows x64-only with no filter. The arm64->universal step was not executed."
+      },
+      {
+        "item": "PREVIOUS_VERSION_PRESERVATION",
+        "status": "ABSENT",
+        "reason": "Neither the app nor electron-updater retains the old binary; ShipIt temporary-URL backup is INFERRED from strings and is not user-restorable; NSIS uninstalls old before installing new; server overwrites downloads/NeuroPause.dmg and NeuroPause-Setup.exe at fixed names."
+      },
+      {
+        "item": "EXPLICIT_ROLLBACK_MECHANISM",
+        "status": "ABSENT",
+        "reason": "pickRollbackTarget is pure and tested (14/14); rollbackTarget() has zero callers, is on no IPC channel, and no downgrade/reinstall/revert code exists."
+      }
+    ],
+    "facts": [
+      {
+        "fact": "Repo worktree /Users/saurabhpatel/Desktop/np-public-launch on branch pilot/public-launch; HEAD 8a253b6 (evidence commit), parent 8331185 (source), base cec399f. /Users/saurabhpatel/neuropause-desktop is not a git repo and contains no updater source.",
+        "evidence": "git rev-parse --abbrev-ref HEAD; git log --oneline -3; ls of both roots",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "electron-updater installed 6.8.9; declared ^6.8.9 at apps/desktop/package.json:38; package-lock.json:6008-6011 pins 6.8.9 (sha512 integrity present); electron 42.8.1; electron-builder 26.15.3; builder-util-runtime 9.7.0.",
+        "evidence": "node -e require('./node_modules/electron-updater/package.json').version; apps/desktop/package.json:38; package-lock.json:6008-6011; node_modules/electron/package.json; node_modules/electron-builder/package.json",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Between cec399f and 8331185 the only updater-related source change is apps/desktop/src/main/services/appUpdater.ts (+5/-1): `autoUpdater.allowDowngrade = false` moved from before to after `autoUpdater.channel = feedChannel(...)` in wire() (now :91-94) and added after the channel assignment in setChannel() (now :167). updateChannels.ts, updateChannels.test.ts, updater/index.ts, electron-builder.yml unchanged. Evidence commit 8a253b6 touches no updater source.",
+        "evidence": "git diff --stat cec399f 8331185 -- <updater paths>; git diff cec399f 8331185 -- apps/desktop/src/main/services/appUpdater.ts; git diff --stat 8331185 8a253b6 -- <updater paths> (empty)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "DOWNGRADE POLICY (app side): wire() sets autoDownload=false, autoInstallOnAppQuit=false, allowPrerelease=allowsPrerelease(channel), channel=feedChannel(channel), THEN allowDowngrade=false; setChannel() repeats allowPrerelease, channel, THEN allowDowngrade=false.",
+        "evidence": "apps/desktop/src/main/services/appUpdater.ts:87-94,164-168",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "DOWNGRADE POLICY (library): electron-updater's `set channel(value)` unconditionally executes `this.allowDowngrade = true` (documented: 'allowDowngrade will be automatically set to true ... set allowDowngrade explicitly after'). Executed harness: ctor default allowDowngrade=false; after allowDowngrade=false then channel='latest' -> TRUE; after channel then allowDowngrade=false -> FALSE; after channel='beta' -> TRUE again; after re-clamp -> FALSE. Therefore the 8331185 ordering yields an effective allowDowngrade=false in both wire() and setChannel().",
+        "evidence": "node_modules/electron-updater/out/AppUpdater.js:28-44,138; scratchpad/pl003/harness/policy-result.json tests.A_channel_setter_ordering",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "DOWNGRADE POLICY (decision): isUpdateAvailable(): equal -> false; not isUpdateSupported -> false; staging miss -> false; newer -> true; older -> allowDowngrade && older. Executed with current 1.0.0-rc.30: feed 1.0.0-rc.29 & allowDowngrade=false -> false; equal -> false; 1.0.0-rc.31 -> true; 1.0.0 -> true; rc.29 & allowDowngrade=true -> true. Via checkForUpdates() with a fake provider: older feed & allowDowngrade=false emits 'checking-for-update' then 'update-not-available' with log 'Update for version 1.0.0-rc.30 is not available (latest version: 1.0.0-rc.29, downgrade is disallowed).'; older feed & allowDowngrade=true emits 'update-available' 1.0.0-rc.29.",
+        "evidence": "node_modules/electron-updater/out/AppUpdater.js:339-363,400-424; scratchpad/pl003/harness/policy-result.json tests.B_isUpdateAvailable, tests.C_checkForUpdates_events",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "An older-than-current feed is surfaced to the app as phase 'not-available' with available=null (identical to 'up to date'); the UI label for that phase is 'Up to date'. The 'downgrade is disallowed' reason is only in electron-updater's info log, which the app maps to log.debug.",
+        "evidence": "apps/desktop/src/main/services/appUpdater.ts:95-100,107-110; packages/shared/src/types/releaseChannelMeta.ts:87-95; AppUpdater.js:405",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "The prior discovery register recorded allowDowngrade as 'effectively TRUE' (G2, e_allowDowngrade_false_semantics, rollback_summary.unintended_downgrade_path) - that was measured against the pre-fix ordering. At 8331185 the fix is present and the executed harness confirms effective FALSE; 26_UPDATE_REGISTER's 'allowDowngrade: false (set after channel assignment; fixed this branch)' is consistent with source.",
+        "evidence": "certification/public-launch/discovery/updater.json:520-543,606; git diff cec399f 8331185 appUpdater.ts; harness A; certification/public-launch/26_UPDATE_REGISTER.json 'allowDowngrade'",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "No unit test pins the allowDowngrade ordering: appUpdater.ts declares it must not be pulled into unit tests (:13-15); the only updater test file is updateChannels.test.ts (pure functions). The ordering invariant is unpinned.",
+        "evidence": "find apps/desktop/src -iname '*updat*' -> only updateChannels.test.ts; appUpdater.ts:13-15",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "FAILED UPDATE RECOVERY - check phase: GenericProvider.getLatestVersion: HTTP 404 -> ERR_UPDATER_CHANNEL_FILE_NOT_FOUND; ECONNREFUSED -> up to 3 retries (0/1/2 s) then throw; anything else thrown immediately. checkForUpdates() catch emits 'error'; app sets phase 'error' with the message; nothing on disk is touched; app keeps running. An unpackaged app short-circuits: isUpdaterActive()=false, checkForUpdates() resolves null (executed).",
+        "evidence": "node_modules/electron-updater/out/providers/GenericProvider.js:18-45; AppUpdater.js:253-284; apps/desktop/src/main/services/appUpdater.ts:120-123,127-138; harness policy-result tests.D_unpackaged",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Feed reachability at certification time: 002/23_UPDATE_FEED_REGISTER records reachable='HTTP 530' for https://neuropause033.com/updates/beta-mac.yml. Under that condition every packaged client's 10 s post-launch check (appUpdater.ts:77) lands in phase 'error'; no update or roll-forward is possible until the host serves the feed.",
+        "evidence": "certification/public-launch-002/23_UPDATE_FEED_REGISTER.json 'reachable'; appUpdater.ts:76-77 (not probed in this task)",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "FAILED UPDATE RECOVERY - download phase: executeDownload() catch calls removeFileIfAny() = DownloadedUpdateHelper.clear() (emptyDir of <cache>/pending) + unlink(final file), then rethrows; downloadUpdate()'s errorHandler dispatches 'error'; app phase 'error'. downloadUpdate() before any check throws/dispatches 'Please check update first' (executed). A concurrent downloadUpdate() returns the in-flight promise.",
+        "evidence": "AppUpdater.js:435-475,609-638; DownloadedUpdateHelper.js:67-82; appUpdater.ts:140-150; harness download-result tests.1, tests.2; harness policy-result tests.E_download_before_check",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "FAILED UPDATE RECOVERY - install precondition: BaseUpdater.install() with no downloaded file dispatches 'error' 'No update filepath provided, can't quit and install', returns false and leaves quitAndInstallCalled=false (executed on an NsisUpdater instance). App-side installOnRestart() only invokes autoUpdater.quitAndInstall() when app.isPackaged && phase==='downloaded'; otherwise it silently returns status (no error, no event).",
+        "evidence": "node_modules/electron-updater/out/BaseUpdater.js:42-68; harness download-result tests.7; apps/desktop/src/main/services/appUpdater.ts:153-159",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "FAILED UPDATE RECOVERY - macOS install: with autoInstallOnAppQuit=false, MacUpdater.updateDownloaded() starts a 127.0.0.1 proxy, calls nativeUpdater.setFeedURL, dispatches 'update-downloaded' and resolves WITHOUT calling nativeUpdater.checkForUpdates (MacUpdater.js:219-227). quitAndInstall() then registers on('update-downloaded') and calls nativeUpdater.checkForUpdates() (:240-256). Executed with a stubbed native updater: after quitAndInstall -> native calls ['checkForUpdates']; a native 'error' ('Code signature ... did not pass validation') is re-emitted as MacUpdater 'error' and app.quit() is NOT called (0 quit calls); a native 'update-downloaded' -> handleUpdateDownloaded -> nativeUpdater.quitAndInstall() (autoRunAppAfterInstall default true).",
+        "evidence": "node_modules/electron-updater/out/MacUpdater.js:18-25,122-256; AppUpdater.js:119; harness download-result tests.9_mac_quitAndInstall_flow",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Consequence on macOS: the app's 'downloaded' phase (UI 'Ready to install') means 'zip sha512-verified in pending/ and local proxy listening' - Squirrel.Mac has not fetched, signature-checked, or staged anything yet. Squirrel's code-signature validation runs only after the user clicks 'Restart to install'; a signature refusal at that point leaves the app running, and the app-side phase stays 'downloaded' until the 'error' event flips it to 'error'.",
+        "evidence": "MacUpdater.js:219-227,240-256; appUpdater.ts:115-123,153-159; ReleaseChannelCard.tsx:113,217; harness tests.9",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "FAILED UPDATE RECOVERY - Windows install: NsisUpdater.doInstall() spawns the downloaded installer detached+unref with ['--updated', '/S' if silent, '--force-run' if requested, '/D=<dir>' if set]; spawnLog resolves true as soon as a pid exists; BaseUpdater.quitAndInstall() then setImmediate(app.quit()). Spawn failure with UNKNOWN/EACCES retries via elevate.exe; ENOENT falls back to shell.openPath. Any installer failure AFTER spawn is unobservable by the app (it has quit).",
+        "evidence": "node_modules/electron-updater/out/NsisUpdater.js:101-149; BaseUpdater.js:13-27,129-147",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Windows NSIS update mode (electron-builder default template; electron-builder.yml declares no nsis.include/custom script): the installer kills/waits for the running app (CHECK_APP_RUNNING, extra sleeps when isUpdated), then runs the OLD version's uninstaller (`old-uninstaller.exe /S /KEEP_APP_DATA --updated _?=<installDir>`, up to 5 retries) BEFORE extracting the new files. The previous binaries are therefore removed before the new ones exist; a failure inside that window leaves no installed app (manual reinstall from NeuroPause-Setup.exe). User data is preserved (/KEEP_APP_DATA, --updated).",
+        "evidence": "node_modules/app-builder-lib/templates/nsis/installSection.nsh:36-66; templates/nsis/include/installUtil.nsh:142-247; templates/nsis/include/allowOnlyOneInstallerInstance.nsh:106-125; templates/nsis/common.nsh:124-131; apps/desktop/electron-builder.yml:80-99",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Crash-after-update: no code detects a failing new version or reverts the binary; recordVersion() only appends the running version to userData/update-history.json and logs the rollback target at debug level. Safe Mode (safe-mode.json) skips the plugin loader only; Reset Settings deletes update-prefs.json (channel pref reverts to the build-stamped default) but neither touches the app binary.",
+        "evidence": "apps/desktop/src/main/services/appUpdater.ts:228-242; apps/desktop/src/main/runtimeCore.ts:4127-4130; apps/desktop/src/main/recovery/recoveryService.ts:84,106-111,200",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "INTERRUPTED DOWNLOAD - mechanism: full downloads stream response -> [ProgressCallbackTransform] -> DigestTransform(sha512) -> fs.createWriteStream(destination) (fresh file, no append). No Range header or resume logic exists in the full-download path; only the differential (blockmap) path uses range requests. Destination is <cache>/pending/temp-<fileName>; createTempUpdateFile unlinks any leftover temp first; on success the temp is renamed to the final name with a 60x500 ms EBUSY retry.",
+        "evidence": "node_modules/builder-util-runtime/out/httpExecutor.js:457-491; node_modules/electron-updater/out/AppUpdater.js:586-590,617-631; DownloadedUpdateHelper.js:150-168",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "INTERRUPTED DOWNLOAD - executed: task received temp path 'temp-NeuroPause-1.0.0-rc.31-universal-mac.zip', wrote 100 B, threw ECONNRESET -> executeDownload rejected with code ECONNRESET; afterwards <cache>/@neuropausedesktop-updater/pending/ is EMPTY (no partial or temp file left) and the cache root holds only 'pending'. Behaviour on the next attempt: no resume - validateDownloadedPath finds nothing, a new temp file is created and the payload is downloaded from byte 0.",
+        "evidence": "scratchpad/pl003/harness/download-result.json tests.1_interrupted_download; AppUpdater.js:604-617",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Differential download (mac): used only when <cache>/update.zip from a previous SUCCESSFUL update exists and disableDifferentialDownload is false; any failure logs 'Cannot download differentially, fallback to full download' and performs a full download. A first-ever update is always a full download. On success the new zip is copied to <cache>/update.zip for future deltas.",
+        "evidence": "node_modules/electron-updater/out/MacUpdater.js:86-119; AppUpdater.js:643-713",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Updater cache location: <app cache dir>/<updaterCacheDirName>/pending, with updaterCacheDirName '@neuropausedesktop-updater' baked into app-update.yml by electron-builder (also provider generic, url https://neuropause033.com/updates, channel beta). Read from the locally built, untracked (gitignored) dist outputs for mac and win - not from the published artifacts.",
+        "evidence": "apps/desktop/dist/mac-universal/NeuroPause.app/Contents/Resources/app-update.yml:1-4; apps/desktop/dist/win-unpacked/resources/app-update.yml:1-4; .gitignore:31; AppUpdater.js:541-556; ElectronAppAdapter.js:22-30",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "CORRUPT ARTIFACT - executed: a payload with the second half replaced, streamed through the real DigestTransform(sha512) into the temp file -> executeDownload rejected with code ERR_CHECKSUM_MISMATCH, message 'sha512 checksum mismatch, expected <feed sha512>, got <actual>'; pending/ EMPTY afterwards. Nothing is installed: install() requires downloadedUpdateHelper.file, which is only set by done() after a successful rename.",
+        "evidence": "node_modules/builder-util-runtime/out/httpExecutor.js:393-436; AppUpdater.js:591-607,632-641; BaseUpdater.js:47-53; scratchpad/pl003/harness/download-result.json tests.2_corrupt_artifact_sha512_mismatch",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "CORRUPT ARTIFACT - propagation: the ERR_CHECKSUM_MISMATCH error is dispatched as 'error' -> app phase 'error' with error=message -> UI badge 'Error'. The old app is intact: corrupt bytes never leave pending/ and are deleted; no installer/Squirrel step runs.",
+        "evidence": "AppUpdater.js:449-459,476-478; apps/desktop/src/main/services/appUpdater.ts:120-123,144-148; packages/shared/src/types/releaseChannelMeta.ts:87-95",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "CORRUPT ARTIFACT - cached from a previous launch: getValidCachedUpdateFile reads pending/update-info.json {fileName, sha512, isAdminRightsRequired}, compares its sha512 to the current feed, checks the file exists, then RE-HASHES the file on disk; any mismatch -> emptyDir(pending) -> null -> fresh download. Executed: successful download wrote update-info.json + 65536 B zip; new instance with valid cache -> download task NOT invoked ('Update has already been downloaded'); bit-flipped cached zip -> warn 'Sha512 checksum doesn't match the latest available update' and re-download; feed sha512 changed -> info 'Cached update sha512 checksum doesn't match ... will be cleaned', pending emptied, re-download.",
+        "evidence": "node_modules/electron-updater/out/DownloadedUpdateHelper.js:33-52,88-131,137-149; harness download-result tests.3,4,5,6",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "A feed entry with neither sha512 nor sha2 is refused before any download (ERR_UPDATER_NO_CHECKSUM); an unparseable feed version throws ERR_UPDATER_INVALID_VERSION from isUpdateAvailable (executed). Full ERR_UPDATER_* code set present in 6.8.9: ASSET_NOT_FOUND, BLOCKMAP_FILE_NOT_FOUND, CHANNEL_FILE_NOT_FOUND, INVALID_CHANNEL, INVALID_PROVIDER_CONFIGURATION, INVALID_RELEASE_FEED, INVALID_SIGNATURE, INVALID_UPDATE_INFO, INVALID_VERSION, LATEST_VERSION_NOT_FOUND, NO_CHECKSUM, NO_FILES_PROVIDED, NO_PUBLISHED_VERSIONS, OLD_FILE_NOT_FOUND, RELEASE_NOT_FOUND, UNSUPPORTED_PROVIDER, WEB_INSTALLER_DISABLED, ZIP_FILE_NOT_FOUND.",
+        "evidence": "node_modules/electron-updater/out/providers/Provider.js:124-134; AppUpdater.js:339-343; grep -rhoE ERR_UPDATER_[A-Z_]+ node_modules/electron-updater/out; harness policy-result tests.B.invalid_feed_version",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Authenticity beyond sha512 - Windows: NsisUpdater.verifySignature() returns null (verification skipped) when app-update.yml has no publisherName; the built app-update.yml has none; electron-builder.yml declares no win.publisherName; app-builder-lib injects publisherName only when Windows code-signing verification is forced. Executed: verifySignature() returned null and a custom verifyUpdateCodeSignature hook was never called. Windows updates are therefore sha512-only.",
+        "evidence": "node_modules/electron-updater/out/NsisUpdater.js:52-57,84-99; apps/desktop/dist/win-unpacked/resources/app-update.yml; apps/desktop/electron-builder.yml:80-99; node_modules/app-builder-lib/out/publish/PublishManager.js:202-206; harness download-result tests.8",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Authenticity beyond sha512 - macOS: electron-updater JS performs no signature check; Squirrel.Mac does. Strings present in node_modules/electron/dist/Electron.app/Contents/Frameworks/Squirrel.framework/{Squirrel,Resources/ShipIt}: 'verifyCodeSignatureOfBundle:', 'Code signature at URL %@ did not pass validation', 'Could not get code signature for running application', 'verifyAndPrepareUpdate:fromBundle:', 'SQRLCodeSignature'. That Squirrel enforces same-designated-requirement is not measurable from strings.",
+        "evidence": "strings on Squirrel.framework/Squirrel and Resources/ShipIt (MEASURED strings); enforcement semantics INFERRED",
+        "classification": "INFERRED"
+      },
+      {
+        "fact": "The 'wrong digest REFUSE' / NEG-BYTE and 'wrong filename REFUSE' / NEG-NAME controls in 26_UPDATE_REGISTER were produced by the pre-publication verifier harness verify-mac-artifact.controls.cjs over a dist directory - they prove feed<->artifact binding, not an electron-updater runtime refusal. The runtime refusal is what harness test 2 executed in-process.",
+        "evidence": "certification/public-launch/26_UPDATE_REGISTER.json controls[]; certification/public-launch/evidence/verifier-controls.json:1-4",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "INCOMPATIBLE UPDATE - OS floor logic: checkIfUpdateSupported() compares os.release() (kernel version; 25.5.0 on this host) with updateInfo.minimumSystemVersion via strict semver.lt; absent field -> supported; comparison error -> warn and treat as supported. Executed: minimumSystemVersion '99.0.0' -> not available ('Current OS version 25.5.0 is less than the minimum OS version required 99.0.0'); '12.0' (macOS-marketing style) -> 'Failed to compare ... Invalid Version: 12.0' and the update IS offered; '1.0.0' -> offered.",
+        "evidence": "node_modules/electron-updater/out/AppUpdater.js:186,348-350,364-379; harness policy-result tests.B (minimumSystemVersion cases + logger_lines)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "INCOMPATIBLE UPDATE - no OS gate in practice: neither published feed carries minimumSystemVersion (mac-beta-mac.yml and win-beta.yml have only version/files/path/sha512/releaseDate); electron-builder.yml sets no mac.minimumSystemVersion; app-builder-lib writes mac.minimumSystemVersion only to Info.plist LSMinimumSystemVersion and no code under app-builder-lib/out/publish emits it into the feed. The updater therefore applies no OS floor at check time.",
+        "evidence": "certification/public-launch/evidence/mac-beta-mac.yml:1-11; evidence/win-beta.yml:1-8; apps/desktop/electron-builder.yml:46-70; node_modules/app-builder-lib/out/macPackager.js:392-394; grep minimumSystemVersion node_modules/app-builder-lib/out/publish -> 0 hits",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "Built macOS app declares LSMinimumSystemVersion 12.0 (verifier gate PLIST ok). If a client below that floor were offered the update, the updater would install it and the OS would refuse launch - recovery is manual reinstall. Hypothetical: electron 42 itself already requires a newer macOS than any such client would run.",
+        "evidence": "certification/public-launch/evidence/mac-artifact-verification.json:197-203,516-522",
+        "classification": "INFERRED"
+      },
+      {
+        "fact": "INCOMPATIBLE UPDATE - architecture: MacUpdater.filterFilesForArch keeps only arm64-named files on arm64/Rosetta Macs when any exist, and only non-arm64 files otherwise; 'universal' names contain no 'arm64', so the universal zip is selected on both arches; findFile prefers a name containing process.arch, else the first .zip. Windows feed is a single x64 NSIS exe and NsisUpdater applies no arch filter (findFile 'exe'). The rc.29 (arm64-named) -> rc.30 (universal) transition claimed in UPDATE-ROLLBACK.md:18 is a code-derived expectation, not an executed transition.",
+        "evidence": "node_modules/electron-updater/out/MacUpdater.js:27-36,52-84; providers/Provider.js:74-90; NsisUpdater.js:31-33; evidence/mac-beta-mac.yml; docs/public-launch/UPDATE-ROLLBACK.md:18",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "PREVIOUS-VERSION PRESERVATION - updater/app: electron-updater keeps no copy of the running app. Retained artifacts are only <cache>/update.zip (copy of the NEW zip for future differential downloads) and pending/ (cleared on failure). The app's update-history.json holds version strings only, no binaries.",
+        "evidence": "MacUpdater.js:108-117; DownloadedUpdateHelper.js:67-82; apps/desktop/src/main/services/appUpdater.ts:32-34,219-242",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "PREVIOUS-VERSION PRESERVATION - Squirrel.Mac ShipIt (Electron.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt, 125,584 B, present in node_modules/electron/dist) carries strings 'initWithOriginalURL:temporaryURL:codeSignature:', 'SQRLInstallerOwnedBundle', \"Moving bundles via 'Contents' folder rename\", \"Couldn't abort install and restore owned bundle to previous location %@, error %@\", 'Try installing the update again.', 'clearQuarantineForDirectory:', 'ShipItState.plist'. Reading: the existing bundle is moved to a temporary URL during install and restored if the install aborts; the temporary copy is not a user-accessible rollback. Whether the shipped NeuroPause.app's Squirrel.framework is byte-identical to node_modules/electron/dist was not checked.",
+        "evidence": "ls -la and strings on node_modules/electron/dist/Electron.app/Contents/Frameworks/Squirrel.framework/Resources/ShipIt (strings MEASURED; semantics INFERRED)",
+        "classification": "INFERRED"
+      },
+      {
+        "fact": "PREVIOUS-VERSION PRESERVATION - server: macos-release.yml copies the DMG to the FIXED name /opt/neuropause-site/website/downloads/NeuroPause.dmg and windows-release.yml to downloads/NeuroPause-Setup.exe - each publish overwrites the previous installer. Versioned *-mac.zip payloads and beta*.yml are scp'd additively into updates/ (no --delete) and beta-mac.yml is cp -f'd to latest-mac.yml. Both steps are gated on vars.PUBLISH_TO_SITE=='true' && HAS_DEPLOY_KEY and are continue-on-error. This contradicts docs/public-launch/UPDATE-ROLLBACK.md:24 ('previous signed DMG/installer (kept immutable under downloads/ with its digest)').",
+        "evidence": ".github/workflows/macos-release.yml:182-218,232-260; .github/workflows/windows-release.yml:213-216,252-258; docs/public-launch/UPDATE-ROLLBACK.md:22-25",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "EXPLICIT ROLLBACK - primitive: pickRollbackTarget(current, history) returns the highest history entry strictly older than current, else null; pure, no side effects. Unit tests: 3 cases at updateChannels.test.ts:74-87. Executed at HEAD: `npx vitest run src/main/services/updater/updateChannels.test.ts` -> 1 file, 14/14 passed, vitest 1.6.1, 785 ms.",
+        "evidence": "apps/desktop/src/main/services/updater/updateChannels.ts:107-120; updateChannels.test.ts:74-87; vitest run at 09:55:18 local",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "EXPLICIT ROLLBACK - wiring: pickRollbackTarget is called at appUpdater.ts:193 (inside rollbackTarget()) and :237 (inside recordVersion(), result only log.debug'd). rollbackTarget() (appUpdater.ts:192-194) has ZERO callers in apps/ and packages/ (grep matches only its definition); it is not part of UpdateStatus (:178-189) and not on any IPC channel - update:* channels are getStatus, checkNow, download, installOnQuit, setChannel only. No code path performs a downgrade, reinstall, or revert of the app binary.",
+        "evidence": "grep -rn 'rollbackTarget\\b' apps packages; grep -rn pickRollbackTarget; apps/desktop/src/main/updater/index.ts:27-43; packages/shared/src/ipc/channels.ts:809-814; packages/shared/src/ipc/responses.ts:1318-1322",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "AUTOMATIC_ROLLBACK for the desktop updater is NOT_SUPPORTED by design: allowDowngrade=false means an older feed is refused (harness C), and no revert code exists. Documented recovery is feed freeze/replace on the host, manual reinstall of a previous signed artifact, or a forward-fix release; the DR guide and release-operations doc call the rollback surface 'advisory'. FUTURE-VISION targets automated rollback at 1.1.0.",
+        "evidence": "docs/public-launch/UPDATE-ROLLBACK.md:20-27; docs/release/RELEASE-PIPELINE.md:105-125; docs/operations/RELEASE-OPERATIONS.md:180-185; docs/guides/DISASTER-RECOVERY-GUIDE.md:268-282; docs/governance/FUTURE-VISION.md:94; certification/SESSION154-UPDATER-N-TO-N1-ROLLBACK-CERTIFICATION.md section F",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "DISASTER-RECOVERY-GUIDE.md cites stale line numbers: 'appUpdater.ts:88' (allowDowngrade, now :94), 'appUpdater.ts:186-189' (rollbackTarget, now :192-194), 'updateChannels.ts:99-112' (pickRollbackTarget, now :113-120).",
+        "evidence": "docs/guides/DISASTER-RECOVERY-GUIDE.md:270-277 vs apps/desktop/src/main/services/appUpdater.ts:94,192-194 and updateChannels.ts:113-120",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Registers: 26_UPDATE_REGISTER tests[] lists 'interrupted download/install NOT_MEASURED' and 'crash after update NOT_MEASURED'; 27_ROLLBACK_REGISTER: AUTOMATIC_ROLLBACK NOT_SUPPORTED, exercised NONE, status NOT_MEASURED; 38_FINAL_LAUNCH_GATE: GATE-14 UPDATE, GATE-15 ROLLBACK, GATE-35 ROLLBACK-VERIFICATION = NOT_MEASURED; 002/32_FINAL_GATE UPDATE and ROLLBACK = NOT_MEASURED; 002/20 and 002/21 defer to 001's registers; PUBLIC_RELEASE_AUTHORIZATION.template ROLLBACK_STATUS NOT_MEASURED.",
+        "evidence": "certification/public-launch/26_UPDATE_REGISTER.json; 27_ROLLBACK_REGISTER.json; 38_FINAL_LAUNCH_GATE.json:32-33,45; certification/public-launch-002/32_FINAL_GATE.json:215-238; 20_UPDATE_REGISTER.json; 21_ROLLBACK_REGISTER.json; PUBLIC_RELEASE_AUTHORIZATION.template.json:21",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "No evidence of an executed old->new update transition or a rollback exists anywhere under certification/public-launch* or docs/public-launch: grep for update-downloaded|quitAndInstall|installOnRestart hits only discovery/result prose; packaged-smoke.json mentions electron-updater solely as a loaded module. SESSION154 (2026-09-06) recorded N->N+1 'NONE - BLOCKED-B' and rollback run 'BLOCKED-B'. Therefore UPDATE_TRANSITION = NOT_MEASURED and ROLLBACK = NOT_MEASURED.",
+        "evidence": "grep across certification/public-launch, certification/public-launch-002; certification/public-launch/evidence/packaged-smoke.json:23,146; certification/SESSION154-UPDATER-N-TO-N1-ROLLBACK-CERTIFICATION.md sections D,F",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "AUTHORITY: update:checkNow/download/installOnQuit/setChannel require 'cloud:operate' and are audited; update:getStatus requires 'operations:read'. installOnQuit is invoked only from the Settings ReleaseChannelCard 'Restart to install' button. The only appUpdater consumers outside the updater module read status (commercial/index.ts:206, releaseOps/index.ts:264). No AI or automation path reaches update:* (DECLARED by discovery U43; not re-grepped for assistant modules here).",
+        "evidence": "apps/desktop/src/main/ipc/runtimeAuthz.ts:659-663; apps/desktop/src/main/updater/index.ts:27-43; apps/desktop/src/renderer/src/settings/ReleaseChannelCard.tsx:113,217; grep -rn 'appUpdater\\.' apps",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "STALE APPROVAL: a downloaded-but-uninstalled artifact is re-validated against the CURRENT feed sha512 on every later download() call (feed change -> cache discarded, executed test 6), so a stale cached payload cannot be installed once the feed moves on across launches. Within a single session, however, install() uses the in-memory downloadedUpdateHelper.file with no re-check against the feed at install time.",
+        "evidence": "DownloadedUpdateHelper.js:113-117; harness download-result tests.6; BaseUpdater.js:47-53",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "CLIENT NOT FINAL AUTHORITY: payload acceptance depends on the server-published sha512 (feed) and, on macOS, Squirrel's code-signature check; the YAML feed itself is unsigned and the generic-provider host over TLS is the trust root; on Windows (no publisherName) the sha512 self-consistency of feed+payload is the only check.",
+        "evidence": "GenericProvider.js:18-24; Provider.js:124-134; NsisUpdater.js:84-99; consistent with certification/public-launch/discovery/updater.json U60",
+        "classification": "DERIVED"
+      }
+    ]
+  },
+  "UPDATE_TRANSITION": "NOT_MEASURED",
+  "ROLLBACK": "NOT_MEASURED",
+  "downgrade_policy": "allowDowngrade=false set after channel (MEASURED code)",
+  "feed_binding_local": {
+    "status": "PASS",
+    "checks": 7
+  }
+}
