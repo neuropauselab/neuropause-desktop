@@ -1,10 +1,10 @@
 # NP-PUBLIC-LAUNCH-003 — Release gate matrix
 
-Recorded 2026-09-13T04:37:22.961Z · branch head 8fe44d194408864c1448b716662602e01da7bf53 · release NP-OS-1.0.0-rc.30-8a253b6a922f
+Recorded 2026-09-13T04:37:51.847Z · branch head 6175f3633925b0e7088f85b877563b71d7a3bbc0 · release NP-OS-1.0.0-rc.30-8a253b6a922f
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| G01 SOURCE INTEGRITY | PASS | clean tree 8fe44d194408; R3 reproduces f0ba0e8 porcelain=16 digest=27302b8757207bb9 (reproduces) |
+| G01 SOURCE INTEGRITY | PASS | clean tree 6175f3633925; R3 reproduces f0ba0e8 porcelain=16 digest=27302b8757207bb9 (reproduces) |
 | G02 TYPECHECK | PASS | backend tsc clean this seam; desktop node tsc clean this seam; full 53 invocations at 8331185 |
 | G03 TESTS | PASS | backend 40 files / 471 tests (this seam, after hardening) (this seam); desktop ai loop 24/24 (this seam); full suites at 8331185: 10,864 node / 539 UI |
 | G04 BUILD | PASS | build exit 0 at 8331185 (evidence 8a253b6); no packaged-source change since |
@@ -24,7 +24,7 @@ Recorded 2026-09-13T04:37:22.961Z · branch head 8fe44d194408864c1448b716662602e
 | G18 AI AUTHORITY SEPARATION | PASS | refutation reviewer measured 8331185/1692e3a: F1 BYPASS (decision replay) fixed at 1692e3a; F2 GAP (decision bound to id only) + class floor + malformed proposal + envelope executes_tools fixed at cd196fb and pinned by 34 loop/phrase tests + 17 gateway tests (this seam). Residual, recorded not hidden: no production caller of the governed loop exists (ABSENT surface); per-IP limit shares a bucket behind a proxy (availability, not authority). |
 | G19 TOOL GOVERNANCE | PASS | default DENY; single-use decisions; class matrix in 14_AI_TOOL_GOVERNANCE.json; loop not yet wired to any IPC (no renderer surface) |
 | G20 DEPENDENCY SECURITY | HUMAN_REQUIRED | {"info":0,"low":0,"moderate":5,"high":1,"critical":0,"total":6}; per-finding status in 15_DEPENDENCY_SECURITY.json |
-| G21 OBSERVABILITY | FAIL (improved: build_info + AI gateway metrics added this seam; alerting/scraping still undeployed) | see 10/16 registers |
+| G21 OBSERVABILITY | FAIL | improved this seam (build_info + AI gateway request/token/latency metrics added); alert rules/dashboards DECLARED but undeployed; 12 of 15 required signals still ABSENT as metrics — see 16_SUPPORT_PRIVACY.json reviewer facts |
 | G22 SUPPORT | FAIL | mailboxes unverified; reset mail undeliverable; no export/deletion |
 | G23 PRIVACY | HUMAN_REQUIRED | facts inventory present; legal review absent |
 | G24 REGULATORY REVIEW | HUMAN_REQUIRED | facts-only matrix (17); determinations absent |
@@ -35,4 +35,4 @@ Recorded 2026-09-13T04:37:22.961Z · branch head 8fe44d194408864c1448b716662602e
 | G29 PROVENANCE | BLOCKED | local chain MEASURED to SIGNATURE; NOTARIZATION/FEED-PUBLIC/HOST/DOWNLOAD ABSENT; A/B identity NOT_ESTABLISHED |
 | G30 HUMAN RELEASE DECISION | HUMAN_REQUIRED | no decision artifact |
 
-Summary: {"PASS":12,"EXTERNAL_REQUIRED":3,"FAIL":2,"NOT_MEASURED":4,"HUMAN_REQUIRED":7,"FAIL (improved: build_info + AI gateway metrics added this seam; alerting/scraping still undeployed)":1,"BLOCKED":1}
+Summary: {"PASS":12,"EXTERNAL_REQUIRED":3,"FAIL":3,"NOT_MEASURED":4,"HUMAN_REQUIRED":7,"BLOCKED":1}
