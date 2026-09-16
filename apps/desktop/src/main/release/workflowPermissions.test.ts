@@ -40,18 +40,24 @@ describe('S132 · workflow least-privilege classifier (fail-closed)', () => {
     expect(r.errors.join(' ')).toMatch(/unexpected write scope 'packages:write'/);
   });
 
-  it('ACCEPTS the allowlisted release-write (contents: write) only for the named release workflows', () => {
-    expect(classifyWorkflowPermissions('macos-release.yml', { permissions: { contents: 'write' } }).ok).toBe(true);
-    expect(classifyWorkflowPermissions('windows-release.yml', { permissions: { contents: 'write' } }).ok).toBe(true);
-    // the SAME write scope on a non-release workflow is rejected
-    expect(classifyWorkflowPermissions('desktop-ci.yml', { permissions: { contents: 'write' } }).ok).toBe(false);
+  it('ACCEPTS a write scope only when an explicit allowlist names it for THAT workflow', () => {
+    const allow = { 'x.yml': ['contents:write'] };
+    expect(classifyWorkflowPermissions('x.yml', { permissions: { contents: 'write' } }, allow).ok).toBe(true);
+    // the SAME write scope on any other workflow is rejected
+    expect(classifyWorkflowPermissions('desktop-ci.yml', { permissions: { contents: 'write' } }, allow).ok).toBe(false);
   });
 
-  it('the allowlist is minimal — exactly the two release workflows, contents:write only', () => {
-    expect(DEFAULT_WRITE_ALLOWLIST).toEqual({
-      'macos-release.yml': ['contents:write'],
-      'windows-release.yml': ['contents:write'],
-    });
+  it('REJECTS contents:write for every real workflow name, including the governed release workflow', () => {
+    // The governed release path (neuropause-release.yml) publishes with environment-scoped credentials, never
+    // with GITHUB_TOKEN, so no workflow in this repository holds a top-level write scope. The legacy
+    // macos-release.yml / windows-release.yml (softprops GitHub Release) are gone with their allowance.
+    for (const name of ['neuropause-release.yml', 'macos-release.yml', 'windows-release.yml', 'desktop-ci.yml']) {
+      expect(classifyWorkflowPermissions(name, { permissions: { contents: 'write' } }).ok, name).toBe(false);
+    }
+  });
+
+  it('the default allowlist is EMPTY — nothing in this repository needs a write scope', () => {
+    expect(DEFAULT_WRITE_ALLOWLIST).toEqual({});
   });
 });
 

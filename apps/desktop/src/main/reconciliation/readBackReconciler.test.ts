@@ -406,7 +406,7 @@ describe('SELECTION — only what this oracle can actually answer for', () => {
   it('non-mail.send, non-ACKNOWLEDGED, and already-verified rows are all left alone', () => {
     const base: ReconcilableRecord = {
       transitionId: 't', tenantId: TENANT, connectorId: 'c', accountId: 'a', actionId: 'mail.send',
-      outcome: 'ACKNOWLEDGED', at: new Date().toISOString(), requestTime: new Date().toISOString(),
+      outcome: 'ACKNOWLEDGED', requestTime: new Date(Date.now() - 1000).toISOString(), at: new Date().toISOString(),
       subjectFingerprint: 'f', recipients: { to: [RECIPIENT], cc: [], bcc: [] }, verification: null,
     };
     expect(awaitingVerification(base)).toBe(true);
@@ -415,10 +415,14 @@ describe('SELECTION — only what this oracle can actually answer for', () => {
     expect(awaitingVerification({ ...base, verification: { terminal: 'HOLD' } })).toBe(false);
   });
 
+  // requestTime is fixed 1 s BEFORE at. The previous fixture evaluated `at` first and `requestTime` second with two
+  // separate `new Date()` calls, so a millisecond tick between them inverted the interval and the reconciler correctly
+  // answered UNPARSEABLE_INTERVAL before it could reach the recipient check — a flake seen on the macOS CI runner
+  // (desktop-ci run 35061607073, 2026-09-16), not a reconciler defect.
   it('a multi-recipient send has no representable target and says so by name', () => {
     const rec: ReconcilableRecord = {
       transitionId: 't', tenantId: TENANT, connectorId: 'c', accountId: 'a', actionId: 'mail.send',
-      outcome: 'ACKNOWLEDGED', at: new Date().toISOString(), requestTime: new Date().toISOString(),
+      outcome: 'ACKNOWLEDGED', requestTime: new Date(Date.now() - 1000).toISOString(), at: new Date().toISOString(),
       subjectFingerprint: 'f', recipients: { to: [RECIPIENT, 'bob@example.com'], cc: [], bcc: [] }, verification: null,
     };
     const built = buildReconcileRef(rec);
