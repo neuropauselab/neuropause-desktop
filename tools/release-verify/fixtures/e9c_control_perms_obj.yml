@@ -1,0 +1,162 @@
+name: neuropause-release
+true:
+  push:
+    tags:
+    - v*
+concurrency:
+  group: neuropause-production-release
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  candidate-admission:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.admit.outputs.candidate_sha }}
+      candidate_tag: ${{ steps.admit.outputs.candidate_tag }}
+      candidate_version: ${{ steps.admit.outputs.candidate_version }}
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - id: admit
+      name: "Candidate admission (authoritative \u2014 invokes candidate-admission.cjs)"
+      env:
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_REF: ${{ github.ref }}
+        GITHUB_REF_NAME: ${{ github.ref_name }}
+        GITHUB_SHA: ${{ github.sha }}
+        RELEASE_CANDIDATE_TAG: ${{ vars.RELEASE_CANDIDATE_TAG }}
+        RELEASE_CANDIDATE_SHA: ${{ vars.RELEASE_CANDIDATE_SHA }}
+      run: 'set -euo pipefail
+
+        export PKG_VERSION="$(node -p "require(''./apps/desktop/package.json'').version")"
+
+        export GIT_DIRTY="$([ -z "$(git status --porcelain)" ] && echo false || echo
+        true)"
+
+        node scripts/candidate-admission.cjs candidate.json
+
+        echo "candidate_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+
+        echo "candidate_tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+        echo "candidate_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+
+        '
+  build-windows:
+    needs:
+    - candidate-admission
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ needs.candidate-admission.outputs.candidate_sha }}
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+    - name: Assert exact checkout
+      run: node -e "process.exit(process.env.GITHUB_SHA==='${{ needs.candidate-admission.outputs.candidate_sha
+        }}'?0:1)"
+    - run: npm ci && npm run package:win
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: win
+        path: apps/desktop/dist
+  build-macos:
+    needs:
+    - candidate-admission
+    runs-on: macos-latest
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ needs.candidate-admission.outputs.candidate_sha }}
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+    - run: npm ci && npm run package:mac
+    - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: mac
+        path: apps/desktop/dist
+  aggregate-artifacts:
+    needs:
+    - build-windows
+    - build-macos
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        path: dist
+  post-build-integrity:
+    needs:
+    - aggregate-artifacts
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - run: node scripts/verify-post-build-integrity.cjs
+  provenance:
+    needs:
+    - post-build-integrity
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        path: dist
+    - run: node scripts/emit-provenance.cjs dist > provenance.json
+  verify-artifacts:
+    needs:
+    - provenance
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      with:
+        path: dist
+    - run: node scripts/verify-feed.cjs dist/beta.yml dist "${{ needs.candidate-admission.outputs.candidate_version
+        }}"
+  signing-verification:
+    needs:
+    - verify-artifacts
+    runs-on: ubuntu-latest
+    steps:
+    - run: node scripts/verify-signing.cjs dist
+  stage-publication:
+    needs:
+    - signing-verification
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - name: "Preflight \u2014 production environment contract (fail-closed)"
+      run: node scripts/verify-production-environment-contract.cjs env-contract.json
+    - name: Stage to immutable releases/<tag>/ (R2)
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.R2_INSTALLER_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_INSTALLER_SECRET }}
+      run: echo "staging (external creds required)"
+    permissions:
+      contents: write
+  promote-publication:
+    needs:
+    - stage-publication
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+    - name: Promote channel pointer (feed key)
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.R2_FEED_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_FEED_SECRET }}
+      run: echo "promote (external creds required)"
+    permissions:
+      contents: write
+  public-verification:
+    needs:
+    - promote-publication
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+    - run: node scripts/verify-public.cjs https://neuropause033.com/updates/beta.yml
+        "${{ needs.candidate-admission.outputs.candidate_version }}"
+  independent-reconciliation:
+    needs:
+    - public-verification
+    runs-on: ubuntu-latest
+    steps:
+    - run: node scripts/validate-release-evidence.cjs control-receipt.json

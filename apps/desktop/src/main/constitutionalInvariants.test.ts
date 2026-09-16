@@ -444,11 +444,20 @@ describe('RULE-011 — the executor cannot bypass governance state', () => {
 
 describe('RULE-012 — verification evidence must have provenance', () => {
   let dir: string;
-  beforeEach(() => {
+  beforeEach(async () => {
+    // RULE-004/005 drive `l6ExecutionGate`, whose Route A governance emit is FIRE-AND-FORGET
+    // (`executionGate.ts:123`) and may still be mid-`ensureLoaded` against the previous directory when this
+    // suite starts. `useDirForTests` resets the memo but cannot recall a read already in flight; when that
+    // stale read lands it overwrites `records` and silently drops the row observed below. Drain it FIRST —
+    // the S162 `flush()` boundary exists for exactly this window (see governanceRecord.test.ts).
+    await actionRecord.flush();
     dir = mkdtempSync(join(tmpdir(), 'np014-rule012-'));
     actionRecord.useDirForTests(dir);
   });
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  afterEach(async () => {
+    await actionRecord.flush(); // S162: no rmdir while a fire-and-forget persist is still writing (win32 ENOTEMPTY)
+    rmSync(dir, { recursive: true, force: true });
+  });
 
   const gsr = {
     outcome: { transitionId: 't-verify', requestId: 'req:abc:1', verdict: 'ALLOW', executed: true },

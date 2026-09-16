@@ -21,8 +21,10 @@ const yaml = require('js-yaml');
  * policy surface: adding a write scope anywhere else requires editing this list (a visible, reviewable act).
  */
 const DEFAULT_WRITE_ALLOWLIST = {
-  'macos-release.yml': ['contents:write'],
-  'windows-release.yml': ['contents:write'],
+  // Governed release (neuropause-release.yml) publishes to R2 / the container registry / the cluster with
+  // environment-scoped credentials, never with GITHUB_TOKEN: its top-level block is `contents: read` and the
+  // only job-level widening (id-token + attestations on the credential-free provenance job) is policed by
+  // tools/release-verify/gate-consumption-ast.cjs v6.4. Nothing in this repository needs contents:write.
 };
 
 /**

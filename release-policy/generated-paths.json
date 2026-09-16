@@ -1,0 +1,4 @@
+{
+  "_comment": "Paths a desktop build is ALLOWED to add or modify in the tracked/untracked-not-ignored tree. Empty by policy: build outputs (dist/, out/, resources/build-info.json, resources/THIRD-PARTY-NOTICES.md) are gitignored, and the root THIRD-PARTY-NOTICES.md must already be committed for the current lockfile (the workflow fails closed on drift). Any addition here is a reviewed policy change.",
+  "allowedGeneratedPaths": []
+}

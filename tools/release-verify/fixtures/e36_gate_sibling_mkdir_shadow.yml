@@ -1,0 +1,191 @@
+# NP-R34.2-B.32 governed release workflow v2 (PREPARED, NOT APPLIED — local artifact only). B.29 graph + B.32 fixes:
+# needs-context bug fixed (jobs reading needs.candidate-admission.* now list it), per-OS signing verification, real staged->promote R2
+# publication (binaries first, feeds last, aliases, edge purge), all inputs via env (no ${{ }} inside run:).
+# Fixes the B.28 primary defect: security predicates are INVOKED from the tested scripts, never reimplemented inline.
+# Actions SHA-pinned (resolved B.28). Production publication BLOCKED externally (env/creds); the GRAPH is complete.
+name: neuropause-release
+on:
+  push:
+    tags: ['v*']            # production path is tag-driven ONLY (no workflow_dispatch publish path)
+concurrency:
+  group: neuropause-production-release
+  cancel-in-progress: false
+permissions:
+  contents: read            # least privilege at workflow level; jobs widen only as needed
+jobs:
+  candidate-admission:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.admit.outputs.candidate_sha }}
+      candidate_tag: ${{ steps.admit.outputs.candidate_tag }}
+      candidate_version: ${{ steps.admit.outputs.candidate_version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: mkdir -p scripts && cp tools/mirror/admit.cjs scripts/candidate-admission.cjs
+      - id: admit
+        name: Candidate admission (authoritative — invokes candidate-admission.cjs)
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          RELEASE_CANDIDATE_TAG: ${{ vars.RELEASE_CANDIDATE_TAG }}
+          RELEASE_CANDIDATE_SHA: ${{ vars.RELEASE_CANDIDATE_SHA }}
+        run: |
+          set -euo pipefail
+          export PKG_VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          export GIT_DIRTY="$([ -z "$(git status --porcelain)" ] && echo false || echo true)"
+          node scripts/candidate-admission.cjs candidate.json
+          echo "candidate_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "candidate_tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "candidate_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+  build-windows:
+    needs: [candidate-admission]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - name: Assert exact checkout
+        run: node -e "process.exit(process.env.GITHUB_SHA==='${{ needs.candidate-admission.outputs.candidate_sha }}'?0:1)"
+      - run: npm ci && npm run package:win
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: { name: win, path: apps/desktop/dist }
+  build-macos:
+    needs: [candidate-admission]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+      - run: npm ci && npm run package:mac       # signing gated by env secrets (BLOCKED externally)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: { name: mac, path: apps/desktop/dist }
+  aggregate-artifacts:
+    needs: [build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { path: dist }
+  post-build-integrity:
+    needs: [aggregate-artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - run: node scripts/verify-post-build-integrity.cjs
+  provenance:
+    needs: [post-build-integrity]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { path: dist }
+      - run: node scripts/emit-provenance.cjs dist > provenance.json   # BEFORE any publication/pointer flip
+  verify-artifacts:
+    needs: [provenance, candidate-admission]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { path: dist }
+      - env: { CANDIDATE_VERSION: "${{ needs.candidate-admission.outputs.candidate_version }}" }
+        run: node scripts/verify-feed.cjs dist/beta.yml dist "$CANDIDATE_VERSION"
+  signing-verification-windows:
+    needs: [verify-artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { name: win, path: dist }
+      - name: Install Authenticode verifier
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osslsigncode
+      - name: Verify Authenticode signatures (fail-closed)
+        env: { EXPECTED_WIN_SIGNER_CN: "${{ vars.EXPECTED_WIN_SIGNER_CN }}" }
+        run: node scripts/verify-signing.cjs dist --platform windows
+  signing-verification-macos:
+    needs: [verify-artifacts]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { name: mac, path: dist }
+      - name: Verify codesign + Gatekeeper + notarization staple (fail-closed)
+        env: { EXPECTED_MAC_TEAM_ID: "${{ vars.EXPECTED_MAC_TEAM_ID }}" }
+        run: node scripts/verify-signing.cjs dist --platform macos
+  stage-publication:
+    needs: [signing-verification-windows, signing-verification-macos, candidate-admission]
+    runs-on: ubuntu-latest
+    environment: production-release       # protected env (admin-configured) — gates credential exposure
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Preflight — production environment contract (fail-closed)
+        run: node scripts/verify-production-environment-contract.cjs env-contract.json
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with: { path: dist, merge-multiple: true }
+      - name: Stage to immutable staged/<tag>/ (R2, prefix-scoped installer credential)
+        env:
+          AWS_ACCESS_KEY_ID: '${{ secrets.R2_INSTALLER_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.R2_INSTALLER_SECRET }}'
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: '${{ vars.R2_ENDPOINT }}'
+          R2_BUCKET: '${{ vars.R2_BUCKET }}'
+          CANDIDATE_TAG: '${{ needs.candidate-admission.outputs.candidate_tag }}'
+          CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}'
+        run: |
+          set -euo pipefail
+          test -n "$R2_ENDPOINT" && test -n "$R2_BUCKET" && test -n "$CANDIDATE_TAG"
+          node scripts/verify-feed.cjs dist/beta.yml dist "$CANDIDATE_VERSION"
+          if aws s3 ls "s3://$R2_BUCKET/staged/$CANDIDATE_TAG/" --endpoint-url "$R2_ENDPOINT" | grep -q .; then echo "staged/$CANDIDATE_TAG already exists — immutable, refusing"; exit 1; fi
+          aws s3 cp dist/ "s3://$R2_BUCKET/staged/$CANDIDATE_TAG/" --recursive --no-progress --endpoint-url "$R2_ENDPOINT"
+          aws s3 ls "s3://$R2_BUCKET/staged/$CANDIDATE_TAG/" --endpoint-url "$R2_ENDPOINT" | tee staged-listing.txt
+          test "$(wc -l < staged-listing.txt)" -eq "$(find dist -type f | wc -l)"
+  promote-publication:
+    needs: [stage-publication, candidate-admission]
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+      - name: Promote — binaries first, feeds last, then channel aliases (server-side copies from the immutable staged set)
+        env:
+          AWS_ACCESS_KEY_ID: '${{ secrets.R2_FEED_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.R2_FEED_SECRET }}'
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: '${{ vars.R2_ENDPOINT }}'
+          R2_BUCKET: '${{ vars.R2_BUCKET }}'
+          CANDIDATE_TAG: '${{ needs.candidate-admission.outputs.candidate_tag }}'
+        run: |
+          set -euo pipefail
+          test -n "$R2_ENDPOINT" && test -n "$R2_BUCKET" && test -n "$CANDIDATE_TAG"
+          S="s3://$R2_BUCKET/staged/$CANDIDATE_TAG"; E=(--endpoint-url "$R2_ENDPOINT" --no-progress)
+          aws s3 ls "$S/" --endpoint-url "$R2_ENDPOINT" | awk '{print $4}' | grep . > names.txt
+          grep -vE '\.yml$' names.txt > bins.txt || true; grep -E '\.yml$' names.txt > feeds.txt || true
+          test -s bins.txt && test -s feeds.txt
+          while read -r f; do aws s3 cp "$S/$f" "s3://$R2_BUCKET/updates/$f" "${E[@]}"; aws s3 cp "$S/$f" "s3://$R2_BUCKET/downloads/$f" "${E[@]}"; done < bins.txt
+          exe=$(grep -E '\.exe$' bins.txt | head -1 || true); dmg=$(grep -E '\.dmg$' bins.txt | head -1 || true)
+          [ -n "$exe" ] && aws s3 cp "$S/$exe" "s3://$R2_BUCKET/downloads/NeuroPause-Setup.exe" "${E[@]}"
+          [ -n "$dmg" ] && aws s3 cp "$S/$dmg" "s3://$R2_BUCKET/downloads/NeuroPause.dmg" "${E[@]}"
+          while read -r f; do aws s3 cp "$S/$f" "s3://$R2_BUCKET/updates/$f" "${E[@]}"; done < feeds.txt
+          for f in beta.yml beta-mac.yml; do grep -qx "$f" feeds.txt && aws s3 cp "$S/$f" "s3://$R2_BUCKET/updates/${f/beta/latest}" "${E[@]}"; done
+      - name: Purge edge cache for the public host (fail-closed; installer objects are edge-cached)
+        env:
+          CF_ZONE_ID: '${{ vars.CF_ZONE_ID }}'
+          CF_PURGE_TOKEN: '${{ secrets.CF_PURGE_TOKEN }}'
+        run: |
+          set -euo pipefail
+          test -n "$CF_ZONE_ID" && test -n "$CF_PURGE_TOKEN"
+          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/purge_cache" -H "Authorization: Bearer $CF_PURGE_TOKEN" -H 'Content-Type: application/json' --data '{"purge_everything":true}' | grep -q '"success":true'
+  public-verification:
+    needs: [promote-publication, candidate-admission]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - env: { CANDIDATE_VERSION: "${{ needs.candidate-admission.outputs.candidate_version }}" }
+        run: |
+          set -euo pipefail
+          node scripts/verify-public.cjs https://neuropause033.com/updates/beta.yml "$CANDIDATE_VERSION"
+          node scripts/verify-public.cjs https://neuropause033.com/updates/latest.yml "$CANDIDATE_VERSION"
+  independent-reconciliation:
+    needs: [public-verification]
+    runs-on: ubuntu-latest
+    steps:
+      - run: node scripts/validate-release-evidence.cjs control-receipt.json

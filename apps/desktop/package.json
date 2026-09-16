@@ -16,7 +16,7 @@
     "package": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release && npm run verify:universal",
     "package:dir": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --dir",
     "test": "vitest run && vitest run --config vitest.ui.config.ts",
-    "bench": "NP_BENCH=1 vitest run src/main/knowledgeAssets/knowledgeBench.test.ts",
+    "bench": "NP_BENCH=1 vitest run --no-file-parallelism src/main/knowledgeAssets/knowledgeBench.test.ts src/main/tenancy/e2e/resolveFullScaling.bench.test.ts",
     "test:watch": "vitest",
     "generate:build-info": "node scripts/generate-build-info.cjs",
     "package:mac": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release && npm run verify:universal && npm run verify:artifact",

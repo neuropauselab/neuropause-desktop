@@ -1,0 +1,13 @@
+{
+  "_template": true,
+  "_instructions": "A repository ADMIN copies this file to release-policy/env-contract.json AFTER creating the GitHub environment and verifying each field in the GitHub UI / API (GET /repos/{owner}/{repo}/environments/production-release). Set verifiedByAdmin to true only when every value below is true in GitHub. The workflow's stage-publication job runs verify-production-environment-contract.cjs against the committed file and fails closed on CONFIGURATION_UNKNOWN or CONFIGURED_BUT_UNPROTECTED. No script generates or edits the real file.",
+  "name": "production-release",
+  "requiredReviewers": true,
+  "preventSelfReview": true,
+  "deploymentTagPattern": "v*",
+  "secretsRequired": true,
+  "verifiedByAdmin": false,
+  "verifiedAt": null,
+  "verifiedByLogin": null,
+  "environmentApiSnapshotSha256": null
+}
