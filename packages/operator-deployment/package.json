@@ -45,5 +45,5 @@
     "@neuropause/platform-automation": "*",
     "@neuropause/environment-provisioning": "*"
   },
-  "devDependencies": { "typescript": "^5.9.3", "vitest": "^1.6.1" }
+  "devDependencies": { "typescript": "^7.0.2", "vitest": "^5.0.0" }
 }
