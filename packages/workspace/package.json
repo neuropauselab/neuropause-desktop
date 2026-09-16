@@ -18,7 +18,7 @@
     "@neuropause/connectors": "*",
     "@neuropause/cloud-core": "*",
     "@neuropause/shared-cloud": "*",
-    "zod": "^3.25.76"
+    "zod": "^4.6.4"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
