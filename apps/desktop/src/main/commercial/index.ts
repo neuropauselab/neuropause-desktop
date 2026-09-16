@@ -59,6 +59,7 @@ import type {
   SeatRowInput,
   UserInput,
 } from './commercialModel';
+import { resolveLicenseState } from './commercialModel';
 import { withCommercialAuthz } from './commercialAuthz';
 
 const log = createLogger('commercial-platform');
@@ -129,7 +130,10 @@ function buildState(deps: CommercialPlatformDeps): CommercialState {
   const licenseStatus = safe(() => licenseValidator.getStatus(orgId));
   const evaluation = licenseStatus?.evaluation ?? null;
   const entitledPlan = evaluation?.entitledPlan ?? planTier;
-  const licenseState = evaluation?.state ?? (sub ? 'valid' : 'invalid');
+  // Round 36 — Gate 5: a thrown validator answers 'unknown', never a false
+  // 'valid'. The decision is the pure `resolveLicenseState` (tested in
+  // commercialModel.test.ts); `safe()` yields null exactly when it threw.
+  const licenseState = resolveLicenseState(licenseStatus, sub !== null);
   const graceDaysRemaining = evaluation?.graceDaysRemaining ?? 0;
 
   // ── Org members (for seat binding + administration) ──

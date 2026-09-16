@@ -189,3 +189,40 @@ describe('BackupManager', () => {
     expect(await fs.readFile(join(dataDir, 'registry.json'), 'utf8')).toBe('ORIGINAL');
   });
 });
+
+/* ── P13C ROUND 37 — GATE 16: restore is atomic and demands its restart ───── */
+
+describe('round 37 — restore restart + atomicity', () => {
+  // An advancing clock: with the fixture's frozen `now`, the pre-restore
+  // SAFETY snapshot would collide with (and overwrite) the archive under test.
+  const ticking = (): BackupManager => {
+    let t = 1_700_000_000_000;
+    return manager(() => (t += 60_000));
+  };
+  it('a successful restore says requiresRestart — live stores would otherwise overwrite it', async () => {
+    const m = ticking();
+    await fs.writeFile(join(dataDir, 'enterprise-org.json'), JSON.stringify({ v: 'original' }));
+    const b = await m.create('manual', ['workspace']);
+    await fs.writeFile(join(dataDir, 'enterprise-org.json'), JSON.stringify({ v: 'changed' }));
+    const result = await m.restore(b.id, ['workspace']);
+    expect(result.ok).toBe(true);
+    expect(result.requiresRestart).toBe(true);
+    expect(JSON.parse(await fs.readFile(join(dataDir, 'enterprise-org.json'), 'utf8'))).toEqual({ v: 'original' });
+  });
+
+  it('a REFUSED restore does not demand a restart — nothing was written', async () => {
+    const m = ticking();
+    const result = await m.restore('no-such-backup', ['workspace']);
+    expect(result.ok).toBe(false);
+    expect(result.requiresRestart).toBe(false);
+  });
+
+  it('the copy is atomic per file — no .restore-tmp residue survives', async () => {
+    const m = ticking();
+    await fs.writeFile(join(dataDir, 'enterprise-org.json'), JSON.stringify({ v: 'original' }));
+    const b = await m.create('manual', ['workspace']);
+    await m.restore(b.id, ['workspace']);
+    const leftovers = (await fs.readdir(dataDir)).filter((n) => n.includes('.restore-tmp'));
+    expect(leftovers).toEqual([]);
+  });
+});

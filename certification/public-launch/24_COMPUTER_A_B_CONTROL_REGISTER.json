@@ -1,0 +1,35 @@
+{
+  "ARTIFACT": "24_COMPUTER_A_B_CONTROL_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "ids_in_use": [
+    "run_id",
+    "action_id",
+    "execution_id",
+    "evidence_id",
+    "proposal_id",
+    "decision_id",
+    "policy_version",
+    "DEVICE_ID",
+    "USER_ID"
+  ],
+  "ids_absent": [
+    "CONTROL_ID",
+    "SESSION_ID (control)",
+    "VERIFICATION_ID"
+  ],
+  "coupling": "no direct Computer-A runtime dependency (PASS)",
+  "A_disconnect": "no approval assumed (no A channel exists)",
+  "B_disconnect": "no continuation assumed (loop terminal states)",
+  "mapper": "certification/public-launch/discovery/control-plane.json"
+}

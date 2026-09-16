@@ -42,6 +42,27 @@ export function recordRateLimitFallback(bucket: string): void {
 const healthAlerts = new Map<string, number>();
 
 /** Record one health-state transition alert for a component (state = new state). */
+/**
+ * NP-PUBLIC-LAUNCH-003 §14 — AI gateway signals as METRICS, not only log lines:
+ * requests by provider/outcome, tokens by direction, latency sum/count (ms).
+ * Never carries prompt or completion content.
+ */
+const aiRequests = new Map<string, number>();
+const aiTokens = new Map<string, number>();
+let aiLatencyMs = 0;
+let aiLatencyCount = 0;
+export function recordAiGateway(provider: string, outcome: 'ok' | 'refused' | 'error' | 'rate_limited', latencyMs: number, inputTokens = 0, outputTokens = 0): void {
+  const key = `${provider}|${outcome}`;
+  aiRequests.set(key, (aiRequests.get(key) ?? 0) + 1);
+  aiTokens.set('input', (aiTokens.get('input') ?? 0) + Math.max(0, inputTokens | 0));
+  aiTokens.set('output', (aiTokens.get('output') ?? 0) + Math.max(0, outputTokens | 0));
+  aiLatencyMs += Math.max(0, latencyMs | 0);
+  aiLatencyCount += 1;
+}
+
+/** Release/deployment identity as a gauge so dashboards can pin a version to a symptom. */
+const BUILD_INFO = { version: process.env.npm_package_version ?? 'unknown', commit: process.env.NEUROPAUSE_BUILD_COMMIT ?? 'unknown', node: process.version };
+
 export function recordHealthAlert(component: string, state: string): void {
   const key = `${component}|${state}`;
   healthAlerts.set(key, (healthAlerts.get(key) ?? 0) + 1);
@@ -117,6 +138,21 @@ export function renderMetrics(poolStats?: PoolStats): string {
   out.push(
     '# HELP neuropause_health_alerts_total Health-state transition alerts by component and new state (up/down).',
   );
+  out.push('# HELP neuropause_build_info Backend build identity (value is always 1).');
+  out.push('# TYPE neuropause_build_info gauge');
+  out.push(metric('neuropause_build_info', 1, { version: BUILD_INFO.version, commit: BUILD_INFO.commit, node: BUILD_INFO.node }));
+  out.push('# HELP neuropause_ai_requests_total AI gateway requests by provider and outcome.');
+  out.push('# TYPE neuropause_ai_requests_total counter');
+  for (const [key, count] of aiRequests) { const [provider, outcome] = key.split('|'); out.push(metric('neuropause_ai_requests_total', count, { provider, outcome })); }
+  out.push('# HELP neuropause_ai_tokens_total AI gateway tokens by direction.');
+  out.push('# TYPE neuropause_ai_tokens_total counter');
+  for (const [direction, count] of aiTokens) out.push(metric('neuropause_ai_tokens_total', count, { direction }));
+  out.push('# HELP neuropause_ai_latency_ms_sum Sum of AI gateway provider latency in ms.');
+  out.push('# TYPE neuropause_ai_latency_ms_sum counter');
+  out.push(metric('neuropause_ai_latency_ms_sum', aiLatencyMs));
+  out.push('# HELP neuropause_ai_latency_ms_count Count of AI gateway provider calls with a measured latency.');
+  out.push('# TYPE neuropause_ai_latency_ms_count counter');
+  out.push(metric('neuropause_ai_latency_ms_count', aiLatencyCount));
   out.push('# TYPE neuropause_health_alerts_total counter');
   for (const [key, count] of healthAlerts) {
     const [component, state] = key.split('|');

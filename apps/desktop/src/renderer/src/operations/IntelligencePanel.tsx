@@ -49,6 +49,13 @@ function RecommendationRow({ r }: { r: Recommendation }): JSX.Element {
         <p className="mt-1 text-2xs text-faint">
           {r.kind.replace(/_/g, ' ')} · {r.evidence.length} evidence
         </p>
+        {r.trust && (
+          <p className="mt-1 text-2xs text-faint" title={r.trust.caveats.join('; ')}>
+            Evidence trust: <span className="font-medium uppercase tracking-wide">{r.trust.band}</span>
+            {r.trust.caveats.length > 0 ? ` · ${r.trust.caveats[0]}` : ''}
+            <span className="ml-1 opacity-70">(advisory)</span>
+          </p>
+        )}
       </div>
     </div>
   );

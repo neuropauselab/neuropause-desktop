@@ -247,7 +247,7 @@ export const SETTINGS_SEARCH: SettingsSearchEntry[] = [
   },
   {
     label: 'AI provider & model',
-    keywords: ['ai', 'claude', 'ollama', 'model', 'provider', 'llm', 'enable claude', 'api key'],
+    keywords: ['ai', 'claude', 'ollama', 'openai', 'gpt', 'model', 'provider', 'llm', 'enable claude', 'api key', 'local ai'],
     domain: 'ai',
     state: 'editable',
   },

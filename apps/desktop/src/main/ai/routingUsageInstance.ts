@@ -6,7 +6,11 @@
 import { app } from 'electron';
 import { join } from 'node:path';
 import { RoutingUsageStore } from './routingUsageStore';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 export const routingUsageStore = new RoutingUsageStore(
   join(app.getPath('userData'), 'ai-routing-usage.json'),
 );
+
+// GATE 16 (round 46) — coalesced writer; drain at quit/suspend (workspaceContextsInstance idiom).
+registerShutdownFlush('ai-routing-usage', () => routingUsageStore.flush());

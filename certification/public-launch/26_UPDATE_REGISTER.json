@@ -1,0 +1,49 @@
+{
+  "ARTIFACT": "26_UPDATE_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "feed_verification": {
+    "status": "PASS",
+    "checks": 7
+  },
+  "controls": [
+    {
+      "control": "NEG-BYTE",
+      "gate": "FEED",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed sha512 == zip sha512: K5IBBvujSmLUkZDX0TN7+W+G… vs DCUvGAdeczwruwvaC7I77yPZ…\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [SIGNING] codesign --verify --deep --strict: _w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-hZLoMT/zip/NeuroPause.app: invalid or unsupported format for signature\n  FAIL  [SIGNING] every nested Mach-O passes codesign --verify --strict: 14 checked, 1 failing\n  FAIL  [NOTARIZATION] artifact notarized (per status marker): one or more Apple credentials are absent"
+    },
+    {
+      "control": "NEG-NAME",
+      "gate": "FEED",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed path == zip filename: NeuroPause-1.0.0-rc.30-arm64-mac.zip vs NeuroPause-1.0.0-rc.30-universal-mac.zip\n  FAIL  [FEED] feed files[].size == zip size: zip not in files[]\n  FAIL  [FEED] feed file exists: NeuroPause-1.0.0-rc.30-arm64-mac.zip\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [FEED] no stale arm64-only reference in feed"
+    }
+  ],
+  "allowDowngrade": "false (set after channel assignment; fixed this branch)",
+  "tests": [
+    "good feed PASS",
+    "wrong digest REFUSE",
+    "wrong filename REFUSE",
+    "unavailable feed → safe no-update (code)",
+    "downgrade refused (code)",
+    "interrupted download/install NOT_MEASURED",
+    "crash after update NOT_MEASURED"
+  ]
+}

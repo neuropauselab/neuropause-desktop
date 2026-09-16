@@ -1,0 +1,437 @@
+--- a/apps/desktop/src/main/enterprise/authzGate.ts
++++ b/apps/desktop/src/main/enterprise/authzGate.ts
+@@ -56,6 +56,29 @@
+     held: readonly EnterprisePermission[];
+     actorLabel: string;
+   }) => void;
++  /**
++   * P13C ROUND 25 — W-1. THE RECORDER FAILED; THE DECISION STILL STANDS.
++   *
++   * `onPermissionRefused` writes a durable HOLD, and a hold needs an owner, so
++   * on an install with no resolvable tenant scope that write THROWS. It was
++   * called BEFORE the authorization error was raised, so its exception escaped
++   * in place of the real one and the user was told
++   *
++   *   "Cannot record a hold: no organization and workspace are active"
++   *
++   * instead of "No organization member is bound to this account." The second
++   * sentence names the actual condition; the first is an artefact of trying to
++   * file the paperwork about it. A diagnostic that replaces its own subject is
++   * worse than no diagnostic — this one pointed a Windows investigation at the
++   * data layer when the fault was in tenancy.
++   *
++   * Optional, and the default swallows rather than rethrows, because rethrowing
++   * IS the bug: an audit side effect must never veto an authorization outcome.
++   * Supplied by the composition root so the swallow is LOGGED rather than
++   * silent — a recorder that is failing has to stay visible to whoever reads
++   * the log.
++   */
++  onRefusalRecordFailed?: (input: { permission: EnterprisePermission; error: unknown }) => void;
+   /** The org the active workspace is bound to — the scope of every handler. */
+   activeOrgId: () => string;
+   usersFor: (orgId: string) => OrgUser[];
+@@ -166,6 +189,29 @@
+ export function createAuthorize(
+   deps: ActorResolverDeps,
+ ): (permission: EnterprisePermission) => void {
++  /**
++   * P13C ROUND 25 — W-1. RECORDING A REFUSAL CANNOT CHANGE THE REFUSAL.
++   *
++   * Every `onPermissionRefused` call in this function is a side effect of a
++   * decision that has ALREADY been made. Letting it throw does not undo the
++   * decision — it only substitutes a different exception for the one the caller
++   * was about to receive, which is how the true message got lost.
++   *
++   * One helper rather than three try/catch blocks, so a fourth refusal site
++   * added later cannot reintroduce the defect by forgetting to wrap itself.
++   */
++  const recordRefusal = (
++    permission: EnterprisePermission,
++    input: { held: readonly EnterprisePermission[]; actorLabel: string },
++  ): void => {
++    if (deps.onPermissionRefused === undefined) return;
++    try {
++      deps.onPermissionRefused({ permission, held: input.held, actorLabel: input.actorLabel });
++    } catch (error) {
++      deps.onRefusalRecordFailed?.({ permission, error });
++    }
++  };
++
+   return (permission) => {
+     const email = deps.sessionEmail();
+     if (email === null) throw new Error('Sign in to continue.');
+@@ -186,18 +232,13 @@
+      */
+     if (isPlatformOnlyPermission(permission)) {
+       if (deps.isPlatformOperator?.(email) === true) return;
+-      deps.onPermissionRefused?.({
+-        permission,
+-        held: [],
+-        actorLabel: email,
+-      });
++      recordRefusal(permission, { held: [], actorLabel: email });
+       throw new AuthorizationError(permission);
+     }
+ 
+     const actor = resolveActor(deps);
+     if (!actor) {
+-      deps.onPermissionRefused?.({
+-        permission,
++      recordRefusal(permission, {
+         held: [],
+         actorLabel: deps.sessionEmail() ?? 'This account',
+       });
+@@ -216,8 +257,7 @@
+        * The throw is UNCHANGED. Every existing caller, and the secure bridge's
+        * own error path, behave exactly as before; this only adds a record.
+        */
+-      deps.onPermissionRefused?.({
+-        permission,
++      recordRefusal(permission, {
+         held: [...effectivePermissions(actor.member, actor.roles)],
+         actorLabel: actor.member.name || actor.member.email || 'This account',
+       });
+--- a/apps/desktop/src/main/enterprise/index.ts
++++ b/apps/desktop/src/main/enterprise/index.ts
+@@ -724,6 +724,23 @@
+         holdId: hold.id,
+       });
+     },
++    /**
++     * P13C ROUND 25 — W-1. The hold above needs an owner, so on an install with
++     * no resolvable tenant it throws. That exception used to escape in place of
++     * the authorization error and tell the user the app could not record a hold,
++     * which is true and useless — the fact they needed was that no organization
++     * member is bound to their account.
++     *
++     * Swallowed at the gate, surfaced HERE, at warn: the refusal still reaches
++     * the renderer intact, and the fact that governance recording is degraded is
++     * in the log where an engineer reading a support bundle will find it.
++     */
++    onRefusalRecordFailed: ({ permission, error }) => {
++      log.warn('Permission refusal could not be recorded as a hold', {
++        permission,
++        message: error instanceof Error ? error.message : String(error),
++      });
++    },
+     activeOrgId: authorizationOrgId,
+     usersFor: (orgId) => orgStore.usersFor(orgId),
+     rolesFor: (orgId) => orgStore.rolesFor(orgId),
+--- a/apps/desktop/src/main/window.ts
++++ b/apps/desktop/src/main/window.ts
+@@ -8,6 +8,7 @@
+ import { BrowserWindow, shell } from 'electron';
+ import { config } from './config';
+ import { loadWindowState, persistWindowState } from './windowState';
++import { macOsChromeOptions } from './windowChrome';
+ 
+ export function createMainWindow(): BrowserWindow {
+   const state = loadWindowState();
+@@ -21,13 +22,7 @@
+     minHeight: 700,
+     show: false,
+     backgroundColor: '#0b0b0f',
+-    // macOS: keep the native traffic lights but inset them so our custom,
+-    // draggable title bar can host them. Ignored on other platforms.
+-    titleBarStyle: 'hiddenInset',
+-    trafficLightPosition: { x: 18, y: 18 },
+-    // Translucent material behind the UI for the glassmorphism shell (macOS).
+-    vibrancy: 'under-window',
+-    visualEffectState: 'active',
++    ...macOsChromeOptions(process.platform),
+     webPreferences: {
+       preload: join(__dirname, '../preload/index.js'),
+       contextIsolation: true,
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/windowChrome.ts
+@@ -0,0 +1,51 @@
++/**
++ * P13C ROUND 25 — W-2. THE COMMENT WAS WRONG ABOUT WHAT WINDOWS IGNORES.
++ *
++ * `createMainWindow` set four appearance options unconditionally, under a
++ * comment reading "Ignored on other platforms." Three of them are:
++ * `trafficLightPosition`, `vibrancy` and `visualEffectState` are macOS-only and
++ * no-ops elsewhere.
++ *
++ * `titleBarStyle` is NOT. Electron honours it on Windows, where `hiddenInset`
++ * degrades to `hidden` — a window with no system title bar and no close,
++ * minimise or maximise controls, because the app draws its own set only for the
++ * inset-macOS layout and `titleBarOverlay` was never configured. The comment
++ * asserted a cross-platform property the API does not have, which is precisely
++ * why nobody re-examined it.
++ *
++ * WHY THIS IS ITS OWN FILE
++ *
++ * `window.ts` imports `./config`, which reaches `app.getAppPath()` at module
++ * scope — so a node test that imports it dies before reaching the assertion.
++ * That is the trap this codebase has documented four times over
++ * (`automationPlatform/index.ts`: "a subsystem that unit-tests without Electron
++ * takes its resolver as a dep"). The platform decision lives here, Electron-free
++ * and taking `platform` as an argument, so the property is proven by EXECUTING
++ * it rather than by reading the source of the file that uses it.
++ */
++
++/** The four appearance options, applied only where they mean something. */
++export type MacOsChromeOptions = Pick<
++  Electron.BrowserWindowConstructorOptions,
++  'titleBarStyle' | 'trafficLightPosition' | 'vibrancy' | 'visualEffectState'
++>;
++
++/**
++ * macOS chrome for macOS; nothing at all for every other platform.
++ *
++ * The empty object is deliberate and is the whole fix: an ABSENT
++ * `titleBarStyle` is a standard OS frame, which is recoverable. A window
++ * without close controls is not.
++ */
++export function macOsChromeOptions(platform: NodeJS.Platform): MacOsChromeOptions {
++  if (platform !== 'darwin') return {};
++  return {
++    // Keep the native traffic lights but inset them so our custom, draggable
++    // title bar can host them.
++    titleBarStyle: 'hiddenInset',
++    trafficLightPosition: { x: 18, y: 18 },
++    // Translucent material behind the UI for the glassmorphism shell.
++    vibrancy: 'under-window',
++    visualEffectState: 'active',
++  };
++}
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/windowChrome.test.ts
+@@ -0,0 +1,50 @@
++/**
++ * P13C ROUND 25 — W-2. WINDOWS DOES NOT IGNORE `titleBarStyle`.
++ *
++ * `createMainWindow` set `titleBarStyle: 'hiddenInset'` unconditionally under a
++ * comment claiming it was "Ignored on other platforms". Three of the four
++ * options in that block genuinely are macOS-only no-ops; `titleBarStyle` is not.
++ * Electron honours it on Windows, where `hiddenInset` degrades to `hidden` —
++ * producing a window with no system title bar and no close, minimise or
++ * maximise controls, because the app draws its own set only for the inset-macOS
++ * layout and `titleBarOverlay` was never configured.
++ *
++ * Asserted against the extracted decision rather than a real BrowserWindow, so
++ * this runs in the node suite with no Electron runtime — the same reason every
++ * other platform decision in this codebase is a pure function.
++ */
++import { describe, expect, it } from 'vitest';
++import { macOsChromeOptions } from './windowChrome';
++
++describe('W-2 — macOS window chrome is applied only on macOS', () => {
++  it('macOS keeps the inset traffic lights and the vibrancy material', () => {
++    expect(macOsChromeOptions('darwin')).toEqual({
++      titleBarStyle: 'hiddenInset',
++      trafficLightPosition: { x: 18, y: 18 },
++      vibrancy: 'under-window',
++      visualEffectState: 'active',
++    });
++  });
++
++  it('Windows gets a normal frame — no titleBarStyle at all', () => {
++    const opts = macOsChromeOptions('win32');
++    expect(opts).toEqual({});
++    // Stated separately from the toEqual because THIS is the defect: an
++    // undefined titleBarStyle is a standard Windows frame; 'hiddenInset' is a
++    // window the user cannot close.
++    expect(opts.titleBarStyle).toBeUndefined();
++  });
++
++  it('Linux gets a normal frame too', () => {
++    expect(macOsChromeOptions('linux')).toEqual({});
++  });
++
++  it('an unknown platform fails toward the standard frame, never toward hidden chrome', () => {
++    // Fail-closed for chrome means: if we cannot prove it is macOS, give the OS
++    // its own decorations. A frameless window on an unrecognised platform is
++    // unrecoverable for the user; a plain title bar is merely plain.
++    for (const platform of ['aix', 'freebsd', 'openbsd', 'sunos', 'android'] as NodeJS.Platform[]) {
++      expect(macOsChromeOptions(platform)).toEqual({});
++    }
++  });
++});
+new file mode 100644
+--- /dev/null
++++ b/apps/desktop/src/main/enterprise/refusalRecordingIsolation.test.ts
+@@ -0,0 +1,180 @@
++/**
++ * P13C ROUND 25 — W-1. AN AUDIT SIDE EFFECT MAY NOT VETO AN AUTHORIZATION OUTCOME.
++ *
++ * `createAuthorize` records a durable HOLD on the way out of every refusal. A
++ * hold needs an owner, so on an install with no resolvable tenant scope that
++ * write throws — and it was called BEFORE the authorization error was raised,
++ * so the recorder's exception escaped in place of the real one.
++ *
++ * The user was told:
++ *
++ *   "Cannot record a hold: no organization and workspace are active, so it
++ *    would have no owner."
++ *
++ * when the fact they needed was:
++ *
++ *   "No organization member is bound to this account."
++ *
++ * Both sentences are true. Only the second names the condition. The first is
++ * the app failing to file paperwork ABOUT the second, and because it replaced
++ * it, a Windows investigation spent its time in the data layer — the visible
++ * error pointed at `dp:history` and at hold recording, neither of which was
++ * broken.
++ *
++ * These tests pin the ordering property rather than the message text: whatever
++ * the gate decides, the recorder cannot change it.
++ */
++import { describe, expect, it, vi } from 'vitest';
++import type { EnterprisePermission, OrgRole, OrgUser } from '@neuropause/shared';
++import { AuthorizationError, createAuthorize, UNRESOLVED_TENANT } from './authzGate';
++import type { ActorResolverDeps } from './authzGate';
++
++const ORG = 'org-alpha';
++
++function member(over: Partial<OrgUser> = {}): OrgUser {
++  return {
++    id: 'user-1',
++    orgId: ORG,
++    name: 'Member One',
++    email: 'one@example.com',
++    kind: 'human',
++    status: 'active',
++    roleIds: ['role-viewer'],
++    unitId: null,
++    title: null,
++    createdAt: '2026-01-01T00:00:00.000Z',
++    ...over,
++  } as OrgUser;
++}
++
++function role(permissions: EnterprisePermission[]): OrgRole {
++  return {
++    id: 'role-viewer',
++    orgId: ORG,
++    name: 'Viewer',
++    description: '',
++    permissions,
++    builtIn: true,
++  } as OrgRole;
++}
++
++/** The exact failure the hold store raises when no tenant scope is resolvable. */
++const HOLD_FAILURE = new Error(
++  'Cannot record a hold: no organization and workspace are active, so it would have no owner.',
++);
++
++function deps(over: Partial<ActorResolverDeps> = {}): ActorResolverDeps {
++  return {
++    sessionEmail: () => 'one@example.com',
++    activeOrgId: () => ORG,
++    usersFor: () => [member()],
++    rolesFor: () => [role([])],
++    ownerMember: () => null,
++    ...over,
++  };
++}
++
++describe('W-1 — a failing refusal recorder never replaces the refusal', () => {
++  it('a workspace-less install reports the MEMBERSHIP failure, not the hold failure', () => {
++    // `activeOrgId` returning the sentinel is exactly what a null tenant scope
++    // produces, which is exactly the state of an organization with no enterable
++    // workspace. The recorder then throws, because a hold needs an owner.
++    const authorize = createAuthorize(
++      deps({
++        activeOrgId: () => UNRESOLVED_TENANT,
++        onPermissionRefused: () => {
++          throw HOLD_FAILURE;
++        },
++      }),
++    );
++
++    expect(() => authorize('data:read')).toThrowError(
++      'No organization member is bound to this account.',
++    );
++  });
++
++  it('an RBAC refusal still throws AuthorizationError when recording fails', () => {
++    const authorize = createAuthorize(
++      deps({
++        rolesFor: () => [role([])], // holds nothing
++        onPermissionRefused: () => {
++          throw HOLD_FAILURE;
++        },
++      }),
++    );
++
++    expect(() => authorize('people:manage')).toThrowError(AuthorizationError);
++  });
++
++  it('a platform-only refusal still throws AuthorizationError when recording fails', () => {
++    const authorize = createAuthorize(
++      deps({
++        isPlatformOperator: () => false,
++        onPermissionRefused: () => {
++          throw HOLD_FAILURE;
++        },
++      }),
++    );
++
++    // `platform:operate` is platform-only, so it refuses before resolveActor.
++    expect(() => authorize('platform:operate' as EnterprisePermission)).toThrowError(
++      AuthorizationError,
++    );
++  });
++
++  it('the swallowed recorder failure is reported, not silently discarded', () => {
++    const onRefusalRecordFailed = vi.fn();
++    const authorize = createAuthorize(
++      deps({
++        activeOrgId: () => UNRESOLVED_TENANT,
++        onPermissionRefused: () => {
++          throw HOLD_FAILURE;
++        },
++        onRefusalRecordFailed,
++      }),
++    );
++
++    expect(() => authorize('data:read')).toThrow();
++    expect(onRefusalRecordFailed).toHaveBeenCalledTimes(1);
++    const call = onRefusalRecordFailed.mock.calls[0]![0] as {
++      permission: string;
++      error: unknown;
++    };
++    expect(call.permission).toBe('data:read');
++    expect(call.error).toBe(HOLD_FAILURE);
++  });
++
++  it('a recorder that succeeds is still called, with the same input as before', () => {
++    const onPermissionRefused = vi.fn();
++    const onRefusalRecordFailed = vi.fn();
++    const authorize = createAuthorize(
++      deps({ rolesFor: () => [role([])], onPermissionRefused, onRefusalRecordFailed }),
++    );
++
++    expect(() => authorize('people:manage')).toThrowError(AuthorizationError);
++    expect(onPermissionRefused).toHaveBeenCalledTimes(1);
++    const input = onPermissionRefused.mock.calls[0]![0] as { permission: string; held: unknown[] };
++    expect(input.permission).toBe('people:manage');
++    expect(Array.isArray(input.held)).toBe(true);
++    // No failure means the failure hook stays untouched — this is the guard
++    // against "wrapped in try/catch" quietly becoming "always reports a problem".
++    expect(onRefusalRecordFailed).not.toHaveBeenCalled();
++  });
++
++  it('an absent recorder is still not an error path', () => {
++    const authorize = createAuthorize(deps({ rolesFor: () => [role([])] }));
++    expect(() => authorize('people:manage')).toThrowError(AuthorizationError);
++  });
++
++  it('a permitted action is unaffected — the recorder is never consulted', () => {
++    const onPermissionRefused = vi.fn(() => {
++      throw HOLD_FAILURE;
++    });
++    const authorize = createAuthorize(
++      deps({ rolesFor: () => [role(['data:read'])], onPermissionRefused }),
++    );
++
++    expect(() => authorize('data:read')).not.toThrow();
++    expect(onPermissionRefused).not.toHaveBeenCalled();
++  });
++});

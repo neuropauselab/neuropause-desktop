@@ -15,6 +15,13 @@ on:
       - 'apps/backend/**'
       - 'packages/shared/**'
 
+# S132 — least privilege. Both jobs only read the repo: `test` runs vitest/integration against service
+# containers; `docker-build` builds the backend image with `push: false` (GHA build cache only, no registry
+# login/push). Neither needs a write-scoped GITHUB_TOKEN. Declared explicitly so a future step cannot
+# silently inherit broad default permissions.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

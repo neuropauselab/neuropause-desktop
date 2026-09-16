@@ -129,7 +129,13 @@ function SandboxInner(): JSX.Element {
       </div>
 
       {error && (
-        <div className="mb-4 flex items-center gap-2 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] px-4 py-2.5 text-xs text-muted">
+        // D-7 — `role="alert"`: this banner is now the surface for refused WRITES
+        // (generate report, toggle schedule), not just a passive note, so assistive
+        // technology has to announce it rather than leave it to be noticed.
+        <div
+          role="alert"
+          className="mb-4 flex items-center gap-2 rounded-xl border border-[var(--hairline)] [background:var(--fill-1)] px-4 py-2.5 text-xs text-muted"
+        >
           <Icon name="info" size={14} />
           {error}
         </div>

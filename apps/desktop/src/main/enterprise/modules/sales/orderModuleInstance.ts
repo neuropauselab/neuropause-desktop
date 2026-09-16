@@ -9,8 +9,14 @@ import { aiEngine } from '../../../ai/engineInstance';
 import { enterpriseModuleStorePath } from '../../framework';
 import { createOrderModule } from './orderModule';
 import { runOrderAi } from './orderAi';
+import { createMultiLineDispatchModule, MULTILINE_DISPATCHES_MODULE_ID } from './multiLineDispatchModule';
 
 export const orderModule = createOrderModule(
   enterpriseModuleStorePath(app.getPath('userData'), ORDERS_MODULE_ID),
   (order, signals) => runOrderAi(aiEngine, order, signals),
+);
+
+// ERP Session 7-Fix — first-class multi-line sales dispatch (header → N lines → N issues).
+export const multiLineDispatchModule = createMultiLineDispatchModule(
+  enterpriseModuleStorePath(app.getPath('userData'), MULTILINE_DISPATCHES_MODULE_ID),
 );

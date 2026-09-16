@@ -46,6 +46,7 @@ import { liveSync, onLiveSyncStatus, setLiveSyncActiveOrg } from './livesync/liv
 import type { PolicyChangeAudit } from './apiplatform/apiPlatformStore';
 import type { PlatformAuthority } from '../platformOperator/platformAuthority';
 import { apiPlatformStore } from './apiplatform/apiPlatformInstance';
+import { registerShutdownFlush } from '../shutdownFlush';
 import { evaluateFederation, buildTestAssertion } from './identity/federation';
 import {
   buildAdminOverview,
@@ -185,6 +186,12 @@ function buildAdminInput(): AdminInput {
 }
 
 export async function initCloud(deps: CloudDeps): Promise<CloudSubsystem> {
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('cloud-stores', async () => {
+    await Promise.allSettled([tenancyStore.flush(), federationStore.flush(), apiPlatformStore.flush()]);
+  });
+
   /**
    * P13C ROUND 5 — F10. Bind before load: `load()` seeds the home tenant row,
    * and that row is what the organization → cloud-tenant mapping resolves

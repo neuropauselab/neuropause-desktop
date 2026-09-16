@@ -46,6 +46,36 @@ function targetVersion(defs: MigrationDefinition[]): number {
   return defs.reduce((max, d) => Math.max(max, d.toVersion), 0);
 }
 
+/**
+ * Whether the process must relaunch after a startup migration.
+ *
+ * THE ORDERING HAZARD. Startup migrations run AFTER the stores have already
+ * loaded their on-disk shape into memory. A migration that transforms a store's
+ * bytes therefore leaves the live instance stale, and its next coalesced persist
+ * silently overwrites the migration — exactly the failure the restore path
+ * fixed with `RestoreResult.requiresRestart`. The symmetric fix: when a real
+ * transforming migration (any step beyond the version-1 baseline) applies to an
+ * install that was ALREADY on a stamped version, relaunch so every store reloads
+ * from the migrated bytes — the same `scheduleRestoreRelaunch` the restore path
+ * uses.
+ *
+ * Gated on `fromVersion >= 1` so a FRESH install (fromVersion 0, which stamps
+ * the baseline and has no pre-existing loaded data of consequence) does not
+ * relaunch on first boot. The only install this misses is a pre-versioning one
+ * upgrading straight to the latest in a single boot; the sole migration it can
+ * miss is `0002`, which is idempotent by construction (it re-stamps
+ * `schemaVersion`, which every writer re-adds identically), so a stale-overwrite
+ * there is a no-op. Every future transforming migration runs from `fromVersion
+ * >= 1` for anyone who has booted once, and so is covered.
+ */
+export function shouldRelaunchAfterMigration(report: MigrationReport): boolean {
+  return (
+    report.ok &&
+    report.fromVersion >= 1 &&
+    report.steps.some((s) => s.status === 'applied' && s.toVersion > 1)
+  );
+}
+
 function pendingFrom(defs: MigrationDefinition[], current: number): MigrationDefinition[] {
   return defs.filter((d) => d.toVersion > current).sort((a, b) => a.toVersion - b.toVersion);
 }

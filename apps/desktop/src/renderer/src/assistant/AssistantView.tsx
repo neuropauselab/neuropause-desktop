@@ -23,6 +23,23 @@ import { ProcessingBadge } from '@renderer/firstRun/ProcessingBadge';
 import { Button } from '@renderer/components/ui/Button';
 import { Spinner } from '@renderer/components/Spinner';
 import { approvalCard, explanationSummary, inspectorSections, STEP_STATE_META, stepsAwaitingApproval } from './assistantViewModel';
+import { AssistantGroundingBadge } from './AssistantGroundingBadge';
+
+/**
+ * S137 — the exact user question that preceded an assistant reply, resolved from the EXISTING conversation
+ * model (never fabricated). Scans backward from the reply for the nearest `role:'user'` message; returns its
+ * text, or undefined when none is resolvable (⇒ the grounding badge keeps its S136 no-query behavior).
+ */
+function precedingUserQuestion(messages: AssistantMessage[], replyIndex: number): string | undefined {
+  for (let i = replyIndex - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m.role === 'user') {
+      const t = typeof m.text === 'string' ? m.text.trim() : '';
+      return t !== '' ? t : undefined;
+    }
+  }
+  return undefined;
+}
 
 const EXAMPLES = [
   "Summarize today's work",
@@ -48,7 +65,13 @@ export interface AssistantViewProps {
   onNew: () => void;
   onTogglePin: (conversationId: string, pinned: boolean) => void;
   onDelete: (conversationId: string) => void;
-  onOpenNavigation: (section: string, query: string | null) => void;
+  onOpenNavigation: (
+    section: string,
+    query: string | null,
+    mailIntent?: { to: string[]; subject: string; body: string } | null,
+    /** FG-14 — `AssistantEnvelope.correlationId`, passed verbatim. Evidence lineage, never authority. */
+    correlationId?: string,
+  ) => void;
 }
 
 export function AssistantView(props: AssistantViewProps): JSX.Element {
@@ -133,7 +156,7 @@ export function AssistantView(props: AssistantViewProps): JSX.Element {
             </div>
           )}
 
-          {props.conversation?.messages.map((msg) =>
+          {props.conversation?.messages.map((msg, index, all) =>
             msg.role === 'user' ? (
               <div key={msg.id} className="flex justify-end">
                 <div className="max-w-[80%] rounded-2xl rounded-br-md bg-accent/15 px-3.5 py-2 text-sm text-ink">
@@ -146,7 +169,9 @@ export function AssistantView(props: AssistantViewProps): JSX.Element {
                 </div>
               </div>
             ) : (
-              <AssistantReply key={msg.id} message={msg} onDecide={props.onDecide} onBranch={props.onBranch} onOpenNavigation={props.onOpenNavigation} />
+              // S137 — the exact preceding user turn is the relevance lens for this answer's grounding badge.
+              // Resolved renderer-side from the EXISTING conversation model (no frozen contract change).
+              <AssistantReply key={msg.id} message={msg} question={precedingUserQuestion(all, index)} onDecide={props.onDecide} onBranch={props.onBranch} onOpenNavigation={props.onOpenNavigation} />
             ),
           )}
 
@@ -229,11 +254,13 @@ export function AssistantView(props: AssistantViewProps): JSX.Element {
 
 function AssistantReply({
   message,
+  question,
   onDecide,
   onBranch,
   onOpenNavigation,
 }: {
   message: AssistantMessage;
+  question?: string;
   onDecide: AssistantViewProps['onDecide'];
   onBranch: AssistantViewProps['onBranch'];
   onOpenNavigation: AssistantViewProps['onOpenNavigation'];
@@ -361,7 +388,7 @@ function AssistantReply({
 
       {/* Navigation resolution */}
       {env.navigation && (
-        <Button variant="secondary" icon="arrow-right" onClick={() => onOpenNavigation(env.navigation!.section, env.navigation!.query)}>
+        <Button variant="secondary" icon="arrow-right" onClick={() => onOpenNavigation(env.navigation!.section, env.navigation!.query, env.mailIntent ?? null, env.correlationId)}>
           Open {env.navigation.section}
           {env.navigation.query ? ` — “${env.navigation.query.length > 40 ? `${env.navigation.query.slice(0, 37)}…` : env.navigation.query}”` : ''}
         </Button>
@@ -389,6 +416,9 @@ function AssistantReply({
         <button type="button" onClick={() => setInspecting((v) => !v)} className="text-muted underline-offset-2 hover:text-ink hover:underline">
           {inspecting ? 'Hide inspector' : 'Inspect'}
         </button>
+        {/* S136 — read-only AI grounding transparency (S134/S135) beside the answer; lazy, no frozen change.
+            S137 — the preceding user question is the relevance lens, so the badge reflects THIS turn's grounding. */}
+        <AssistantGroundingBadge correlationId={env.correlationId} question={question} />
         <button type="button" onClick={() => onBranch(message.id)} className="text-muted underline-offset-2 hover:text-ink hover:underline">
           Branch from here
         </button>

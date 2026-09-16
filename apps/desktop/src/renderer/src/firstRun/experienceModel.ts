@@ -23,6 +23,7 @@ import {
   routingUsagePercentages,
 } from '@neuropause/shared';
 import type { SectionDef, SectionId } from '@renderer/shell/sections';
+import { LOCAL_FIRST_STORY } from '../localFirst/story';
 
 /* ── workspace-type navigation ─────────────────────────────────────────────── */
 
@@ -102,6 +103,12 @@ export interface ProcessingBadgeModel {
   /** The full "Why?" answer, from the execution metadata only. */
   why: string;
   location: ProcessingLocation;
+  /**
+   * BRAIN-1 — the concrete model that served, named ONLY when one genuinely ran.
+   * Null for the zero-model / deterministic path (`referenceDrafter`, fallbacks),
+   * where `location`/`model` are 'none'. The badge never invents a model name.
+   */
+  modelName: string | null;
 }
 
 /**
@@ -122,6 +129,8 @@ export function processingBadge(meta: AiRoutingMetadata | null | undefined): Pro
     tone,
     why: explainRouting(meta),
     location: meta.location,
+    // Name a model only when one genuinely served; 'none'/deterministic → null.
+    modelName: meta.location === 'none' || meta.model === 'none' || meta.model.trim() === '' ? null : meta.model,
   };
 }
 
@@ -379,9 +388,9 @@ export function attentionSummary(items: readonly AttentionItem[]): string {
 
 export const FIRST_RUN_COPY = {
   headline: 'Your AI. Your Data. Your Control.',
-  supporting:
-    'Try NeuroPause free and experience AI that can work locally on your computer — for personal productivity or professional business work.',
-  primaryCta: 'Try Free Locally',
+  // S39 (F-S17-1): the DOOR half of the single local-first story (localFirst/story.ts) — a door, not a claim.
+  supporting: LOCAL_FIRST_STORY.doorSupporting,
+  primaryCta: LOCAL_FIRST_STORY.door,
   secondaryCta: 'Sign In',
   processingQuestion: 'Where should your AI work?',
   onDevice: {
@@ -394,3 +403,26 @@ export const FIRST_RUN_COPY = {
   },
   workspaceQuestion: 'How do you want to use NeuroPause?',
 } as const;
+
+/* ── P13C ROUND 36 — GATE 13: resume where the user left off ──────────────── */
+
+export type FirstRunStep = 'welcome' | 'processing' | 'workspace' | 'discovery' | 'understanding';
+
+/**
+ * The step a PENDING profile resumes at, derived from what is already
+ * persisted. `experienceProfileService` has promised since round 17 that
+ * "quitting mid-flow loses nothing already chosen and the experience resumes
+ * where it left off" — but the step lived in `useState('welcome')` and never
+ * read the profile, so a user who quit after choosing Business + AI mode
+ * relaunched at the welcome headline and re-walked every screen. Pure, so the
+ * rule is testable: each persisted milestone advances past its own step, and
+ * an untouched profile starts at the beginning.
+ */
+export function resumeStep(profile: {
+  aiModeChosen: boolean;
+  workspaceType: string | null;
+}): FirstRunStep {
+  if (profile.workspaceType !== null) return 'discovery';
+  if (profile.aiModeChosen) return 'workspace';
+  return 'welcome';
+}

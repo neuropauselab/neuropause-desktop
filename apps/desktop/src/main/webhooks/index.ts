@@ -31,6 +31,7 @@ import { webhookStore } from './webhookInstance';
 import { WebhookDispatcher, type WebhookPoster } from './webhookDispatcher';
 import { wireWebhookProducers } from './webhookProducer';
 import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 const log = createLogger('webhooks');
 
@@ -62,6 +63,9 @@ export interface WebhookSubsystem {
 
 export async function initWebhooks(deps: WebhookSubsystemDeps): Promise<WebhookSubsystem> {
   await webhookStore.load();
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('webhook-store', () => webhookStore.flush());
 
   const dispatcher = new WebhookDispatcher({ store: webhookStore, post: deps.post ?? httpPost, now: () => Date.now() });
   const producer = wireWebhookProducers({

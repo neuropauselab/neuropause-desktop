@@ -22,6 +22,7 @@ import { initials } from '@renderer/lib/format';
 import { useTheme } from '@renderer/providers/ThemeProvider';
 import { useScale } from '@renderer/state/ScaleProvider';
 import { useAuth } from '@renderer/providers/AuthProvider';
+import { useIsLocalMode } from '@renderer/shell/useIsLocalMode';
 import type { ThemeSource } from '@neuropause/shared';
 import { SubscriptionCenter } from '@renderer/subscription/SubscriptionCenter';
 import { TrustedDevices } from '@renderer/devices/TrustedDevices';
@@ -138,10 +139,18 @@ function Divider(): JSX.Element {
   return <div className="h-px [background:var(--hairline)]" />;
 }
 
-/** Crash-report consent — a REAL opt-in toggle over the existing release-ops IPC. (Phase 8: relabeled — there is no usage telemetry in this product; this toggle governs crash records only.) */
-function CrashConsentRow(): JSX.Element {
+/** Crash-report consent — a REAL opt-in toggle over the existing release-ops IPC. (Phase 8: relabeled — there is no usage telemetry in this product; this toggle governs crash records only.)
+ * Exported for the Gate-15 regression tests (round 47). */
+export function CrashConsentRow(): JSX.Element {
   const [optedIn, setOptedIn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * GATE 15 (round 47) — a FAILED consent write is SAID. The optimistic toggle
+   * used to silently snap back on failure: the user chose a consent state, the
+   * platform refused, and nothing explained why the switch reverted. Consent
+   * honesty cuts both ways — the failure to change it is part of the truth.
+   */
+  const [note, setNote] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     void ipc.releaseOps
@@ -150,6 +159,7 @@ function CrashConsentRow(): JSX.Element {
         if (active) setOptedIn(Boolean(s.optedIn));
       })
       .catch(() => {
+        // Fail CLOSED for consent: unreadable state renders as opted-out.
         if (active) setOptedIn(false);
       });
     return () => {
@@ -158,29 +168,42 @@ function CrashConsentRow(): JSX.Element {
   }, []);
   const toggle = async (next: boolean): Promise<void> => {
     setBusy(true);
+    setNote(null);
     setOptedIn(next);
     try {
       const s = await ipc.releaseOps.setCrashOptIn(next);
       setOptedIn(Boolean(s.optedIn));
-    } catch {
+    } catch (err) {
       setOptedIn(!next);
+      setNote(
+        `Could not ${next ? 'enable' : 'disable'} crash reporting — ${
+          err instanceof Error && err.message ? err.message : 'the write failed'
+        }. The previous setting is still in effect.`,
+      );
     } finally {
       setBusy(false);
     }
   };
   return (
-    <Row
-      label="Share crash reports & diagnostics"
-      description="Send redacted crash and diagnostic data to help improve NeuroPause. Personal content is never included."
-      control={
-        <Toggle
-          checked={optedIn ?? false}
-          onChange={(v) => void toggle(v)}
-          disabled={optedIn === null || busy}
-          label="Share crash reports"
-        />
-      }
-    />
+    <div>
+      <Row
+        label="Share crash reports & diagnostics"
+        description="Send redacted crash and diagnostic data to help improve NeuroPause. Personal content is never included."
+        control={
+          <Toggle
+            checked={optedIn ?? false}
+            onChange={(v) => void toggle(v)}
+            disabled={optedIn === null || busy}
+            label="Share crash reports"
+          />
+        }
+      />
+      {note && (
+        <p role="alert" className="mt-1 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">
+          {note}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -293,6 +316,7 @@ function DomainContent({
   const { source, setSource } = useTheme();
   const { scale, setScale, reset, min, max } = useScale();
   const { logout } = useAuth();
+  const localMode = useIsLocalMode();
   const { user } = session;
   const name = user.displayName ?? user.email.split('@')[0];
 
@@ -312,8 +336,11 @@ function DomainContent({
                 <StateBadge />
               </div>
               <p className="mt-3 text-xs text-faint">
-                Your name and email come from your authenticated account and are managed at your
-                identity provider.
+                {localMode
+                  ? // NP-008 census F-N8-6: a device-local principal has NO identity provider —
+                    // the old copy claimed one. State the S17 truth instead.
+                    'This is a device-local identity — it exists only on this device, and no identity provider manages it. Connect an account to sync.'
+                  : 'Your name and email come from your authenticated account and are managed at your identity provider.'}
               </p>
             </Card>
           </Group>
@@ -514,7 +541,7 @@ function DomainContent({
                         onChange={(e) => setScale(Number(e.target.value))}
                         aria-label="Interface scale"
                         className="h-1.5 flex-1 cursor-pointer"
-                        style={{ accentColor: 'rgb(var(--accent))' }}
+                        style={{ accentColor: 'rgb(var(--accent-ch))' }}
                       />
                       <span className="tabular w-10 text-right text-sm font-medium">{scale}%</span>
                     </div>

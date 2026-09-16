@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import { createLogger } from '../logger';
 import { declareStoreScope } from '../tenancy/storeScope';
+import { quarantineFile } from '../storage/storeEnvelope';
 
 /** P13C ROUND 9 — F18. The structural scope declaration. See tenancy/storeScope.ts. */
 declareStoreScope({
@@ -132,7 +133,24 @@ async function readVault(): Promise<VaultFile> {
     return { schemaVersion: parsed.schemaVersion, workspaces: parsed.workspaces ?? {}, legacy: parsed.legacy ?? {} };
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { workspaces: {}, legacy: {} };
-    log.warn('Failed to read connector vault; treating as empty', err);
+    /**
+     * P13C GATE 11 — QUARANTINE, DO NOT RESET. This branch used to `return {}`
+     * on any unreadable/unparseable vault, and the very next `writeVault`
+     * (any connect/disconnect) then atomically overwrote the file — SILENTLY
+     * DESTROYING EVERY STORED CREDENTIAL, with no copy and no signal. A corrupt
+     * secret store is exactly where reset-on-corrupt is most damaging.
+     *
+     * Now the offending bytes are preserved to `<file>.quarantined-<ts>` (the
+     * same round-33 machinery every other store uses), so the credentials can be
+     * recovered/forensically inspected or a good copy restored from backup
+     * (Gate 11 also adds the vault to the backup registry). The live map starts
+     * empty — the file genuinely could not be read — but nothing is destroyed.
+     */
+    const quarantinedTo = await quarantineFile(vaultPath());
+    log.error('Connector vault unreadable — QUARANTINED, not reset', {
+      quarantinedTo,
+      error: String(err),
+    });
     return { workspaces: {}, legacy: {} };
   }
 }
@@ -162,11 +180,27 @@ export const connectorVault = {
       log.warn('Encryption unavailable; cannot decrypt connector tokens');
       return null;
     }
+    let plain: string;
     try {
-      const plain = safeStorage.decryptString(Buffer.from(cipher, 'base64'));
-      return JSON.parse(plain) as AccountTokens;
+      plain = safeStorage.decryptString(Buffer.from(cipher, 'base64'));
     } catch (err) {
       log.error('Failed to decrypt connector tokens; dropping entry', err);
+      await this.delete(workspaceId, connectorId, accountId);
+      return null;
+    }
+    try {
+      return JSON.parse(plain) as AccountTokens;
+    } catch (err) {
+      /**
+       * NP-013 — the parse failure is logged by NAME ONLY, never the Error:
+       * `plain` is DECRYPTED TOKEN MATERIAL, and V8's SyntaxError message
+       * embeds an excerpt of the string it failed to parse. One try over
+       * decrypt+parse put that excerpt into console + app.log on a
+       * decrypt-succeeds/parse-fails state (keychain rotation garbage).
+       */
+      log.error('Decrypted connector tokens failed to parse; dropping entry', {
+        name: err instanceof Error ? err.name : typeof err,
+      });
       await this.delete(workspaceId, connectorId, accountId);
       return null;
     }

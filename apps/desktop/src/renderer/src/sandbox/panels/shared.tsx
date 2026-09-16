@@ -4,7 +4,9 @@
  * several panels open. Everything reuses the existing design system (Operations primitives,
  * ui/Card, ui/Button, ui/Icon) — no new visual language, just Sandbox-specific compositions.
  */
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { CertificationReport, RegressionAnalysis, ValidationRunDetail } from '@neuropause/shared';
 import { cn } from '@renderer/lib/cn';
@@ -166,6 +168,18 @@ export function Drawer({
   children: ReactNode;
   width?: number;
 }): JSX.Element {
+  // GATE 12 (round 50) — the drawer traps focus while open, and Escape closes
+  // it (parity with the backdrop click that always existed).
+  const trapRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(trapRef, open);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
   return (
     <AnimatePresence>
       {open && (
@@ -180,6 +194,7 @@ export function Drawer({
             aria-hidden
           />
           <motion.div
+            ref={trapRef}
             role="dialog"
             aria-modal
             aria-label={title}

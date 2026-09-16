@@ -1,0 +1,22 @@
+{
+  "generatedAt": "2026-08-20",
+  "head": "8ec36f6",
+  "system_identity": "PARTIAL — three uncoordinated fragments (buildInfo, local-principal UUID, livesync deviceId); no named SYSTEM_ID/INSTALLATION_ID",
+  "registration": "PARTIAL (cloud /devices upsert only) / MISSING as an abstraction — no RegistrationProvider or ManifestProvider interface exists (zero grep hits); no local-first registration concept",
+  "connector_registry": "IMPLEMENTED (static) — CONNECTOR_MANIFESTS + MANIFEST_BY_ID; lifecycle honestly derived from adapter presence; no pluggable provider",
+  "capability_registry": "IMPLEMENTED for the M365 vertical only — real action ids + discovery projection (no callables); assurance is a hard-coded 1-bit predicate, not per-capability records; other connectors carry coarse category strings",
+  "oracle_registry": "MISSING as a registry — one string in a two-branch ternary + a 1-entry needs-map; oracle FUNCTIONS real (verifyEffect, LIVE once); productionWired:false everywhere",
+  "connection_model": "IMPLEMENTED — store/vault split, workspace-stamped at birth, identity-pinned reconnect, provider externalId capture",
+  "consent_model": "IMPLEMENTED (RFC 8252 loopback + PKCE + granted-scope persistence); no in-app consent ledger; S15 F-1 broad-scope finding still live in the Entra manifest (F-MR-8)",
+  "credential_boundary": "IMPLEMENTED — ciphertext-only vault, refuse-plaintext, zero token exposure to IPC/renderer; desktop logger redaction is convention-only, no mechanical layer (F-MR-7)",
+  "lifecycle": "IMPLEMENTED — connect→verify→refresh(coalesced)→reconnect(pinned)→sync(flag-gated)→disconnect; operator pause/disable",
+  "revocation": "PARTIAL — best-effort provider revoke where revokeUrl exists; local drop otherwise (stated); ORPHAN: identityStore.revokeConnection has no production caller (F-MR-6)",
+  "manifest": "IMPLEMENTED (static, env-parameterized hosts; one instance/tenant per deployment for hosted families)",
+  "governance_integration": "IMPLEMENTED (M365 vertical) — FG-10 → FG-4 → governedSend → FG-5 observer, order pinned in frozen connectors/index.ts",
+  "verification_integration": "PARTIAL/MOCK — corroborated-tuple oracle real, LIVE once (S16); in-app circle mock; recordVerification exists but not production-fed",
+  "evidence": [
+    "certification/CONNECTOR-REALITY.md",
+    "certification/NEUROPAUSE-OS-MASTER-READINESS-REPORT.md §C"
+  ],
+  "canonical_reference_ids_status": "NOT YET MINTED — NP-CON-M365-000001 / NP-CAP-M365-MAIL-SEND-0001 / NP-ORACLE-M365-MAIL-SEND-0001 / NP-CONN-M365-TEST-000001 are directive targets (M-009..M-012), gated behind LIVE_BRAIN_READINESS"
+}

@@ -31,6 +31,7 @@ import type { HistoryPort, NotifierPort, ObserverPort, SchedulerPort, StageExecu
 import type { BenchmarkStore } from '../lab/benchmarkStore';
 import type { TenantScope } from '@neuropause/shared';
 import { runAsPrincipal, tenantPrincipal } from '../../tenancy/backgroundPrincipal';
+import { registerShutdownFlush } from '../../shutdownFlush';
 
 const log = createLogger('sandbox-continuous-validation');
 
@@ -71,6 +72,9 @@ export async function initContinuousValidation(deps: ContinuousValidationDeps): 
   const version = deps.version ?? '1.0.0';
   const runStore = new ValidationRunStore(deps.runsPath).bindScope(deps.scope);
   await runStore.load();
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('sandbox-validation-runs', () => runStore.flush());
 
   const runDeps: ValidationDeps & { version: string } = {
     executors: deps.executors,

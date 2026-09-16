@@ -95,10 +95,15 @@ interface FederationContextValue {
   install: (artifactId: string) => Promise<void>;
   verifyVersion: (artifactId: string, versionId: string) => Promise<boolean>;
   setScope: (artifactId: string, scope: ExchangeScope) => Promise<void>;
+  // S144 — legacy-policy migration/quarantine (P13C Round 5)
+  migrationRequired: number;
+  quarantinedPolicies: FedPolicy[];
   // governance actions
   addPolicy: (input: { name: string; description: string; scope: FedPolicyScope; effect: FedPolicyEffect; action: string }) => Promise<void>;
   setPolicyEnabled: (id: string, enabled: boolean) => Promise<void>;
   resolveApproval: (id: string, approve: boolean) => Promise<void>;
+  claimPolicy: (id: string) => Promise<boolean>;
+  discardPolicy: (id: string) => Promise<boolean>;
   recordAction: (input: { action: string; peerOrg: string; peerOrgName: string; trustLevel: TrustLevel; detail: string }) => Promise<void>;
   // dr actions
   createBackup: (scope: BackupScope) => Promise<void>;
@@ -133,6 +138,24 @@ export function FederationProvider({ children }: { children: ReactNode }): JSX.E
   const [drSummary, setDrSummary] = useState<DrSummary | null>(null);
   const [admin, setAdmin] = useState<FedAdminOverview | null>(null);
   const [scalability, setScalability] = useState<ScalabilityReport | null>(null);
+  // S144 — legacy-policy migration/quarantine state (loaded via a dedicated lightweight reader so the large
+  // refreshAll/refreshLive tuples are untouched). The status count is always readable (federation:read);
+  // the quarantined-row contents come back only for a federation:manage caller with an active org.
+  const [migrationRequired, setMigrationRequired] = useState<number>(0);
+  const [quarantinedPolicies, setQuarantinedPolicies] = useState<FedPolicy[]>([]);
+
+  const refreshMigration = useCallback(async () => {
+    try {
+      const [status, quarantined] = await Promise.all([
+        ipc.federation.policyMigrationStatus(),
+        ipc.federation.quarantinedPolicies(),
+      ]);
+      setMigrationRequired(Number((status as { migrationRequired?: number }).migrationRequired ?? 0));
+      setQuarantinedPolicies(Array.isArray(quarantined) ? (quarantined as FedPolicy[]) : []);
+    } catch (err) {
+      log.error('Failed to refresh federation policy migration', err);
+    }
+  }, []);
 
   const refreshAll = useCallback(async () => {
     try {
@@ -243,17 +266,18 @@ export function FederationProvider({ children }: { children: ReactNode }): JSX.E
 
   useEffect(() => {
     void refreshAll();
+    void refreshMigration();
     let t: ReturnType<typeof setTimeout> | null = null;
     const debounced = (fn: () => void): void => {
       if (t) clearTimeout(t);
       t = setTimeout(fn, 180);
     };
-    const off = ipc.federation.onEvent(() => debounced(() => void refreshLive()));
+    const off = ipc.federation.onEvent(() => debounced(() => { void refreshLive(); void refreshMigration(); }));
     return () => {
       if (t) clearTimeout(t);
       off();
     };
-  }, [refreshAll, refreshLive]);
+  }, [refreshAll, refreshLive, refreshMigration]);
 
   const inviteOrg = useCallback(async (input: { toOrg: string; trustLevel: TrustLevel; message?: string }) => { await ipc.federation.inviteOrg(input); await refreshLive(); }, [refreshLive]);
   const respondInvite = useCallback(async (id: string, accept: boolean) => { await ipc.federation.respondInvite(id, accept); await refreshLive(); }, [refreshLive]);
@@ -278,6 +302,19 @@ export function FederationProvider({ children }: { children: ReactNode }): JSX.E
   const setPolicyEnabled = useCallback(async (id: string, enabled: boolean) => { await ipc.federation.setPolicyEnabled(id, enabled); await refreshLive(); }, [refreshLive]);
   const resolveApproval = useCallback(async (id: string, approve: boolean) => { await ipc.federation.resolveApproval(id, approve); await refreshLive(); }, [refreshLive]);
   const recordAction = useCallback(async (input: { action: string; peerOrg: string; peerOrgName: string; trustLevel: TrustLevel; detail: string }) => { await ipc.federation.recordAction(input); await refreshLive(); }, [refreshLive]);
+  // S144 — claim/discard a quarantined legacy policy (governed, audited, federation:manage; org resolved
+  // server-side). Returns the boolean outcome so the UI can report it; refreshes both the governance and
+  // migration slices so the count/list reflect the resolution.
+  const claimPolicy = useCallback(async (id: string): Promise<boolean> => {
+    const r = await ipc.federation.claimPolicy(id);
+    await Promise.all([refreshLive(), refreshMigration()]);
+    return Boolean((r as { claimed?: boolean }).claimed);
+  }, [refreshLive, refreshMigration]);
+  const discardPolicy = useCallback(async (id: string): Promise<boolean> => {
+    const r = await ipc.federation.discardPolicy(id);
+    await Promise.all([refreshLive(), refreshMigration()]);
+    return Boolean((r as { discarded?: boolean }).discarded);
+  }, [refreshLive, refreshMigration]);
 
   const createBackup = useCallback(async (scope: BackupScope) => { await ipc.federation.createBackup(scope); await refreshLive(); }, [refreshLive]);
   const runValidation = useCallback(async (backupId: string) => { await ipc.federation.runValidation(backupId); await refreshLive(); }, [refreshLive]);
@@ -289,26 +326,28 @@ export function FederationProvider({ children }: { children: ReactNode }): JSX.E
       orgs, summary, invitations, trust, shared,
       artifacts, exchangeSummary, scopeSummary,
       policies, govSummary, approvals, audit, compliance,
+      migrationRequired, quarantinedPolicies,
       observability, usage, securityEvents,
       backups, replicas, validations, continuity, drSummary,
       admin, scalability,
       refreshAll,
       inviteOrg, respondInvite, setTrust: setTrustAction, shareResource, revokeShare,
       publishArtifact, publishVersion, rate, setVerification, rollback, install, verifyVersion, setScope,
-      addPolicy, setPolicyEnabled, resolveApproval, recordAction,
+      addPolicy, setPolicyEnabled, resolveApproval, recordAction, claimPolicy, discardPolicy,
       createBackup, runValidation, checkReplication,
     }),
     [
       ready, orgs, summary, invitations, trust, shared,
       artifacts, exchangeSummary, scopeSummary,
       policies, govSummary, approvals, audit, compliance,
+      migrationRequired, quarantinedPolicies,
       observability, usage, securityEvents,
       backups, replicas, validations, continuity, drSummary,
       admin, scalability,
       refreshAll,
       inviteOrg, respondInvite, setTrustAction, shareResource, revokeShare,
       publishArtifact, publishVersion, rate, setVerification, rollback, install, verifyVersion, setScope,
-      addPolicy, setPolicyEnabled, resolveApproval, recordAction,
+      addPolicy, setPolicyEnabled, resolveApproval, recordAction, claimPolicy, discardPolicy,
       createBackup, runValidation, checkReplication,
     ],
   );

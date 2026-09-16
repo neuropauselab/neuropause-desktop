@@ -1,0 +1,68 @@
+{
+  "ARTIFACT": "29_RELEASE_PROVENANCE",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "chain": [
+    {
+      "edge": "SOURCE COMMIT",
+      "classification": "MEASURED",
+      "value": "8331185ba41f9eb1b44eeb3656f005491df8f24d"
+    },
+    {
+      "edge": "LOCKFILE",
+      "classification": "MEASURED",
+      "value": "4a29565e59b5fc93dbf635809104716ecbe8af4573c89f9803b2cdcc96b2b197"
+    },
+    {
+      "edge": "DEPENDENCY INSTALL",
+      "classification": "MEASURED",
+      "value": "npm ci exit 0"
+    },
+    {
+      "edge": "BUILD",
+      "classification": "MEASURED",
+      "value": 0
+    },
+    {
+      "edge": "APP BUNDLE",
+      "classification": "MEASURED",
+      "value": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63"
+    },
+    {
+      "edge": "DMG / ZIP",
+      "classification": "MEASURED",
+      "value": [
+        "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+        "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075"
+      ]
+    },
+    {
+      "edge": "SIGNATURE",
+      "classification": "MEASURED",
+      "value": "Developer ID Application: Dishant Dobariya (J3G89MY3QG)"
+    },
+    {
+      "edge": "NOTARIZATION",
+      "classification": "ABSENT",
+      "value": "skipped"
+    },
+    {
+      "edge": "UPDATE FEED",
+      "classification": "MEASURED",
+      "value": "sha512 bound"
+    },
+    {
+      "edge": "PUBLIC DOWNLOAD",
+      "classification": "ABSENT",
+      "value": "not published"
+    }
+  ]
+}

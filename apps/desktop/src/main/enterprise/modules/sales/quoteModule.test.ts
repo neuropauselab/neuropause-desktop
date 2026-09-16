@@ -25,7 +25,7 @@ import {
   type SalesQuote,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../../ipc/secureBridge';
-import { EnterpriseModuleRegistry, buildModuleHandlers } from '../../framework';
+import { EnterpriseModuleRegistry, INTERNAL_ACTION_ORIGIN, buildModuleHandlers } from '../../framework';
 import { QUOTE_DESCRIPTOR, createQuoteModule, type QuoteAiRunner } from './quoteModule';
 import { createOrderModule } from './orderModule';
 import { runQuoteAi } from './quoteAi';
@@ -388,6 +388,7 @@ describe('Quote Conversion (Quote → Sales Order)', () => {
       moduleId: QUOTES_MODULE_ID,
       id,
       action: 'convertToOrder',
+      origin: INTERNAL_ACTION_ORIGIN,
     }) as Promise<{ ok: boolean; message?: string; error?: string }>;
   }
 

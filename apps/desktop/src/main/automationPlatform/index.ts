@@ -125,6 +125,21 @@ export interface AutomationPlatformDeps {
    * Wired by the composition root; the platform never touches the runner class.
    */
   fireScheduledRule: (ruleId: string, scheduledForIso: string) => Promise<{ ok: boolean } | null>;
+  /**
+   * P13C ROUND 24 — O-8. PERSIST THE OCCURRENCE CLAIM.
+   *
+   * `firedOccurrences` below is the once-per-occurrence guard and it is a plain
+   * `Map` in this closure, so it dies with the process. `interval` schedules
+   * report `due: true` on EVERY tick — suppression is the whole mechanism — so a
+   * relaunch inside the bucket re-fired every interval rule immediately, once
+   * per restart. The actions those rules execute are webhooks, notifications and
+   * connector writes.
+   *
+   * REQUIRED, so a composition root that forgets it fails to compile. An
+   * optional dep would have left the shipping application with the defect and
+   * the test suite without it, which is the arrangement that hides bugs.
+   */
+  recordScheduledOccurrence: (ruleId: string, occurrenceKey: string) => Promise<unknown>;
   /** The EXISTING taskScheduler surface (no new scheduler class). */
   schedule: { every: (id: string, ms: number, fn: () => void) => void; cancel: (id: string) => void };
   /**
@@ -414,11 +429,36 @@ export function initAutomationPlatform(deps: AutomationPlatformDeps): Automation
       }
       const occurrences = occurrenceBucket(principal.tenantId as string);
       if (occurrences.get(rule.id) === due.occurrenceKey) continue; // once per occurrence
+      /**
+       * P13C ROUND 24 — O-8. THE HALF OF THE GUARD THAT SURVIVES A RESTART.
+       *
+       * The map above answers "did THIS PROCESS already fire it?", which is a
+       * different question from the one the guard is for. The record answers
+       * "was it fired at all?", and only the record is still there after an
+       * update, a crash or a closed lid.
+       *
+       * Both are consulted because neither subsumes the other: the map catches
+       * the second tick of the same minute before any write has landed, the
+       * record catches the first tick of the next process. Both only ever ADD
+       * suppression, so consulting them in either order gives the same answer.
+       */
+      if (rule.lastScheduledOccurrence === due.occurrenceKey) {
+        occurrences.set(rule.id, due.occurrenceKey);
+        continue;
+      }
       occurrences.set(rule.id, due.occurrenceKey);
       try {
-        const res = await runAsPrincipal(principal, () =>
-          deps.fireScheduledRule(rule.id, new Date(nowMs).toISOString()),
-        );
+        /**
+         * Claimed BEFORE the fire, under the rule owner's own principal, so the
+         * store resolves the write to the rule's tenant rather than to whoever
+         * is signed in. Before rather than after: a crash mid-fire then loses
+         * one occurrence instead of repeating it, which is the same at-most-once
+         * promise the in-process guard has always made.
+         */
+        const res = await runAsPrincipal(principal, async () => {
+          await deps.recordScheduledOccurrence(rule.id, due.occurrenceKey);
+          return deps.fireScheduledRule(rule.id, new Date(nowMs).toISOString());
+        });
         if (res) fired.push(rule.id);
       } catch (err) {
         log.warn('Scheduled rule fire failed', { ruleId: rule.id, message: (err as Error).message });

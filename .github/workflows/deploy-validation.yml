@@ -9,6 +9,11 @@ on:
     paths:
       - 'deploy/**'
 
+# S132 — least privilege. This job only reads the repo (yamllint + helm lint on deploy manifests); it needs
+# no write scopes on the GITHUB_TOKEN.
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest

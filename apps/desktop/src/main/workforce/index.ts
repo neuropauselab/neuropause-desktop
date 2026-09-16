@@ -55,6 +55,11 @@ import {
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
+import { DurableAuditKeyProvider } from '../security/signedAuditChain';
+import type { SecretStore } from '../security/durableKekProvider';
+import { credentialStore } from '../security/secureStore';
+import { declareChannelResource } from '../ipc/channelResource';
+import { resolveAuthoritativeApprover } from './approverAuthority';
 import { unifiedStore } from '../unified/storeInstance';
 import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
@@ -69,14 +74,38 @@ import { Orchestrator } from './orchestrator';
 import { analyzeWorkflowHealth, criticalPath } from './planning/workflowAnalysis';
 import { planDelegation } from './planning/delegation';
 import { withWorkforceAuthz } from './authzGate';
-import { aggregateOutcome, bindingToRequest } from './execution/router';
+import { aggregateOutcome, governedRequests } from './execution/router';
 import { builtInSkills, registerBuiltInWorkers } from './workers';
 import { WorkerInstallService } from './install/installService';
 import { workerInstallStore, workerSigningKey } from './install/installInstance';
+import { registerShutdownFlush } from '../shutdownFlush';
 import type { SkillImpl, WorkforceData, WorkforceNeighbor } from './sdk';
 import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
+import { randomUUID } from 'node:crypto';
 
 const log = createLogger('workforce');
+
+// S115 FG-S114-AUDIT-STATUS — declare the store the read-only audit-integrity channel reaches.
+// The handler calls auditLog.integrityStatus(), which verifies the workforce governance audit chain
+// (file-backed, tenant-scoped via TenantOwnership('workforce-governance-audit')) and returns only
+// {state, algorithm, keyId, keyVersion}. Read-only; no key material, head, or entries cross the boundary.
+declareChannelResource({
+  channel: IpcChannel.SecurityAuditIntegrityStatus,
+  store: 'workforce-governance-audit',
+  effect: 'read',
+  reason:
+    'Verifies the workforce governance audit chain (SHA-256 hash chain + Ed25519 head signature) and ' +
+    'returns only the sanitized integrity status (state + algorithm + keyId + keyVersion). Read-only: ' +
+    'no key material, no chain head, no audit entries ever leave the main process.',
+});
+
+/**
+ * P13C I-A.3 Step 3A — validity window for a transported Bound Decision Claim. Dispatch →
+ * submit → execute is effectively synchronous/in-process, so a bounded few-minute window
+ * amply covers a briefly-queued execution without being open-ended. Boundary B (a later gate)
+ * is what actually enforces expiry against this window.
+ */
+const CLAIM_TTL_MS = 5 * 60_000;
 
 export interface WorkforceSubsystemDeps {
   broadcast: IpcBroadcaster;
@@ -88,6 +117,30 @@ export interface WorkforceSubsystemDeps {
   publish?: (event: PlatformEventInput) => void;
   /** P8.5 — the running app/engine version, for worker-package compatibility checks. */
   appVersion: string;
+  /**
+   * P13C Phase I-A.1 — the AUTHORITATIVE approver principal for a governed
+   * approval decision (Boundary A). REQUIRED. Sourced from the application's
+   * identity authority (`authService` session `user.id`) via DI, exactly as the
+   * data-plane/connectors subsystems source `actor()` — NEVER from the renderer
+   * payload, and never the literal `'user'`. Returns `null` when no authenticated
+   * principal exists, in which case the approval/rejection seam fails closed (no
+   * authoritative governance decision; no fallback identity). Distinct from
+   * tenant/workspace: actor ≠ tenant ≠ workspace.
+   */
+  actor: () => string | null;
+  /**
+   * P13C I-A.3 Step 3A — authoritative runtime clock (epoch ms) used as a governed claim's
+   * `issuedAt`. Optional; defaults to the main-process `Date.now` (the authoritative runtime
+   * clock, never a renderer timestamp). Injectable only so tests can pin time.
+   */
+  now?: () => number;
+  /**
+   * P13C I-A.3 Step 3A — nonce source for a governed claim (single-use/audit id). Optional;
+   * defaults to `node:crypto` `randomUUID` — the SAME source the scheduler/workerRuntime/
+   * governance/orchestrator already use. Injectable only so tests can pin the nonce. Never
+   * renderer-supplied.
+   */
+  nonce?: () => string;
 }
 
 export interface WorkforceSubsystem {
@@ -116,6 +169,17 @@ export interface WorkforceSubsystem {
 }
 
 export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<WorkforceSubsystem> {
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('workforce-stores', async () => {
+    await Promise.allSettled([
+      workerRegistry.flush(),
+      auditLog.flush(),
+      jobStore.flush(),
+      workerInstallStore.flush(),
+    ]);
+  });
+
   /**
    * P13C Round 2 — H3. The workforce stores join the bound set.
    *
@@ -124,6 +188,18 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
    */
   jobStore.bindScope(activeTenantScope);
   auditLog.bindScope(activeTenantScope);
+
+  // S115 (FG-S114-AUDIT-STATUS) — provision the durable Ed25519 audit-signing key from the existing
+  // OS keychain (credentialStore) and attach it BEFORE load(), so the persisted head is verified on
+  // hydration and signed on subsequent persists. Best-effort: if the keychain is unavailable the
+  // audit log still works and reports UNSIGNED (never a fabricated signature).
+  try {
+    const auditKeyStore: SecretStore = { get: (k) => credentialStore.getSecret(k), set: (k, v) => credentialStore.setSecret(k, v) };
+    const auditKeyProvider = new DurableAuditKeyProvider(auditKeyStore);
+    auditLog.attachSigningKey(await auditKeyProvider.ensureKey());
+  } catch {
+    /* keychain unavailable → audit log remains UNSIGNED (fail-open on availability, never on integrity). */
+  }
 
   await Promise.all([workerRegistry.load(), auditLog.load(), jobStore.load()]);
 
@@ -176,6 +252,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
     publish: deps.publish,
   });
 
+  // P13C I-A.3 Step 3A — authoritative claim time + nonce for governed dispatch. Defaults are
+  // the main-process runtime clock and the standard node:crypto nonce source; never renderer.
+  const claimClock = deps.now ?? (() => Date.now());
+  const claimNonce = deps.nonce ?? randomUUID;
+
   // P8.3 — approved binding-carrying proposals execute through the ExecuteEngine.
   // `submitExecution` is late-bound (the engine is built after the workforce); until
   // it is set, approved actions stay advisory (job completes 'succeeded').
@@ -191,7 +272,29 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       runtime.settleExecution(job.id, { ok: false, summary: null, error: 'Execution engine not ready', executionId: '', executor });
       return;
     }
-    void Promise.all(bindings.map((p) => submit(bindingToRequest(job, p)!)))
+    // P13C I-A.3 Step 3A — mint an authoritative Bound Decision Claim for each approved
+    // consequential binding and TRANSPORT it (with the same authoritative actor + tenant read
+    // here, at the synchronous approval dispatch) on the ExecutionRequest. Fail closed: if any
+    // binding cannot be governed, dispatch NOTHING — a consequential effect never runs without
+    // a claim. This gate transports only; it adds NO Boundary-B verification and NO consumption.
+    const governed = governedRequests(job, bindings, {
+      actor: deps.actor(),
+      tenantId: activeTenantScope()?.tenantId ?? null,
+      nowMs: claimClock(),
+      ttlMs: CLAIM_TTL_MS,
+      nonce: claimNonce,
+    });
+    if (!governed.ok) {
+      runtime.settleExecution(job.id, {
+        ok: false,
+        summary: null,
+        error: `Governance claim not minted (${governed.reason}); consequential execution refused`,
+        executionId: '',
+        executor,
+      });
+      return;
+    }
+    void Promise.all(governed.requests.map((req) => submit(req)))
       .then((sessions) => runtime.settleExecution(job.id, aggregateOutcome(sessions, executor)))
       .catch((err) =>
         runtime.settleExecution(job.id, {
@@ -285,6 +388,13 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
 
   const handlers: SecureHandlerDef[] = [
     {
+      // S115 FG-S114-AUDIT-STATUS — read-only audit-integrity status ('operations:read'). Returns ONLY
+      // {state, algorithm?, keyId?, keyVersion?}; never key material. Verifies the live signed chain.
+      channel: IpcChannel.SecurityAuditIntegrityStatus,
+      schema: EmptyRequest,
+      handler: () => auditLog.integrityStatus(),
+    },
+    {
       channel: IpcChannel.WorkforceWorkers,
       schema: EmptyRequest,
       handler: () => workerRegistry.summaries(),
@@ -372,7 +482,13 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceProposalDecideRequest,
       handler: (p) => {
         const r = p as TWorkforceProposalDecideRequest;
-        return runtime.approveProposal(r.jobId, r.proposalId, 'user', r.note ?? null, r.now);
+        // P13C Phase I-A.1 — bind the AUTHORITATIVE approver principal (stable
+        // `user.id` via DI), never the renderer and never the literal `'user'`.
+        // Fail closed when identity is absent (no fallback). Authoritative approval
+        // time comes from the WorkerRuntime clock — the renderer `r.now` is NOT
+        // passed, so `approveProposal`'s trusted default clock applies.
+        const approver = resolveAuthoritativeApprover(deps.actor, 'approval');
+        return runtime.approveProposal(r.jobId, r.proposalId, approver, r.note ?? null);
       },
     },
     {
@@ -380,7 +496,11 @@ export async function initWorkforce(deps: WorkforceSubsystemDeps): Promise<Workf
       schema: WorkforceProposalDecideRequest,
       handler: (p) => {
         const r = p as TWorkforceProposalDecideRequest;
-        return runtime.rejectProposal(r.jobId, r.proposalId, 'user', r.note ?? null, r.now);
+        // P13C Phase I-A.1 — same authoritative-actor provenance for rejections:
+        // the stable `user.id` via DI, never `'user'`; authoritative runtime clock
+        // (no renderer `r.now`); fail closed when no authenticated principal exists.
+        const approver = resolveAuthoritativeApprover(deps.actor, 'rejection');
+        return runtime.rejectProposal(r.jobId, r.proposalId, approver, r.note ?? null);
       },
     },
     {

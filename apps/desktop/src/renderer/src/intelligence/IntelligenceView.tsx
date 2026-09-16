@@ -59,6 +59,7 @@ import {
   summarizeFindings,
   summarizeKpis,
 } from './intelligenceModel';
+import { emptyGraphNotice } from './intelligenceHonesty';
 
 type Tab =
   | 'overview' | 'insight' | 'executive' | 'business' | 'operations' | 'engineering'
@@ -180,6 +181,9 @@ export function IntelligenceView(): JSX.Element {
             <div className="text-right text-xs text-faint">
               <div className="font-medium text-muted">Enterprise health {d.report.health.overall}/100</div>
               <div>Risk {d.report.risk.overall}/100 · {d.report.graph.nodes} nodes</div>
+              {emptyGraphNotice(d.report.graph.nodes) && (
+                <div className="mt-0.5 max-w-[260px] text-warning">{emptyGraphNotice(d.report.graph.nodes)}</div>
+              )}
             </div>
           )}
         </div>

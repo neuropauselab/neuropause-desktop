@@ -1,8 +1,11 @@
 /** Sandbox › Artifacts — the Artifact Explorer: browse an execution's artifacts, result, report, timeline. */
+import { useState } from 'react';
+import type { Artifact } from '@neuropause/shared';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Button } from '@renderer/components/ui/Button';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { formatBytes } from '@renderer/operations/lib';
+import { ipc } from '@renderer/lib/ipc';
 import { useSandbox } from '@renderer/sandbox/SandboxProvider';
 import { execStatusMeta, formatDuration, reasoningSummary, relativeTime } from '@renderer/sandbox/sandboxModel';
 import { Drawer, Metric, Pill, SectionCard } from './shared';
@@ -22,6 +25,34 @@ export function ArtifactsPanel(): JSX.Element {
   const nowMs = Date.now();
   const byKind = dashboard?.artifacts.byKind ?? {};
   const kinds = Object.keys(byKind);
+
+  // S150 — open one artifact's detail (metadata + inline content) via the governed sandbox:artifact.get.
+  // The renderer sends ONLY the id; the workspace/execution tenant boundary + sandbox:read are enforced
+  // server-side. `detail === null` after a resolved load means missing/denied → honest empty state.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Artifact | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
+  const openArtifact = async (id: string): Promise<void> => {
+    if (openId === id) {
+      setOpenId(null);
+      setDetail(null);
+      setDetailError(null);
+      return;
+    }
+    setOpenId(id);
+    setDetail(null);
+    setDetailError(null);
+    setDetailLoading(true);
+    try {
+      setDetail(await ipc.sandbox.artifact(id));
+    } catch {
+      setDetailError('That artifact could not be opened — you may not have access, or it is unavailable.');
+    } finally {
+      setDetailLoading(false);
+    }
+  };
 
   return (
     <div>
@@ -132,12 +163,46 @@ export function ArtifactsPanel(): JSX.Element {
               ) : (
                 <div className="space-y-1">
                   {execDetail.artifacts.map((a) => (
-                    <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border border-[var(--hairline)] px-3 py-1.5">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon name={KIND_ICON[a.kind] ?? 'folder'} size={13} className="shrink-0 text-faint" />
-                        <span className="truncate text-xs">{a.name}</span>
-                      </div>
-                      <span className="shrink-0 text-2xs text-faint">{formatBytes(a.sizeBytes)}</span>
+                    <div key={a.id} className="rounded-lg border border-[var(--hairline)]">
+                      <button
+                        type="button"
+                        onClick={() => void openArtifact(a.id)}
+                        aria-expanded={openId === a.id}
+                        className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left transition fill-hover"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Icon name={KIND_ICON[a.kind] ?? 'folder'} size={13} className="shrink-0 text-faint" />
+                          <span className="truncate text-xs">{a.name}</span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-2xs text-faint">{formatBytes(a.sizeBytes)}</span>
+                          <Icon name="chevron-down" size={12} className={`text-faint transition-transform ${openId === a.id ? 'rotate-180' : ''}`} />
+                        </div>
+                      </button>
+                      {openId === a.id && (
+                        <div className="border-t border-[var(--hairline)] px-3 py-2">
+                          {detailLoading ? (
+                            <p className="text-2xs text-faint">Loading…</p>
+                          ) : detailError ? (
+                            <p className="text-2xs text-sysorange">{detailError}</p>
+                          ) : !detail ? (
+                            <p className="text-2xs text-faint">This artifact is no longer available.</p>
+                          ) : (
+                            <div>
+                              <div className="mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-faint">
+                                <span className="capitalize">{detail.kind}</span>
+                                <span className="font-mono">{detail.mimeType}</span>
+                                <span>{formatBytes(detail.sizeBytes)}</span>
+                              </div>
+                              {detail.inline !== null ? (
+                                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded [background:var(--fill-2)] p-2 font-mono text-2xs text-muted">{detail.inline}</pre>
+                              ) : (
+                                <p className="text-2xs text-faint">Binary artifact — stored externally, no inline preview.</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

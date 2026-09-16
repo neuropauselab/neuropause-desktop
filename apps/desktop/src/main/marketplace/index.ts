@@ -43,6 +43,7 @@ import { publisherTier, publisherTrust, type EntryInput } from './marketplaceMod
 import { MarketplaceService, type CatalogSource, type ListingMeta } from './marketplaceService';
 import { TenantMemo } from '../tenancy/tenantMemo';
 import type { TenantScope } from '@neuropause/shared';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 const log = createLogger('marketplace');
 
@@ -229,6 +230,9 @@ export async function initMarketplace(deps: MarketplaceSubsystemDeps): Promise<M
   // P13C Round 8 — Finding 3. One policy per organization.
   orgPolicyStore.bindScope(deps.scope);
   await orgPolicyStore.load();
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('marketplace-org-policy', () => orgPolicyStore.flush());
 
   // Memoize the composed catalog snapshot; rebuild only when a backing store changes, so
   // reads are O(1) cache hits (a 100k-listing catalog composes once per change, not per call).

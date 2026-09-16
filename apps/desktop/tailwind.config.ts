@@ -19,9 +19,12 @@ const config: Config = {
     extend: {
       colors: {
         accent: {
-          DEFAULT: channel('--accent'),
-          hover: channel('--accent-hover'),
-          fg: channel('--accent-fg'),
+          // Round 36 — Gate 12: the channels moved to `--*-ch`; `--accent`
+          // itself is now a wrapped COLOR so direct `var(--accent)` consumers
+          // are valid. Tailwind's alpha variants keep reading the channels.
+          DEFAULT: channel('--accent-ch'),
+          hover: channel('--accent-hover-ch'),
+          fg: channel('--accent-fg-ch'),
         },
         ink: channel('--text'),
         subtle: channel('--text-2'),
@@ -75,7 +78,7 @@ const config: Config = {
         glass: '0 24px 64px -24px rgba(0,0,0,0.55)',
         pop: '0 12px 32px -12px rgba(0,0,0,0.45), 0 2px 8px -4px rgba(0,0,0,0.30)',
         card: '0 1px 2px rgba(0,0,0,0.04), 0 8px 24px -16px rgba(0,0,0,0.20)',
-        focus: '0 0 0 3.5px rgb(var(--accent) / 0.35)',
+        focus: '0 0 0 3.5px rgb(var(--accent-ch) / 0.35)',
       },
       transitionTimingFunction: {
         // macOS-like spring-ish easing for non-physics transitions.

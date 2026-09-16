@@ -45,7 +45,17 @@ async function main(): Promise<void> {
 
   const app = createApp();
   const server: Server = app.listen(env.PORT, () => {
-    logger.info(`NeuroPause backend listening on ${env.PUBLIC_BACKEND_URL} (port ${env.PORT})`);
+    // A process must not state something false about itself. This printed
+    // `${env.PUBLIC_BACKEND_URL} (port ${env.PORT})`, and PUBLIC_BACKEND_URL is a
+    // configured value that does NOT track PORT — so a run on 4010 announced
+    // "listening on http://127.0.0.1:4000 (port 4010)". The bound address is a fact;
+    // the public URL is a declaration. They are now labelled as what they are, and
+    // the declaration is only printed when it actually disagrees.
+    const bound = `http://127.0.0.1:${env.PORT}`;
+    logger.info(`NeuroPause backend listening on ${bound}`);
+    if (!env.PUBLIC_BACKEND_URL.startsWith(bound)) {
+      logger.info(`Public URL (declared, not bound): ${env.PUBLIC_BACKEND_URL}`);
+    }
     const oauthProviders = enabledProviderIds();
     logger.info(
       oauthProviders.length > 0

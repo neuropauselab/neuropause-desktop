@@ -1,0 +1,282 @@
+{
+  "test": "live-backend-journey",
+  "base": "http://127.0.0.1:4010",
+  "environment_id": "local-source-backend-cec399f-plus-launch-fixes",
+  "started_at": "2026-09-13T03:33:34.859Z",
+  "probe_user": "np-launch-3e100ffe@example.test (throwaway)",
+  "steps": [
+    {
+      "step": "health",
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "ok": true,
+      "ms": 140,
+      "body_excerpt": "{\"status\":\"ok\",\"components\":{\"database\":\"up\",\"redis\":\"up\"},\"uptime\":6.784920042}",
+      "expected": "predicate"
+    },
+    {
+      "step": "auth providers list",
+      "method": "GET",
+      "path": "/auth/providers",
+      "status": 200,
+      "ok": true,
+      "ms": 4,
+      "body_excerpt": "{\"providers\":[]}",
+      "expected": 200
+    },
+    {
+      "step": "email registration",
+      "method": "POST",
+      "path": "/auth/email/register",
+      "status": 201,
+      "ok": true,
+      "ms": 137,
+      "body_excerpt": "{\"user\":{\"id\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"email\":\"np-launch-3e100ffe@example.test\",\"displayName\":null,\"avatarUrl\":null,\"createdAt\":\"2026-09-13T03:33:34.004Z\",\"updatedAt\":\"2026-09-13T03:33:34.004Z\"},\"tokens\":{\"accessToken\":\"<redacted:305>\",\"refreshToken\":\"<redacted:64>\",\"accessTokenExpiresAt\":1789271314051}}",
+      "expected": [
+        200,
+        201
+      ]
+    },
+    {
+      "step": "email login",
+      "method": "POST",
+      "path": "/auth/email/login",
+      "status": 200,
+      "ok": true,
+      "ms": 22,
+      "body_excerpt": "{\"user\":{\"id\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"email\":\"np-launch-3e100ffe@example.test\",\"displayName\":null,\"avatarUrl\":null,\"createdAt\":\"2026-09-13T03:33:34.004Z\",\"updatedAt\":\"2026-09-13T03:33:34.004Z\"},\"tokens\":{\"accessToken\":\"<redacted:305>\",\"refreshToken\":\"<redacted:64>\",\"accessTokenExpiresAt\":1789271314074}}",
+      "expected": 200
+    },
+    {
+      "step": "wrong password rejected",
+      "method": "POST",
+      "path": "/auth/email/login",
+      "status": 401,
+      "ok": true,
+      "ms": 19,
+      "body_excerpt": "{\"error\":{\"code\":\"invalid_credentials\",\"message\":\"Invalid email or password\"},\"requestId\":\"6ab4acd5-796d-419b-a7d2-d04c5a92acce\"}",
+      "expected": 401
+    },
+    {
+      "step": "/me with bearer",
+      "method": "GET",
+      "path": "/auth/me",
+      "status": 200,
+      "ok": true,
+      "ms": 3,
+      "body_excerpt": "{\"user\":{\"id\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"email\":\"np-launch-3e100ffe@example.test\",\"displayName\":null,\"avatarUrl\":null,\"createdAt\":\"2026-09-13T03:33:34.004Z\",\"updatedAt\":\"2026-09-13T03:33:34.004Z\"}}",
+      "expected": "predicate"
+    },
+    {
+      "step": "/me without bearer",
+      "method": "GET",
+      "path": "/auth/me",
+      "status": 401,
+      "ok": true,
+      "ms": 1,
+      "body_excerpt": "{\"error\":{\"code\":\"missing_token\",\"message\":\"Missing bearer token\"},\"requestId\":\"e6bed006-0e36-4e2d-b9a4-61899164593c\"}",
+      "expected": 401
+    },
+    {
+      "step": "refresh rotation",
+      "method": "POST",
+      "path": "/auth/token/refresh",
+      "status": 200,
+      "ok": true,
+      "ms": 21,
+      "body_excerpt": "{\"tokens\":{\"accessToken\":\"<redacted:305>\",\"refreshToken\":\"<redacted:64>\",\"accessTokenExpiresAt\":1789271314118}}",
+      "expected": 200
+    },
+    {
+      "step": "refresh REUSE of rotated token detected (chain burn)",
+      "method": "POST",
+      "path": "/auth/token/refresh",
+      "status": 401,
+      "ok": true,
+      "ms": 36,
+      "body_excerpt": "{\"error\":{\"code\":\"refresh_reused\",\"message\":\"Refresh token reuse detected; sessions revoked\"},\"requestId\":\"c7c3807c-5ba7-404d-aacd-91440e6787b3\"}",
+      "expected": 401
+    },
+    {
+      "step": "rotated chain is burned (new token also refused)",
+      "method": "POST",
+      "path": "/auth/token/refresh",
+      "status": 401,
+      "ok": true,
+      "ms": 4,
+      "body_excerpt": "{\"error\":{\"code\":\"refresh_reused\",\"message\":\"Refresh token reuse detected; sessions revoked\"},\"requestId\":\"f9369f23-1985-42e0-86a4-bd7ff750032d\"}",
+      "expected": 401
+    },
+    {
+      "step": "re-login after chain burn",
+      "method": "POST",
+      "path": "/auth/email/login",
+      "status": 200,
+      "ok": true,
+      "ms": 17,
+      "body_excerpt": "{\"user\":{\"id\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"email\":\"np-launch-3e100ffe@example.test\",\"displayName\":null,\"avatarUrl\":null,\"createdAt\":\"2026-09-13T03:33:34.004Z\",\"updatedAt\":\"2026-09-13T03:33:34.004Z\"},\"tokens\":{\"accessToken\":\"<redacted:305>\",\"refreshToken\":\"<redacted:64>\",\"accessTokenExpiresAt\":1789271314176}}",
+      "expected": 200
+    },
+    {
+      "step": "logout",
+      "method": "POST",
+      "path": "/auth/logout",
+      "status": 204,
+      "ok": true,
+      "ms": 3,
+      "body_excerpt": "",
+      "expected": [
+        200,
+        204
+      ]
+    },
+    {
+      "step": "refresh after logout refused",
+      "method": "POST",
+      "path": "/auth/token/refresh",
+      "status": 401,
+      "ok": true,
+      "ms": 3,
+      "body_excerpt": "{\"error\":{\"code\":\"refresh_reused\",\"message\":\"Refresh token reuse detected; sessions revoked\"},\"requestId\":\"1435e4e1-9366-4d74-800d-da6de0080af7\"}",
+      "expected": 401
+    },
+    {
+      "step": "login for device journey",
+      "method": "POST",
+      "path": "/auth/email/login",
+      "status": 200,
+      "ok": true,
+      "ms": 19,
+      "body_excerpt": "{\"user\":{\"id\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"email\":\"np-launch-3e100ffe@example.test\",\"displayName\":null,\"avatarUrl\":null,\"createdAt\":\"2026-09-13T03:33:34.004Z\",\"updatedAt\":\"2026-09-13T03:33:34.004Z\"},\"tokens\":{\"accessToken\":\"<redacted:305>\",\"refreshToken\":\"<redacted:64>\",\"accessTokenExpiresAt\":1789271314200}}",
+      "expected": 200
+    },
+    {
+      "step": "organization create",
+      "method": "POST",
+      "path": "/organizations",
+      "status": 201,
+      "ok": true,
+      "ms": 27,
+      "body_excerpt": "{\"organization\":{\"id\":\"cc2f0dc7-9dd5-471e-b0b3-f7a73e15d040\",\"slug\":\"launch-org-3e100ffe\",\"name\":\"Launch Org 3e100ffe\",\"createdAt\":\"2026-09-13T03:33:34.212Z\",\"updatedAt\":\"2026-09-13T03:33:34.212Z\"},\"membership\":{\"id\":\"1ad2e847-55d7-437d-aea7-5e646765ef4d\",\"orgId\":\"cc2f0dc7-9dd5-471e-b0b3-f7a73e15d040\",\"userId\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"role\":\"owner\",\"status\":\"active\",\"invitedEmail\":n",
+      "expected": [
+        200,
+        201
+      ]
+    },
+    {
+      "step": "device register",
+      "method": "POST",
+      "path": "/devices",
+      "status": 201,
+      "ok": true,
+      "ms": 15,
+      "body_excerpt": "{\"device\":{\"orgId\":\"cc2f0dc7-9dd5-471e-b0b3-f7a73e15d040\",\"deviceId\":\"np-device-3e100ffe\",\"userId\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"name\":\"Probe Mac\",\"platform\":\"desktop\",\"os\":\"darwin\",\"arch\":\"arm64\",\"appVersion\":\"1.0.0-rc.30\",\"trustStatus\":\"trusted\",\"lastSeen\":\"2026-09-13T03:33:34.232Z\",\"registeredAt\":\"2026-09-13T03:33:34.232Z\"}}",
+      "expected": "predicate"
+    },
+    {
+      "step": "device heartbeat",
+      "method": "POST",
+      "path": "/devices/np-device-3e100ffe/heartbeat",
+      "status": 200,
+      "ok": true,
+      "ms": 5,
+      "body_excerpt": "{\"device\":{\"orgId\":\"cc2f0dc7-9dd5-471e-b0b3-f7a73e15d040\",\"deviceId\":\"np-device-3e100ffe\",\"userId\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"name\":\"Probe Mac\",\"platform\":\"desktop\",\"os\":\"darwin\",\"arch\":\"arm64\",\"appVersion\":\"1.0.0-rc.30\",\"trustStatus\":\"trusted\",\"lastSeen\":\"2026-09-13T03:33:34.246Z\",\"registeredAt\":\"2026-09-13T03:33:34.232Z\"}}",
+      "expected": 200
+    },
+    {
+      "step": "device list",
+      "method": "GET",
+      "path": "/devices?orgId=cc2f0dc7-9dd5-471e-b0b3-f7a73e15d040",
+      "status": 200,
+      "ok": true,
+      "ms": 3,
+      "body_excerpt": "{\"devices\":[{\"orgId\":\"cc2f0dc7-9dd5-471e-b0b3-f7a73e15d040\",\"deviceId\":\"np-device-3e100ffe\",\"userId\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"name\":\"Probe Mac\",\"platform\":\"desktop\",\"os\":\"darwin\",\"arch\":\"arm64\",\"appVersion\":\"1.0.0-rc.30\",\"trustStatus\":\"trusted\",\"lastSeen\":\"2026-09-13T03:33:34.246Z\",\"registeredAt\":\"2026-09-13T03:33:34.232Z\"}]}",
+      "expected": [
+        200
+      ]
+    },
+    {
+      "step": "device revoke (owner)",
+      "method": "POST",
+      "path": "/devices/np-device-3e100ffe/revoke",
+      "status": 200,
+      "ok": true,
+      "ms": 2,
+      "body_excerpt": "{\"device\":{\"orgId\":\"cc2f0dc7-9dd5-471e-b0b3-f7a73e15d040\",\"deviceId\":\"np-device-3e100ffe\",\"userId\":\"84087bc7-5b3a-4bf4-a409-556874f10b16\",\"name\":\"Probe Mac\",\"platform\":\"desktop\",\"os\":\"darwin\",\"arch\":\"arm64\",\"appVersion\":\"1.0.0-rc.30\",\"trustStatus\":\"revoked\",\"lastSeen\":\"2026-09-13T03:33:34.246Z\",\"registeredAt\":\"2026-09-13T03:33:34.232Z\"}}",
+      "expected": "predicate"
+    },
+    {
+      "step": "heartbeat AFTER revoke refused (fail closed)",
+      "method": "POST",
+      "path": "/devices/np-device-3e100ffe/heartbeat",
+      "status": 403,
+      "ok": true,
+      "ms": 2,
+      "body_excerpt": "{\"error\":{\"code\":\"device_revoked\",\"message\":\"This device is revoked. Contact an organization owner or admin.\"},\"requestId\":\"0355c5e0-4ce7-4f8f-aeea-bd6a8a1b99d9\"}",
+      "expected": "predicate"
+    },
+    {
+      "step": "re-register AFTER revoke refused (fail closed)",
+      "method": "POST",
+      "path": "/devices",
+      "status": 403,
+      "ok": true,
+      "ms": 2,
+      "body_excerpt": "{\"error\":{\"code\":\"device_revoked\",\"message\":\"This device is revoked. Contact an organization owner or admin.\"},\"requestId\":\"154278b6-220c-4d39-934f-6dc0700baa20\"}",
+      "expected": "predicate"
+    },
+    {
+      "step": "device register without bearer",
+      "method": "POST",
+      "path": "/devices",
+      "status": 401,
+      "ok": true,
+      "ms": 1,
+      "body_excerpt": "{\"error\":{\"code\":\"missing_token\",\"message\":\"Missing bearer token\"},\"requestId\":\"59aad52c-bc2b-40bb-af5d-bbe8bd028b63\"}",
+      "expected": 401
+    },
+    {
+      "step": "AI gateway status",
+      "method": "GET",
+      "path": "/ai/status",
+      "status": 200,
+      "ok": true,
+      "ms": 5,
+      "body_excerpt": "{\"configured\":true,\"provider\":\"ollama\",\"model\":\"qwen3-coder:30b\",\"gateway\":{\"version\":\"np.ai.gateway/v1\",\"policy\":\"AI_PROPOSES_ONLY\",\"executes_tools\":false,\"grants_authority\":false},\"limits\":{\"max_messages\":64,\"max_input_chars\":200000,\"max_output_tokens\":2048,\"timeout_ms\":400000}}",
+      "expected": "predicate"
+    },
+    {
+      "step": "AI gateway chat without bearer",
+      "method": "POST",
+      "path": "/ai/chat",
+      "status": 401,
+      "ok": true,
+      "ms": 1,
+      "body_excerpt": "{\"error\":{\"code\":\"missing_token\",\"message\":\"Missing bearer token\"},\"requestId\":\"c110f679-c0cf-40e8-8678-5b2be8fa81fd\"}",
+      "expected": 401
+    },
+    {
+      "step": "AI gateway chat (live model)",
+      "method": "POST",
+      "path": "/ai/chat",
+      "status": 200,
+      "ok": true,
+      "ms": 583,
+      "body_excerpt": "{\"id\":\"gw_aeb9c404-ee9f-4b5a-8f23-db2298586715\",\"provider\":\"ollama\",\"gateway\":{\"version\":\"np.ai.gateway/v1\",\"policy\":\"AI_PROPOSES_ONLY\",\"executes_tools\":false,\"grants_authority\":false},\"model\":\"qwen3-coder:30b\",\"text\":\"PONG\",\"tool_proposals\":[],\"finish_reason\":\"stop\",\"usage\":{\"input_tokens\":16,\"output_tokens\":3},\"latency_ms\":576}",
+      "expected": "predicate"
+    },
+    {
+      "step": "AI gateway bounds (empty messages → 400)",
+      "method": "POST",
+      "path": "/ai/chat",
+      "status": 400,
+      "ok": true,
+      "ms": 12,
+      "body_excerpt": "{\"error\":\"invalid_request\",\"message\":\"messages[] is required.\"}",
+      "expected": 400
+    }
+  ],
+  "all_ok": true,
+  "gateway_configured": true
+}

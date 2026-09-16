@@ -14,10 +14,17 @@ Most issues can be diagnosed from **Operations → Release** and resolved from
 
 ## The app won't open ("unidentified developer")
 
-The notarized build opens normally. If you see this block, you likely have the
-wrong file — request the official `NeuroPause-1.0.0-rc.1-arm64.dmg` from your
-pilot contact. (As a one-time workaround you can right-click the app → **Open**,
-but the correct fix is the notarized DMG.)
+This block means the build you have is **not signed and notarized** — it does not
+mean you downloaded the wrong file. There is only one macOS artifact: a single
+**universal** `.dmg` that runs on both Apple Silicon and Intel, so there is no
+architecture-specific file to get wrong.
+
+To open an unsigned build: **right-click the app → Open**, then confirm. You only
+need to do this once.
+
+If you expected a signed build, ask your pilot contact whether a notarized artifact
+has been published yet — at time of writing, signing is an operator action that
+requires Apple credentials and is not automatic.
 
 ## The window is blank or keeps crashing
 

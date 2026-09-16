@@ -137,3 +137,20 @@ describe('password reset', () => {
     expect(users[0]!.passwordHash).toBe('hashed:a-strong-password');
   });
 });
+
+describe('NP-GLOBAL-PUBLIC-LAUNCH-002 §21 — password reset evicts every session', () => {
+  it('resetPassword revokes all refresh sessions of the user', async () => {
+    const { revokedSessionsFor } = await import('./accountRepository.memory');
+    revokedSessionsFor.length = 0;
+    const users: MemUser[] = [{ id: 'u-reset', email: 'reset@example.com', emailVerified: true, passwordHash: 'old' }];
+    const repo = createMemoryAuthAccountRepo(users);
+    const sent: string[] = [];
+    const mailer: Mailer = { sendEmailVerification: async () => {}, sendPasswordReset: async (_email, url) => { sent.push(url); } };
+    const deps: AuthAccountDeps = { repo, mailer, hashPassword: async (p: string) => `hash:${p}`, appUrl: 'http://app.test' };
+    await requestPasswordReset(deps, 'reset@example.com');
+    const token = /token=([A-Za-z0-9_-]+)/.exec(sent[0] ?? '')?.[1];
+    expect(token).toBeTruthy();
+    await resetPassword(deps, token!, 'a-new-strong-password');
+    expect(revokedSessionsFor).toEqual(['u-reset']);
+  });
+});

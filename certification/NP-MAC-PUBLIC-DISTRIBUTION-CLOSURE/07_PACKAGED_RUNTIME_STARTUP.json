@@ -1,0 +1,31 @@
+{
+  "ARTIFACT": "07_PACKAGED_RUNTIME_STARTUP",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "kind": "zip",
+    "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/NeuroPause-1.0.0-rc.30-universal-mac.zip",
+    "sha256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075"
+  },
+  "startup_exit_status": {
+    "code": 0,
+    "signal": null,
+    "at": 34761
+  },
+  "main_started_ms": 513,
+  "renderer_ready_ms": 4604,
+  "stdout_stderr_sha256": "83857c7420f2f16cb4842dd2f5215934e4699791caed15a6cb0d8fce329c7281",
+  "crash_detected": true,
+  "main_process_started": true,
+  "renderer_started": true,
+  "application_ready": true,
+  "result": "PASS",
+  "classification": "MEASURED",
+  "screenshot": {
+    "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/verification/packaged-smoke-first-run.png",
+    "sha256": "0d59b84f3dce69990d23858f3ee04ac0c4643ee8c9962a38ff7ad99fa9cf6504"
+  }
+}

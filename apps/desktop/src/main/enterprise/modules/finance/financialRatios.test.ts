@@ -98,6 +98,12 @@ describe('Financial ratios module over a real ledger', () => {
     const v = ratios.hooks.validate({ fields: { asOfDate: '2026-08-06' } });
     expect(v.ok, JSON.stringify('errors' in v ? v.errors : {})).toBe(true);
     if (!v.ok) throw new Error('unreachable');
+    // S143 — the Trial Balance is computed from the SAME posted journal via the certified builder.
+    // Every posted entry balances by construction, so the book balances: debits 1600 (1000+400+200) =
+    // credits 1600, and the status reads 'Balanced'. Never typed in.
+    expect(v.values.totalDebits).toBe(1600);
+    expect(v.values.totalCredits).toBe(1600);
+    expect(v.values.trialBalanceStatus).toBe('Balanced');
     expect(v.values.revenue).toBe(1000);
     expect(v.values.netIncome).toBe(600);
     expect(v.values.totalAssets).toBe(1200); // AR 1000 + cash 200
@@ -110,5 +116,33 @@ describe('Financial ratios module over a real ledger', () => {
     // Immutable once generated.
     const rec = ratios.store.create({ title: String(v.values.reportNumber), fields: v.values, actor: 't@np', now: T0 });
     expect(ratios.hooks.validate({ fields: { ...ratios.store.get(rec.id)!.fields, netProfitMargin: 0 } }).ok).toBe(false);
+
+    // S143 — the balanced register summarizes with a non-alarm risk and names the trial-balance status.
+    const okSummary = await ratios.hooks.summarize!(ratios.store.get(rec.id)!, ctx);
+    expect(okSummary.headline).toContain('trial balance Balanced');
+    expect(okSummary.summary).toContain('debits 1,600 vs credits 1,600');
+    expect(okSummary.risk).not.toBe('high');
+  });
+
+  it('S143 — an UNBALANCED trial balance is surfaced as a high-risk GL integrity alarm', async () => {
+    // Build a register record whose persisted trial balance does not balance (debits ≠ credits). The
+    // module's summarize must escalate this to a high-risk alarm — a balanced ledger is the invariant, so
+    // an unbalanced one is never hidden behind leverage/other signals.
+    const unbalanced = ratios.store.create({
+      title: 'FR-UNBAL',
+      fields: {
+        reportNumber: 'FR-UNBAL', asOfDate: '2026-08-06',
+        totalDebits: 1000, totalCredits: 900, trialBalanceStatus: 'UNBALANCED',
+        revenue: 1000, expenses: 400, netIncome: 600, totalAssets: 1200, totalLiabilities: 400, totalEquity: 200,
+        netProfitMargin: 60, returnOnAssets: 50, returnOnEquity: 300, debtToEquity: 2,
+        equityRatio: 16.67, expenseRatio: 40, note: 'crafted', generatedAt: T0,
+      },
+      actor: 't@np', now: T0,
+    });
+    const s = await ratios.hooks.summarize!(ratios.store.get(unbalanced.id)!, ctx);
+    expect(s.risk).toBe('high');
+    expect(s.riskReason).toContain('does not balance');
+    expect(s.headline).toContain('trial balance UNBALANCED');
+    expect(s.summary).toContain('debits 1,000 vs credits 900');
   });
 });

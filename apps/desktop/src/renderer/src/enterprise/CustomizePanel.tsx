@@ -38,34 +38,137 @@ const ROLE_PERMS: { id: EnterprisePermission; label: string }[] = [
 const UNIT_KINDS: OrgUnitKind[] = ['business_unit', 'department', 'team'];
 
 export function CustomizePanel(): JSX.Element {
-  const { org, governance, createUnit, deleteUnit, createRole, setChain, setRule } = useEnterprise();
+  const { org, governance, createUnit, deleteUnit, createRole, setChain, setRule, createUser, updateUser, deleteUser } =
+    useEnterprise();
 
   const [nav, setNav] = useState<Set<string>>(() => loadNavPrefs(NAV.map((n) => n.id)));
   const [unitName, setUnitName] = useState('');
   const [unitKind, setUnitKind] = useState<OrgUnitKind>('team');
   const [unitParent, setUnitParent] = useState<string>('');
+  // People management (round 36 — Gate 5: the audited backend CRUD finally
+  // has a caller). `peopleError` surfaces refusals verbatim — a denied
+  // mutation here must never be a silent no-op.
+  const [personName, setPersonName] = useState('');
+  const [personEmail, setPersonEmail] = useState('');
+  const [personTitle, setPersonTitle] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [peopleError, setPeopleError] = useState<string | null>(null);
   const [roleName, setRoleName] = useState('');
   const [rolePerms, setRolePerms] = useState<Set<EnterprisePermission>>(new Set(['org:read', 'dashboard:read']));
   const [busy, setBusy] = useState(false);
+  // GATE 5 — E-11. Units, roles and governance toggles used to fail SILENTLY:
+  // add/create were try/finally with no catch, and delete/toggle were
+  // fire-and-forget `void` calls, so a denied mutation was a no-op with no
+  // explanation. Each section now surfaces its refusal verbatim, like People.
+  const [unitError, setUnitError] = useState<string | null>(null);
+  const [roleError, setRoleError] = useState<string | null>(null);
+  const [governanceError, setGovernanceError] = useState<string | null>(null);
 
   const toggleNav = (id: string): void => {
     setNav((prev) => {
       const next = new Set(prev);
       if (id === 'command') return next; // locked
       if (next.has(id)) next.delete(id); else next.add(id);
-      saveNavPrefs(next);
+      // Round 36: persistence is scoped to the tabs THIS panel manages, so
+      // the 8 unmanaged Enterprise tabs can never be hidden by a save here.
+      saveNavPrefs(next, NAV.map((n) => n.id));
       window.dispatchEvent(new Event('np:nav'));
       return next;
     });
   };
 
+  const describeMutationError = (err: unknown): string =>
+    err instanceof Error && err.message ? err.message : 'That did not work.';
+
   const addUnit = async (): Promise<void> => {
     if (!unitName.trim()) return;
     setBusy(true);
+    setUnitError(null);
     try {
       await createUnit({ kind: unitKind, name: unitName.trim(), parentId: unitParent || null });
       setUnitName('');
       setUnitParent('');
+    } catch (err) {
+      setUnitError(describeMutationError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeUnit = async (id: string): Promise<void> => {
+    setBusy(true);
+    setUnitError(null);
+    try {
+      await deleteUnit(id);
+    } catch (err) {
+      setUnitError(describeMutationError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addPerson = async (): Promise<void> => {
+    if (!personName.trim()) return;
+    setBusy(true);
+    setPeopleError(null);
+    try {
+      await createUser({
+        name: personName.trim(),
+        email: personEmail.trim() ? personEmail.trim() : null,
+        title: personTitle.trim() || undefined,
+      });
+      setPersonName('');
+      setPersonEmail('');
+      setPersonTitle('');
+    } catch (err) {
+      setPeopleError(describeMutationError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removePerson = async (id: string): Promise<void> => {
+    setBusy(true);
+    setPeopleError(null);
+    try {
+      await deleteUser(id);
+    } catch (err) {
+      setPeopleError(describeMutationError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const startEdit = (u: { id: string; name: string; email: string | null; title: string }): void => {
+    setEditingId(u.id);
+    setEditName(u.name);
+    setEditEmail(u.email ?? '');
+    setEditTitle(u.title);
+    setPeopleError(null);
+  };
+
+  const saveEdit = async (): Promise<void> => {
+    if (editingId === null || !editName.trim()) return;
+    setBusy(true);
+    setPeopleError(null);
+    try {
+      // The owner row's email is immutable by design (round 32 / O-13): the
+      // handler strips it, so it is not offered here either.
+      // Round 40: keyed on the tenant's RECORDED owner, so provisioned orgs
+      // show the same protections as the seeded one (fallback: seeded literal).
+      const isOwner = editingId === (org.organization?.ownerUserId ?? 'user-owner');
+      await updateUser({
+        id: editingId,
+        name: editName.trim(),
+        title: editTitle.trim() || undefined,
+        ...(isOwner ? {} : { email: editEmail.trim() ? editEmail.trim() : null }),
+      });
+      setEditingId(null);
+    } catch (err) {
+      setPeopleError(describeMutationError(err));
     } finally {
       setBusy(false);
     }
@@ -74,12 +177,40 @@ export function CustomizePanel(): JSX.Element {
   const addRole = async (): Promise<void> => {
     if (!roleName.trim()) return;
     setBusy(true);
+    setRoleError(null);
     try {
       await createRole({ name: roleName.trim(), permissions: [...rolePerms] });
       setRoleName('');
       setRolePerms(new Set(['org:read', 'dashboard:read']));
+    } catch (err) {
+      setRoleError(describeMutationError(err));
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * Governance toggles. A denied toggle used to be a fire-and-forget `void`
+   * call: the switch did not move and nothing said why — on the surface that
+   * decides which approval chains and compliance rules are ENFORCED. The
+   * refusal is now shown; the toggle state stays derived from the backend's
+   * answer (the provider only updates it on success), never optimistic.
+   */
+  const toggleChain = async (id: string, enabled: boolean): Promise<void> => {
+    setGovernanceError(null);
+    try {
+      await setChain(id, enabled);
+    } catch (err) {
+      setGovernanceError(describeMutationError(err));
+    }
+  };
+
+  const toggleRule = async (id: string, enabled: boolean): Promise<void> => {
+    setGovernanceError(null);
+    try {
+      await setRule(id, enabled);
+    } catch (err) {
+      setGovernanceError(describeMutationError(err));
     }
   };
 
@@ -137,6 +268,9 @@ export function CustomizePanel(): JSX.Element {
           </select>
           <button type="button" disabled={busy || !unitName.trim()} onClick={() => void addUnit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Add</button>
         </div>
+        {unitError && (
+          <p role="alert" className="mb-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">{unitError}</p>
+        )}
         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {org.units.map((u) => {
             const lead = u.leadUserId ? org.users.find((x) => x.id === u.leadUserId) : null;
@@ -144,7 +278,50 @@ export function CustomizePanel(): JSX.Element {
               <li key={u.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5">
                 <span className={cn('flex h-6 w-6 items-center justify-center rounded-md', TINT_TONE.blue)}><Icon name="layers" size={12} /></span>
                 <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{u.name}</div><div className="text-2xs text-faint">{unitKindLabel(u.kind)}{lead ? ` · ${lead.name}` : ''}</div></div>
-                <button type="button" onClick={() => void deleteUnit(u.id)} className="text-faint fill-hover hover:text-syspink" title="Delete unit"><Icon name="trash" size={13} /></button>
+                <button type="button" disabled={busy} onClick={() => void removeUnit(u.id)} className="text-faint fill-hover hover:text-syspink" title="Delete unit"><Icon name="trash" size={13} /></button>
+              </li>
+            );
+          })}
+        </ul>
+      </OpsPanel>
+
+      {/* People (round 36 — Gate 5: the audited backend CRUD, finally reachable) */}
+      <OpsPanel title="People" subtitle="Who belongs to this organization" className="mt-1">
+        <div className="mb-3 flex flex-wrap items-end gap-2">
+          <input value={personName} onChange={(e) => setPersonName(e.target.value)} placeholder="Full name…" className="min-w-36 flex-1 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint" />
+          <input value={personEmail} onChange={(e) => setPersonEmail(e.target.value)} placeholder="Email (sign-in address)…" type="email" autoComplete="off" className="min-w-44 flex-1 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint" />
+          <input value={personTitle} onChange={(e) => setPersonTitle(e.target.value)} placeholder="Title…" className="min-w-28 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus placeholder:text-faint" />
+          <button type="button" disabled={busy || !personName.trim()} onClick={() => void addPerson()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40"><Icon name="plus" size={13} /> Add person</button>
+        </div>
+        {peopleError && (
+          <p role="alert" className="mb-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">{peopleError}</p>
+        )}
+        <ul className="space-y-1.5">
+          {org.users.filter((u) => u.kind === 'human').map((u) => {
+            const isOwner = u.id === (org.organization?.ownerUserId ?? 'user-owner');
+            if (editingId === u.id) {
+              return (
+                <li key={u.id} className="flex flex-wrap items-end gap-2 rounded-xl border border-accent/40 p-2.5">
+                  <input value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Name" className="min-w-32 flex-1 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus" />
+                  {!isOwner && (
+                    <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} placeholder="Email" type="email" autoComplete="off" className="min-w-40 flex-1 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus" />
+                  )}
+                  <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Title" className="min-w-24 rounded-lg border border-[var(--hairline)] [background:var(--fill-1)] px-3 py-1.5 text-sm text-ink outline-none focus-visible:shadow-focus" />
+                  <button type="button" disabled={busy || !editName.trim()} onClick={() => void saveEdit()} className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg disabled:opacity-40">Save</button>
+                  <button type="button" disabled={busy} onClick={() => setEditingId(null)} className="rounded-lg border border-[var(--hairline)] px-3 py-1.5 text-xs text-muted">Cancel</button>
+                </li>
+              );
+            }
+            return (
+              <li key={u.id} className="flex items-center gap-2 rounded-xl border border-[var(--hairline)] px-3 py-2">
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-ink">{u.name}{isOwner && <span className="ml-1.5 text-2xs text-faint">· Owner (protected)</span>}</div>
+                  <div className="truncate text-2xs text-faint">{u.email ?? 'no sign-in address'}{u.title ? ` · ${u.title}` : ''}</div>
+                </div>
+                <button type="button" disabled={busy} onClick={() => startEdit(u)} className="rounded-lg border border-[var(--hairline)] px-2 py-1 text-2xs text-muted fill-hover hover:text-ink" title="Edit person">Edit</button>
+                {!isOwner && (
+                  <button type="button" disabled={busy} onClick={() => void removePerson(u.id)} className="text-faint fill-hover hover:text-syspink" title="Remove person"><Icon name="trash" size={13} /></button>
+                )}
               </li>
             );
           })}
@@ -169,6 +346,9 @@ export function CustomizePanel(): JSX.Element {
             })}
           </div>
         </div>
+        {roleError && (
+          <p role="alert" className="mb-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">{roleError}</p>
+        )}
         <ul className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           {org.roles.map((r) => (
             <li key={r.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-1.5">
@@ -180,6 +360,9 @@ export function CustomizePanel(): JSX.Element {
       </OpsPanel>
 
       {/* Governance: approval chains + compliance rules */}
+      {governanceError && (
+        <p role="alert" className="mb-2 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-2xs leading-relaxed text-danger">{governanceError}</p>
+      )}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <OpsPanel title="Approval chains" subtitle="Who must sign off">
           {!governance || governance.approvalChains.length === 0 ? (
@@ -189,7 +372,7 @@ export function CustomizePanel(): JSX.Element {
               {governance.approvalChains.map((c) => (
                 <li key={c.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-2">
                   <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{c.name}</div><div className="truncate text-2xs text-faint">{c.steps.length} step(s) · {c.description}</div></div>
-                  <Toggle on={c.enabled} onClick={() => void setChain(c.id, !c.enabled)} />
+                  <Toggle on={c.enabled} onClick={() => void toggleChain(c.id, !c.enabled)} />
                 </li>
               ))}
             </ul>
@@ -204,7 +387,7 @@ export function CustomizePanel(): JSX.Element {
               {governance.complianceRules.map((r) => (
                 <li key={r.id} className="flex items-center gap-2 rounded-lg border border-[var(--hairline)] px-2.5 py-2">
                   <div className="min-w-0 flex-1"><div className="truncate text-sm text-ink">{r.name}</div><div className="truncate text-2xs text-faint">{titleCase(r.category)} · {r.severity}</div></div>
-                  <Toggle on={r.enabled} onClick={() => void setRule(r.id, !r.enabled)} />
+                  <Toggle on={r.enabled} onClick={() => void toggleRule(r.id, !r.enabled)} />
                 </li>
               ))}
             </ul>

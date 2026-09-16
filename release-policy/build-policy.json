@@ -1,0 +1,18 @@
+{
+  "id": "np-build-policy",
+  "version": 1,
+  "_comment": "Build inputs that an authority binds through build_policy_digest. Changing any of these changes the digest, so a previously issued authority stops admitting. Generated paths are empty by policy: every build output is gitignored and THIRD-PARTY-NOTICES.md must be committed for the lockfile in use.",
+  "node_version_file": ".nvmrc",
+  "lockfile": "package-lock.json",
+  "generated_paths": [],
+  "desktop_package_scripts": ["package:win", "package:mac"],
+  "backend_image_context": "apps/backend/Dockerfile",
+  "helm_chart": "deploy/helm/neuropause-backend",
+  "web_workspace": "@neuropause/web",
+  "verification_scripts": [
+    "typecheck --workspaces --if-present",
+    "lint",
+    "test --workspaces --if-present",
+    "test:integration -w @neuropause/backend"
+  ]
+}

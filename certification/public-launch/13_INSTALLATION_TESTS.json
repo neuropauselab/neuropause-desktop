@@ -1,0 +1,35 @@
+{
+  "ARTIFACT": "13_INSTALLATION_TESTS",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "macos": [
+    {
+      "INSTALL_ID": "INSTALL-MAC-DEVMACHINE-FRESHPROFILE",
+      "PLATFORM": "macos",
+      "OS_VERSION": "26.5.2",
+      "ARCHITECTURE": "arm64",
+      "ARTIFACT_SHA256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+      "INSTALL_RESULT": "extract from ZIP (measured) / DMG mount+copy (measured)",
+      "FIRST_LAUNCH_RESULT": "PASS",
+      "clean_machine": false,
+      "note": "build machine, fresh userData profile; Gatekeeper not exercised (no quarantine attr); spctl verdict recorded separately"
+    }
+  ],
+  "windows": [
+    {
+      "INSTALL_ID": "INSTALL-WIN-NOT_MEASURED",
+      "INSTALL_RESULT": "NOT_MEASURED"
+    }
+  ],
+  "intel_mac": "NOT_MEASURED (no Intel runner)"
+}

@@ -18,7 +18,7 @@
  *   - everything no-ops gracefully when the GL modules are not registered
  *     (tests that wire only invoice+payment stay valid).
  */
-import type { EnterpriseEntity } from '@neuropause/shared';
+import type { EnterpriseEntity, EnterpriseRecordMeta } from '@neuropause/shared';
 import {
   FINANCE_MODULE_ID,
   FX_GAINLOSS_ACCOUNT,
@@ -53,19 +53,35 @@ import {
   type GlDerivedEntry,
   type GlJournalLine,
 } from '@neuropause/shared';
-import type { EnterpriseModule, EnterpriseModuleActionContext } from '../../framework';
+import { evaluateGoodsBill } from './goodsBillMatch';
+import type { EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta } from '../../framework';
 
 function str(v: unknown): string {
   return v === null || v === undefined ? '' : String(v);
 }
 
-/** Seed the four control accounts — only when the chart is completely empty. */
-async function seedControlAccountsIfEmpty(
-  accounts: EnterpriseModule,
-  ctx: EnterpriseModuleActionContext,
-): Promise<void> {
+/**
+ * Seed the canonical finance CONTROL accounts — but ONLY when the chart is
+ * completely empty, so an operator's customized chart is never overwritten nor
+ * forced to adopt canonical codes. This is a DELIBERATE, pinned policy
+ * (`glAutoPosting`: "a non-empty customized chart WITHOUT the canonical accounts
+ * — the seed must not run, the post must not force"): a posting that cannot
+ * resolve a control account PAUSES and retries later rather than mutating a
+ * customized chart.
+ *
+ * ERP Session 13: exported and given a ctx-only signature so the boot initializer
+ * (`ensureCanonicalChart`) can seed the chart AT BOOT, on the empty chart, BEFORE
+ * any stock activity lazily ensures stock accounts and makes the chart non-empty.
+ * That fixes the fresh-install fragility (stock-first suppressing control-account
+ * seeding) WITHOUT changing this on-posting empty-only policy. Reads the FROZEN
+ * canonical chart constants — no chart-surface change, no new account numbers.
+ */
+export async function seedControlAccountsIfEmpty(ctx: EnterpriseModuleActionContext): Promise<void> {
+  const accounts = ctx.moduleFor(LEDGER_ACCOUNTS_MODULE_ID);
+  if (!accounts) return;
   await accounts.store.load();
-  if (accounts.store.count() > 0) return;
+  if (accounts.store.count() > 0) return; // empty-only — respect a customized chart
   for (const control of [
     ...Object.values(GL_CONTROL_ACCOUNTS),
     ...Object.values(GL_PAYABLE_CONTROL_ACCOUNTS),
@@ -149,7 +165,7 @@ export async function applyGlDerivedEntries(
   const accounts = ctx.moduleFor(LEDGER_ACCOUNTS_MODULE_ID);
   if (!journal || !accounts || !journal.hooks.runAction) return; // GL not wired — no-op
   await journal.store.load();
-  await seedControlAccountsIfEmpty(accounts, ctx);
+  await seedControlAccountsIfEmpty(ctx);
   for (const derived of entries) {
     const exists = journal.store
       .list()
@@ -167,15 +183,70 @@ export async function applyGlDerivedEntries(
       },
     });
     if (!validated.ok) continue; // unresolvable lines — nothing to record yet
+    // Transaction-graph spine: the journal entry inherits the correlation of the
+    // record it posts for (the source the derived entry already names), so the
+    // financial consequence sits in the same business transaction as the invoice,
+    // bill, or stock movement that caused it. Best-effort: an unresolvable source
+    // leaves the entry unstamped (still a valid, balanced posting).
+    let correlation: EnterpriseRecordMeta | undefined;
+    const sourceModule = derived.sourceModule ? ctx.moduleFor(derived.sourceModule) : null;
+    if (sourceModule && derived.sourceRef) {
+      await sourceModule.store.load();
+      const source = sourceModule.store.get(derived.sourceRef);
+      if (source) correlation = childCorrelationMeta(source, derived.sourceModule);
+    }
     const draft = journal.store.create({
       title: derived.entryNumber,
       fields: validated.values,
+      ...(correlation ? { metadata: correlation } : {}),
       actor: 'system:gl-posting',
       now: ctx.now(),
     });
     ctx.emit(journal, 'created', draft);
     await journal.hooks.runAction('post', draft, ctx);
   }
+}
+
+/**
+ * Reverse a previously-posted GL entry (ERP Session 6) by posting a compensating
+ * `<entryNumber>-REV` that swaps every debit/credit of the ORIGINAL — so it
+ * reverses the EXACT amount that was booked, at the original cost, whatever the
+ * accounts (GRNI / COGS / WIP / FG / Inventory). Append-only, like the finance
+ * `-REV` machinery: the original entry is never modified. Idempotent — it no-ops
+ * if the base entry was never posted, or if its reversal already exists — so a
+ * duplicate or replayed void can never post a second reversal.
+ */
+export async function reverseGlEntry(
+  ctx: EnterpriseModuleActionContext,
+  baseEntryNumber: string,
+  opts: { reason: string; sourceModule: string; sourceRef: string },
+): Promise<boolean> {
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return false; // GL not wired — nothing to reverse
+  await journalModule.store.load();
+  const revNumber = `${baseEntryNumber}-REV`;
+  const entries = journalModule.store.list().filter((r) => r.status !== 'deleted');
+  const original = entries.find((r) => str(r.fields.entryNumber) === baseEntryNumber);
+  if (!original) return false; // nothing was posted for this reference
+  if (entries.some((r) => str(r.fields.entryNumber) === revNumber)) return false; // already reversed
+  let originalLines: GlJournalLine[];
+  try {
+    originalLines = JSON.parse(str(original.fields.lines) || '[]') as GlJournalLine[];
+  } catch {
+    return false;
+  }
+  const reversed: GlJournalLine[] = originalLines.map((l) => ({
+    account: l.account,
+    debit: l.credit,
+    credit: l.debit,
+    memo: `Reversal — ${l.memo ?? ''}`.trim(),
+  }));
+  if (reversed.length === 0) return false;
+  await applyGlDerivedEntries(
+    [{ entryNumber: revNumber, memo: opts.reason, lines: reversed, sourceModule: opts.sourceModule, sourceRef: opts.sourceRef }],
+    ctx,
+  );
+  return true;
 }
 
 /** The journal's current entries — numbers plus parsed lines (loaded). */
@@ -346,13 +417,30 @@ export async function handleVendorBillChangeForGl(
   const fxSubtotal = rate === 1 ? bill.amount : Math.round(bill.amount * rate);
   const fxTax = rate === 1 ? bill.taxAmount : Math.round(bill.taxAmount * rate);
   const fxTotal = rate === 1 ? bill.total : fxSubtotal + fxTax;
+  const live = bill.status === 'approved' || bill.status === 'paid';
+  // ERP Session 11: a PO-sourced (goods) bill relieves GRNI + PPV instead of
+  // booking Operating Expense. This changes the DERIVED LINES only — the
+  // idempotent base/adjust/reverse machinery, the journal seam and CST are all
+  // downstream and unchanged (a cancellation reverses whatever lines were booked).
+  // A service bill (no source PO) keeps the Operating Expense derivation. An
+  // approved goods bill whose three-way match is NOT satisfied posts nothing
+  // (fail closed) — the approve action already gates it, so this is a defensive
+  // backstop that never books an unmatched goods payable.
+  let expected = glBillExpectedLines(fxSubtotal, fxTax, fxTotal);
+  if (live) {
+    const goods = await evaluateGoodsBill(ctx, event.record);
+    if (goods.isGoods) {
+      if (!(goods.postable && goods.reliefLines)) return;
+      expected = goods.reliefLines;
+    }
+  }
   // Since W1.11, SETTLEMENT is booked by Vendor Payments (JE-VPAY-*, one entry
   // per payment, partial-capable) — the bill carries only the approval leg.
   const decisions = leg({
-    live: bill.status === 'approved' || bill.status === 'paid',
+    live,
     base: glBillEntryNumber(number),
     memo: `Bill ${number} approved`,
-    expected: glBillExpectedLines(fxSubtotal, fxTax, fxTotal),
+    expected,
   });
   await applyGlDerivedEntries(decisions, ctx);
 }
@@ -483,6 +571,47 @@ export async function handlePaymentChangeForGl(
       lines: fxLines,
     }),
     expectedLines: fxLines,
+    journal,
+    sourceModule: event.record.moduleId,
+    sourceRef: event.record.id,
+  });
+  await applyGlDerivedEntries(decisions, ctx);
+}
+
+/**
+ * ERP Session 61 — GOVERNED PAYMENT REVERSAL GL. A payment-reversal record books
+ * the COMPENSATING accounting for an already-cleared customer or vendor payment
+ * WITHOUT mutating the original payment. It reuses the EXACT `decideLifecycle`
+ * revocation path that already fires when a payment is voided/soft-deleted: one
+ * cumulative `${base}-REV` entry that mirrors EVERYTHING booked under the
+ * original payment's base entry (cash, AR/AP, and any realized-FX line), at the
+ * original booked amounts — an exact unwind, no invented accounting, no new
+ * balancing accounts. Idempotent by construction: the `-REV` guard books once
+ * (the base must exist and not already be reversed) and never again on replay.
+ * The original journal entry is never deleted or overwritten.
+ */
+export async function handlePaymentReversalForGl(
+  event: { record: EnterpriseEntity },
+  ctx: EnterpriseModuleActionContext,
+): Promise<void> {
+  const journalModule = ctx.moduleFor(JOURNAL_ENTRIES_MODULE_ID);
+  if (!journalModule) return; // GL not wired — no-op
+  if (event.record.status === 'deleted') return; // a removed reversal record posts nothing
+  const f = event.record.fields;
+  const kind = str(f.originalKind);
+  const number = str(f.originalPaymentNumber).trim();
+  if (!number || (kind !== 'customer' && kind !== 'vendor')) return;
+  const base = kind === 'vendor' ? glVendorPaymentEntryNumber(number) : glPaymentEntryNumber(number);
+  const label = kind === 'vendor' ? 'Vendor payment' : 'Payment';
+  const journal = await existingJournal(ctx);
+  const decisions = decideLifecycle({
+    live: false,
+    revoked: true,
+    baseEntryNumber: base,
+    memoSubject: `${label} ${number}`,
+    revokedReason: `${label} ${number} reversed`,
+    baseDecisions: [],
+    expectedLines: [],
     journal,
     sourceModule: event.record.moduleId,
     sourceRef: event.record.id,

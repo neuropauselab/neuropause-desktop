@@ -15,6 +15,7 @@ import type {
 import {
   PURCHASE_ORDERS_MODULE_ID,
   PURCHASE_ORDER_KIND,
+  SUPPLIERS_MODULE_ID,
   calculatePurchaseTotal,
   evaluateBudgetControl,
   evaluateContractGate,
@@ -28,6 +29,7 @@ import {
   type EnterpriseModule,
 } from '../../framework';
 import { RECEIVE_GOODS_ACTION, convertPurchaseOrderToReceipt } from './conversion';
+import { parsePurchaseOrderLines, purchaseOrderSubtotal } from '../../../erp/procurementLines';
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
 
@@ -42,6 +44,7 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   titleField: 'poNumber',
   permissions: { read: 'procurement:read', write: 'procurement:manage' },
   actions: [
+    { key: 'assignSupplier', label: 'Assign Supplier', icon: 'store' },
     { key: 'approve', label: 'Approve', icon: 'check' },
     { key: 'send', label: 'Send', icon: 'upload' },
     { key: 'cancel', label: 'Cancel', icon: 'close' },
@@ -51,9 +54,18 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     { key: 'poNumber', label: 'PO Number', type: 'text', required: true, placeholder: 'PO-0001' },
     { key: 'supplier', label: 'Supplier', type: 'text', placeholder: 'Acme Supplies' },
     { key: 'product', label: 'Product (SKU)', type: 'text', placeholder: 'SKU-0001' },
+    // ERP Session 18 — the supplier master record id this PO sources from. The
+    // free-text `supplier` above is set by the governed `assignSupplier` action,
+    // which validates this ref against the tenant's Supplier master.
+    { key: 'supplierRef', label: 'Supplier (ref)', type: 'text', column: false, placeholder: 'Supplier master id' },
     { key: 'warehouse', label: 'Warehouse', type: 'text', column: false, placeholder: 'WH-01' },
     { key: 'quantity', label: 'Quantity', type: 'number', min: 0 },
     { key: 'unitCost', label: 'Unit Cost', type: 'number', min: 0, format: 'currency', column: false },
+    // ERP Session 16 — multi-line PO. When present, this JSON array of
+    // {sku, quantity, unitPrice} is the authoritative order content and the
+    // subtotal is derived from it. Absent → the single-product header above
+    // (fully backward compatible). Reuses the vendor-bill `lines` convention.
+    { key: 'lines', label: 'Lines (JSON)', type: 'textarea', column: false, placeholder: '[{"sku":"SKU-A","quantity":10,"unitPrice":5}]' },
     { key: 'subtotal', label: 'Subtotal', type: 'number', min: 0, format: 'currency' },
     { key: 'discount', label: 'Discount', type: 'number', min: 0, format: 'currency', column: false },
     { key: 'tax', label: 'Tax', type: 'number', min: 0, format: 'currency', column: false },
@@ -95,6 +107,9 @@ export const PURCHASE_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
     },
     { key: 'approvedBy', label: 'Approved By', type: 'text', column: false },
     { key: 'sourceRequest', label: 'Source Request', type: 'text', column: false, readOnly: true },
+    // ERP Session 19 — the RFQ this PO was awarded from (RFQ → Quote → PO
+    // traceability). Set by the RFQ award; absent for a directly-created PO.
+    { key: 'sourceRfq', label: 'Source RFQ', type: 'text', column: false, readOnly: true },
     { key: 'convertedReceipt', label: 'Goods Receipt', type: 'text', column: false, readOnly: true },
   ],
 };
@@ -136,7 +151,66 @@ export function createPurchaseOrderModule(
     hooks: {
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(PURCHASE_ORDER_DESCRIPTOR, input);
-        if (result.ok) result.values.total = calculatePurchaseTotal(projectValues(result.values));
+        // ERP Session 50 — the PO status-machine census closed two measured edit-door holes.
+        // Entering `approved`/`sent` is ALREADY gated by the document-adapter approval engine
+        // (`canEnterStatus`, spend policy) at the update door, so it is deliberately NOT
+        // duplicated here. What that gate does not cover:
+        //   1. `received` — stamped ONLY by the Receive Goods conversion (raw store write,
+        //      hooks never re-enter). Hand-setting it fakes a receipt-linked state; un-setting
+        //      it misstates a physically received order and re-arms `cancel`, which the action
+        //      itself refuses for received orders.
+        //   2. approved/sent → draft — a silent approval reversal (the S49 PR precedent).
+        //      The defined correction path is Cancel + recreate; cancelled → draft stays FREE
+        //      as the recovery path (no un-cancel action exists — same reasoning as the PR
+        //      resubmit lane), and draft → cancelled stays free (identical semantics to the
+        //      ungated `cancel` action). A status-less stored row (importer shape) is exempt.
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = str(prior?.fields.status ?? '');
+          const next = str(result.values.status);
+          if (prior && priorStatus !== '' && next !== priorStatus) {
+            if (priorStatus === 'received' || next === 'received') {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'Goods are received through the Receive Goods action — a receipt cannot be hand-set or un-set by editing the order.' },
+              };
+            }
+            if ((priorStatus === 'approved' || priorStatus === 'sent') && next === 'draft') {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'An approved purchase order cannot be silently reverted to draft — use the Cancel action and create a new order.' },
+              };
+            }
+          }
+          // `convertedReceipt` is the Receive-Goods IDEMPOTENCY TOKEN (conversion.ts refuses a
+          // second receipt only through it). It is readOnly in the RENDERER only — the S45
+          // formToInput omits it, and the update door merges the stored value, so a normal edit
+          // never reaches this guard. A crafted payload that CLEARS it on a received order
+          // re-arms Receive Goods (a second receipt → post → duplicated movements); one that
+          // SETS it fakes a receipt linkage and blocks the legitimate receive. Both refused.
+          // The conversion itself writes via the raw store and never re-enters validate.
+          if (prior) {
+            const priorReceipt = str(prior.fields.convertedReceipt ?? '');
+            const nextReceipt = str(result.values.convertedReceipt ?? '');
+            if (nextReceipt !== priorReceipt) {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { convertedReceipt: 'The goods-receipt link is stamped by the Receive Goods action and cannot be edited.' },
+              };
+            }
+          }
+        }
+        if (result.ok) {
+          // ERP Session 16 — a multi-line PO derives its subtotal from its lines
+          // (Σ ordered qty × unit price), so the deterministic total below is the
+          // sum of the line amounts. A single-product PO (no lines) is unchanged.
+          const poLines = parsePurchaseOrderLines(result.values.lines);
+          if (poLines.length > 0) result.values.subtotal = purchaseOrderSubtotal(poLines);
+          result.values.total = calculatePurchaseTotal(projectValues(result.values));
+        }
         return result;
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
@@ -157,6 +231,30 @@ export function createPurchaseOrderModule(
       },
       runAction: async (action, record, ctx) => {
         if (action === RECEIVE_GOODS_ACTION) return convertPurchaseOrderToReceipt(record, ctx);
+        // ERP Session 18 — GOVERNED PO-stage supplier assignment. Supplier is
+        // assigned at the PO stage (Session 17 established the PR carries no
+        // supplier-selection policy). The `supplierRef` is validated against the
+        // tenant-scoped Supplier master: a foreign supplier is invisible (denied),
+        // and a suspended/inactive supplier cannot be assigned. No sourcing /
+        // ranking / RFQ policy is invented.
+        if (action === 'assignSupplier') {
+          const supplierRef = str(record.fields.supplierRef).trim();
+          if (!supplierRef) return { ok: false, message: 'Set a supplier reference before assigning.' };
+          const suppliers = ctx.moduleFor(SUPPLIERS_MODULE_ID);
+          if (!suppliers) return { ok: false, error: 'Supplier master is unavailable.' };
+          await suppliers.store.load();
+          const supplier = suppliers.store.get(supplierRef); // tenant-scoped — a foreign supplier is invisible
+          if (!supplier || supplier.status === 'deleted') return { ok: false, message: 'Supplier not found in this workspace.' };
+          const sStatus = str(supplier.fields.status);
+          if (sStatus === 'suspended' || sStatus === 'inactive') {
+            return { ok: false, message: `Cannot assign a ${sStatus} supplier.` };
+          }
+          const bound = store.update(record.id, { fields: { supplier: str(supplier.fields.name) }, actor: ctx.actor(), now: ctx.now() });
+          if (!bound) return { ok: false, error: 'Purchase order not found.' };
+          const selfMod = ctx.moduleFor(PURCHASE_ORDERS_MODULE_ID);
+          if (selfMod) ctx.emit(selfMod, 'updated', bound);
+          return { ok: true, message: `Supplier ${str(supplier.fields.name)} assigned to ${str(record.fields.poNumber)}.` };
+        }
         const target = poTransition(action, str(record.fields.status));
         if (!target) return { ok: false, message: `Cannot ${action} a purchase order that is ${str(record.fields.status)}.` };
         // FW-5 (ADDITIVE): approval consults the named Finance budget. No

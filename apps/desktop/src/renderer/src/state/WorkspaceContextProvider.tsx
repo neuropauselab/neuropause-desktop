@@ -195,6 +195,16 @@ export function WorkspaceScopedShellProvider({ children }: { children: ReactNode
   );
 }
 
+/**
+ * Keyed on the local VIEW id only, deliberately.
+ *
+ * A TENANT switch must NOT remount the whole shell: that resets navigation and
+ * would drop the user out of the section they were reading, and its correctness
+ * would rest on snapshot-persistence timing. Tenant freshness is handled one
+ * level down, where the view itself is remounted so it refetches while the
+ * sidebar, active section and shell state survive — see
+ * `shell/useTenantSwitchEpoch.ts` and its use in `AppShell`.
+ */
 function ScopedShell({ children }: { children: ReactNode }): JSX.Element {
   const { activeId, activeSnapshot, persistSnapshot } = useWorkspaceContexts();
   return (

@@ -33,6 +33,8 @@ export interface AiEngineOptions {
   usage?: UsageTracker;
   /** Optional sink for diagnostics; never receives secrets or prompt bodies. */
   log?: (msg: string, meta?: Record<string, unknown>) => void;
+  /** Rate / cost budget; a default process-wide budget is used when absent. */
+  budget?: AiBudget;
   now?: () => string;
   id?: () => string;
   /**
@@ -45,6 +47,42 @@ export interface AiEngineOptions {
 
 const DEFAULT_MAX_OUTPUT = 1024;
 
+/**
+ * NP-GLOBAL-PUBLIC-LAUNCH-001 §28 — AI COST / RATE BUDGET. No run may start when
+ * the per-process sliding window (runs per minute) or the daily output-token
+ * budget is exhausted; the caller receives the deterministic fallback with the
+ * reason, never a silent model call. Bounds are process-wide (one install), which
+ * is the unit that pays. Tunable via env; tests inject a clock.
+ */
+export interface AiBudgetOptions { runsPerMinute?: number; outputTokensPerDay?: number; now?: () => number }
+export class AiBudget {
+  private readonly stamps: number[] = [];
+  private dayStart = 0;
+  private dayTokens = 0;
+  private readonly rpm: number;
+  private readonly tokensPerDay: number;
+  private readonly now: () => number;
+  constructor(opts: AiBudgetOptions = {}) {
+    this.rpm = opts.runsPerMinute ?? Number(process.env.NEUROPAUSE_AI_RUNS_PER_MINUTE ?? 30);
+    this.tokensPerDay = opts.outputTokensPerDay ?? Number(process.env.NEUROPAUSE_AI_OUTPUT_TOKENS_PER_DAY ?? 500_000);
+    this.now = opts.now ?? (() => Date.now());
+  }
+  /** Returns null when a run may start, else the human-readable refusal. */
+  admit(): string | null {
+    const t = this.now();
+    while (this.stamps.length && t - this.stamps[0] >= 60_000) this.stamps.shift();
+    if (t - this.dayStart >= 86_400_000) { this.dayStart = t; this.dayTokens = 0; }
+    if (this.stamps.length >= this.rpm) return `AI rate limit reached (${this.rpm} runs per minute on this device). Try again shortly.`;
+    if (this.dayTokens >= this.tokensPerDay) return `Daily AI budget reached (${this.tokensPerDay} output tokens on this device). Resets in ${Math.ceil((86_400_000 - (t - this.dayStart)) / 3_600_000)} h.`;
+    this.stamps.push(t);
+    return null;
+  }
+  record(outputTokens: number): void { this.dayTokens += Math.max(0, outputTokens | 0); }
+  snapshot(): { runsInWindow: number; outputTokensToday: number; runsPerMinute: number; outputTokensPerDay: number } {
+    return { runsInWindow: this.stamps.length, outputTokensToday: this.dayTokens, runsPerMinute: this.rpm, outputTokensPerDay: this.tokensPerDay };
+  }
+}
+
 export class AiEngine {
   private router: ModelRouter;
   private readonly prompts: PromptManager;
@@ -54,8 +92,10 @@ export class AiEngine {
   private readonly now: () => string;
   private readonly newId: () => string;
   private readonly recordRoute: (location: ProcessingLocation) => void;
+  readonly budget: AiBudget;
 
   constructor(opts: AiEngineOptions) {
+    this.budget = opts.budget ?? new AiBudget();
     this.router = opts.router;
     this.prompts = opts.prompts ?? new PromptManager();
     this.audit = opts.audit ?? new AiAuditLog();
@@ -104,6 +144,14 @@ export class AiEngine {
       return resp;
     }
 
+    const refusal = this.budget.admit();
+    if (refusal) {
+      const resp = this.fallback(req, rendered.version, contextSources, contextEvidence, started, refusal);
+      this.writeAudit(resp, 'fallback', undefined, req.correlationId);
+      this.log('ai budget refused a run', { reason: refusal });
+      return resp;
+    }
+
     const messages: ModelMessage[] = [{ role: 'user', content: rendered.user }];
     try {
       const result = await client.complete({
@@ -112,6 +160,7 @@ export class AiEngine {
         messages,
         maxOutputTokens: req.maxOutputTokens ?? DEFAULT_MAX_OUTPUT,
       });
+      this.budget.record(result.outputTokens);
       const parsed = parseModelText(result.text);
       const costUsd = computeCostUsd(result.model, result.inputTokens, result.outputTokens);
       // Routing metadata comes FROM THE EXECUTION when the client stamped one
@@ -247,7 +296,7 @@ export class AiEngine {
  * fallback only serves the pre-reconfigure boot router.
  */
 function locationFromProvider(provider: string): ProcessingLocation | null {
-  if (provider === 'anthropic') return 'external';
+  if (provider === 'anthropic' || provider === 'openai') return 'external';
   return null;
 }
 

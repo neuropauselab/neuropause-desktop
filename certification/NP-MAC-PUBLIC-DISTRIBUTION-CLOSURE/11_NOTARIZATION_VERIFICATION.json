@@ -1,0 +1,31 @@
+{
+  "ARTIFACT": "11_NOTARIZATION_VERIFICATION",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "artifact_sha256": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+  "submission_id": null,
+  "notarization_status": "NOT_NOTARIZED",
+  "staple_status": "NOT_STAPLED",
+  "gatekeeper_status": "/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app: rejected\nsource=Unnotarized Developer ID",
+  "status_marker": {
+    "state": "skipped",
+    "notarized": false,
+    "version": "1.0.0-rc.30",
+    "reason": "one or more Apple credentials are absent",
+    "at": "2026-09-13T03:56:36.641Z"
+  },
+  "result": {
+    "status": "FAIL",
+    "checks": 4
+  },
+  "classification": "MEASURED",
+  "blocker": "APPLE_ID/app-specific password/team id absent locally; CI signing step failed at rc.29 (runner pinned to macos-15 in this branch, unverified)"
+}

@@ -1,0 +1,55 @@
+--- a/apps/desktop/src/main/enterprise/index.ts
++++ b/apps/desktop/src/main/enterprise/index.ts
+@@ -751,7 +751,51 @@
+      */
+     tenantRefusal: () => {
+       const resolved = tenantContext.resolveFull();
+-      return resolved.ok ? null : resolved.refusal;
++      if (resolved.ok) return null;
++      /**
++       * P13C ROUND 28 — W-7. WHY THE MEMBERSHIP MATCH FAILED, WITHOUT THE ADDRESSES.
++       *
++       * `not_a_member` fired on an install whose signed-in account IS the
++       * claimed owner, which the resolver's own logic says is impossible. The
++       * inputs to that comparison were invisible: the renderer shows the email
++       * IT cached at sign-in, the resolver reads `authService.getStatus()` in
++       * the MAIN process, and nothing ever printed either one.
++       *
++       * Logged as PREDICATES, never as addresses. `sessionMatchesOwner` is the
++       * entire question — if it is false while the UI shows the owner's own
++       * address, the two sessions have diverged and this is an auth defect, not
++       * a tenancy one. Domains are kept because a mismatch between accounts at
++       * the same domain and at different domains are different bugs; local
++       * parts are reduced to a length so no address is reconstructable from a
++       * support bundle.
++       */
++      if (resolved.refusal.reason === 'not_a_member') {
++        const st = authService.getStatus();
++        const sessionEmail =
++          st.state === 'authenticated' ? (st.session.user.email ?? null) : null;
++        const owner = orgStore.user(OWNER_USER_ID);
++        const wsId = workspaceStore.activeWorkspaceIdOrNull();
++        const ws = wsId === null ? null : workspaceStore.get(wsId);
++        const orgId = ws?.organizationId ?? null;
++        const members = orgId === null ? [] : orgStore.usersFor(orgId);
++        const shape = (e: string | null): string | null =>
++          e === null ? null : `${e.trim().toLowerCase().split('@')[0]?.length ?? 0}@${e.trim().toLowerCase().split('@')[1] ?? ''}`;
++        const norm = (e: string | null): string | null => (e === null ? null : e.trim().toLowerCase());
++        log.warn('Tenant refused: not_a_member — comparison inputs', {
++          authState: st.state,
++          sessionEmailShape: shape(sessionEmail),
++          ownerEmailShape: shape(owner?.email ?? null),
++          sessionMatchesOwner:
++            sessionEmail !== null && norm(sessionEmail) === norm(owner?.email ?? null),
++          ownerExists: owner !== null,
++          ownerOrgMatches: owner !== null && orgId !== null && owner.orgId === orgId,
++          activeWorkspaceId: wsId,
++          workspaceOrgId: orgId,
++          memberCount: members.length,
++          humanMembersWithEmail: members.filter((m) => m.kind === 'human' && m.email !== null).length,
++        });
++      }
++      return resolved.refusal;
+     },
+     activeOrgId: authorizationOrgId,
+     usersFor: (orgId) => orgStore.usersFor(orgId),

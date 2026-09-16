@@ -95,3 +95,57 @@ describe('CSS custom properties referenced by components', () => {
     }
   });
 });
+
+/* ── P13C ROUND 36 — GATE 12: token TYPES, not just token existence ───────── */
+
+describe('color-typed tokens (round 36)', () => {
+  /**
+   * The class of bug this pins: `--accent` held bare CHANNELS, valid only
+   * inside `rgb(… / α)` — but 30+ call sites consumed it directly as a color
+   * (`bg-[color:var(--accent,…)]`, `border-bottom:2px solid var(--accent)`,
+   * SVG strokes). Because the property WAS defined, fallbacks never fired and
+   * the declarations resolved to nothing: a transparent primary CTA,
+   * invisible tab underlines, vanished chart bars. The existence check above
+   * cannot see a TYPE mismatch, which is why all those sites passed it.
+   */
+  const css = readFileSync(INDEX_CSS, 'utf8');
+
+  it('--accent, --accent-hover and --accent-fg are wrapped COLORS, never bare channels', () => {
+    for (const name of ['--accent', '--accent-hover', '--accent-fg']) {
+      const defs = [...css.matchAll(new RegExp(`${name}:\\s*([^;]+);`, 'g'))].map((m) => m[1].trim());
+      expect(defs.length, `${name} must be defined`).toBeGreaterThan(0);
+      for (const value of defs) {
+        expect(value, `${name} must be a color (rgb-wrapped), got "${value}"`).toMatch(/^rgb\(/);
+      }
+    }
+  });
+
+  it('the channel twins exist for alpha consumers (Tailwind channel(), rgb(… / α))', () => {
+    for (const name of ['--accent-ch', '--accent-hover-ch', '--accent-fg-ch']) {
+      const defs = [...css.matchAll(new RegExp(`${name}:\\s*([^;]+);`, 'g'))].map((m) => m[1].trim());
+      expect(defs.length, `${name} must be defined`).toBeGreaterThan(0);
+      for (const value of defs) {
+        expect(value, `${name} must be bare channels, got "${value}"`).toMatch(/^\d+\s+\d+\s+\d+$/);
+      }
+    }
+  });
+
+  it('no source consumes the channel form as if it were the color (double-wrap guard)', () => {
+    const offenders = referencedFiles(RENDERER_SRC)
+      .flatMap((file) => {
+        const text = readFileSync(file, 'utf8');
+        return text.includes('rgb(var(--accent)') ? [file] : [];
+      });
+    expect(offenders, 'rgb(var(--accent)) double-wraps the now-color token — use rgb(var(--accent-ch) / α) or plain var(--accent)').toEqual([]);
+  });
+});
+
+function referencedFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) out.push(...referencedFiles(p));
+    else if (/\.(tsx?|css)$/.test(name) && !p.endsWith('index.css') && !/\.test\.tsx?$/.test(name)) out.push(p);
+  }
+  return out;
+}

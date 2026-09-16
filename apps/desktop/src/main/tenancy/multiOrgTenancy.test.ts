@@ -73,12 +73,16 @@ class World {
           name: input.name,
           description: input.description,
           permissions: input.permissions,
-          builtIn: false,
+          builtIn: input.builtIn ?? false,
           createdAt: NOW,
           updatedAt: NOW,
         };
         this.roles.push(role);
         return role;
+      },
+      recordOwner: (orgId, userId) => {
+        const org = this.organizations.find((o) => o.id === orgId);
+        if (org) org.ownerUserId = userId;
       },
       createUser: (input) => {
         const user: OrgUser = {
@@ -231,6 +235,58 @@ describe('Phase 18 — creating an organization provisions a USABLE tenant', () 
     ).toThrow(/needs a name/);
   });
 
+  /**
+   * GATE 23 — provisioning writes across two stores with no transaction. If a
+   * later step (here the workspace) fails, the org, roles and owner are already
+   * committed, and without a rollback that is a tenant nobody can enter (the
+   * resolver keys the tenant off the workspace) or clean up. The provision now
+   * undoes itself.
+   */
+  it('rolls the org back when a later step fails — no orphan tenant is left behind', () => {
+    const w = new World();
+    const deps: ProvisionDeps = {
+      ...w.provisionDeps(),
+      createWorkspace: () => {
+        throw new Error('disk full');
+      },
+      rollback: (orgId) => {
+        w.organizations = w.organizations.filter((o) => o.id !== orgId);
+        w.roles = w.roles.filter((r) => r.orgId !== orgId);
+        w.users = w.users.filter((u) => u.orgId !== orgId);
+      },
+    };
+    expect(() => provisionOrganization(deps, { name: 'Doomed', ownerEmail: ALICE })).toThrow(/disk full/);
+    // The original error propagates AND nothing is left behind.
+    expect(w.organizations).toHaveLength(0);
+    expect(w.roles).toHaveLength(0);
+    expect(w.users).toHaveLength(0);
+    expect(w.workspaces).toHaveLength(0);
+  });
+
+  it('a successful provision never calls rollback', () => {
+    const w = new World();
+    let rolledBack = 0;
+    const deps: ProvisionDeps = { ...w.provisionDeps(), rollback: () => (rolledBack += 1) };
+    provisionOrganization(deps, { name: 'Fine', ownerEmail: ALICE });
+    expect(rolledBack).toBe(0);
+    expect(w.organizations).toHaveLength(1);
+    expect(w.workspaces).toHaveLength(1);
+  });
+
+  it('a rollback that itself throws does not mask the original failure', () => {
+    const w = new World();
+    const deps: ProvisionDeps = {
+      ...w.provisionDeps(),
+      createWorkspace: () => {
+        throw new Error('the real failure');
+      },
+      rollback: () => {
+        throw new Error('cleanup also failed');
+      },
+    };
+    expect(() => provisionOrganization(deps, { name: 'X', ownerEmail: ALICE })).toThrow(/the real failure/);
+  });
+
   it('derives a readable owner name when the session has none', () => {
     expect(ownerNameFromEmail('alice@a.example')).toBe('alice');
   });
@@ -305,6 +361,67 @@ describe('Phase 22/25 — direct object references are refused', () => {
     expect(firstEnterableWorkspace(w.directory(BOB, b.workspace.id), b.organization.id)?.id).toBe(
       b.workspace.id,
     );
+  });
+});
+
+/* ── Round 52: O-11 corrupt-email fail-closed on the switch surfaces ───── */
+
+describe('Round 52 — a corrupt member row (email erased on disk) is skipped, never thrown on', () => {
+  /**
+   * O-11 (round 32) extended `typeof m.email === 'string'` from the resolver to
+   * `canSwitchTo` and `memberIn`, because a row whose email key was erased on
+   * disk reloads as `undefined` and the earlier `!== null` guard still called
+   * `.trim()` on it — throwing out of the org/workspace switchers instead of
+   * refusing. The membership branch was pinned; these pin the corrupt branch
+   * itself, on both switch surfaces, with the two non-string shapes.
+   */
+
+  it('canSwitchTo: a corrupt sibling row is skipped, and the caller’s valid row still switches in', () => {
+    const { w, a } = twoTenants();
+    // A corrupt row (undefined email) AND a wrong-typed one (number) in Alice's
+    // own tenant. Neither may cause a throw; Alice's real owner row is intact.
+    w.users.push({ ...a.owner, id: 'corrupt-undef', email: undefined as unknown as string });
+    w.users.push({ ...a.owner, id: 'corrupt-number', email: 42 as unknown as string });
+    const resolver = w.resolver(ALICE, a.workspace.id);
+    expect(() => resolver.canSwitchTo(a.workspace)).not.toThrow();
+    expect(resolver.canSwitchTo(a.workspace).ok).toBe(true);
+  });
+
+  it('canSwitchTo: when the caller’s OWN row is the corrupt one, the switch fails CLOSED (not_a_member), never throws or grants', () => {
+    const { w, a } = twoTenants();
+    // The disk-corruption shape: the signed-in account's row lost its email.
+    a.owner.email = undefined as unknown as string;
+    const resolver = w.resolver(ALICE, a.workspace.id);
+    let decision!: ReturnType<typeof resolver.canSwitchTo>;
+    expect(() => {
+      decision = resolver.canSwitchTo(a.workspace);
+    }).not.toThrow();
+    expect(decision.ok).toBe(false);
+    // ownerMember() is null in this world, so first-claim cannot rescue it —
+    // it lands on not_a_member, the fail-closed refusal, not a silent grant.
+    if (!decision.ok) expect(decision.refusal.reason).toBe('not_a_member');
+  });
+
+  it('memberIn: a corrupt sibling row is skipped, and the caller’s valid row still resolves', () => {
+    const { w, a } = twoTenants();
+    w.users.push({ ...a.owner, id: 'corrupt-undef', email: undefined as unknown as string });
+    const dir = w.directory(ALICE, a.workspace.id);
+    let member!: ReturnType<typeof memberIn>;
+    expect(() => {
+      member = memberIn(dir, a.organization.id);
+    }).not.toThrow();
+    expect(member?.id).toBe(a.owner.id);
+  });
+
+  it('memberIn: when the caller’s own row is corrupt, it returns null (fail closed), never throws', () => {
+    const { w, a } = twoTenants();
+    a.owner.email = undefined as unknown as string;
+    const dir = w.directory(ALICE, a.workspace.id);
+    let member!: ReturnType<typeof memberIn>;
+    expect(() => {
+      member = memberIn(dir, a.organization.id);
+    }).not.toThrow();
+    expect(member).toBeNull();
   });
 });
 

@@ -14,12 +14,59 @@ import { complianceMeta, policyEffectMeta, relativeTime, scoreTone } from './lib
 import type { FedPolicyEffect, FedPolicyScope } from '@neuropause/shared';
 
 export function GovernancePanel(): JSX.Element {
-  const { policies, govSummary, approvals, audit, compliance, addPolicy, setPolicyEnabled, resolveApproval } = useFederation();
+  const { policies, govSummary, approvals, audit, compliance, addPolicy, setPolicyEnabled, resolveApproval, migrationRequired, quarantinedPolicies, claimPolicy, discardPolicy } = useFederation();
   const [addOpen, setAddOpen] = useState(false);
+  const [migMsg, setMigMsg] = useState<string | null>(null);
+  const [migBusy, setMigBusy] = useState<string | null>(null);
   const pendingApprovals = approvals.filter((a) => a.status === 'pending');
+
+  // S144 — resolve one quarantined legacy policy; the store returns the outcome so the message is truthful.
+  const onClaim = async (id: string, name: string): Promise<void> => {
+    setMigBusy(id); setMigMsg(null);
+    try {
+      const ok = await claimPolicy(id);
+      setMigMsg(ok ? `Claimed "${name}" — it now governs only your organization.` : `Could not claim "${name}" (already resolved or no active organization).`);
+    } finally { setMigBusy(null); }
+  };
+  const onDiscard = async (id: string, name: string): Promise<void> => {
+    setMigBusy(id); setMigMsg(null);
+    try {
+      const ok = await discardPolicy(id);
+      setMigMsg(ok ? `Discarded "${name}".` : `Could not discard "${name}" (already resolved or no active organization).`);
+    } finally { setMigBusy(null); }
+  };
 
   return (
     <div>
+      {/* S144 — the P13C legacy-policy migration/quarantine surface (was governed + tested but renderer-dark).
+          Governance evaluation fails closed while any legacy policy is unattributed; this is where a
+          federation:manage admin resolves them. Shown only when there is something to resolve. */}
+      {(migrationRequired > 0 || quarantinedPolicies.length > 0) && (
+        <OpsPanel
+          title="Legacy policy migration"
+          subtitle={`${migrationRequired} unattributed legacy ${migrationRequired === 1 ? 'policy is' : 'policies are'} quarantined — governance fails closed until each is claimed or discarded`}
+        >
+          {migMsg && <div className="mb-3 rounded-md border border-[var(--hairline)] px-3 py-2 text-2xs text-muted">{migMsg}</div>}
+          {quarantinedPolicies.length === 0 ? (
+            <EmptyState icon="shield" title={`${migrationRequired} quarantined`} description="Their contents are visible only to a federation administrator; open this on an admin session to claim or discard them." compact />
+          ) : (
+            <div className="space-y-2">
+              {quarantinedPolicies.map((p) => (
+                <div key={p.id} className="surface-raised flex items-center justify-between gap-3 rounded-xl p-3 shadow-card">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2"><span className="font-medium text-ink">{p.name}</span><StatusBadge tone="orange" label="Quarantined" /></div>
+                    <div className="truncate text-2xs text-faint">{p.description} · <span className="font-mono">{p.action}</span></div>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button variant="secondary" size="sm" disabled={migBusy !== null} onClick={() => void onClaim(p.id, p.name)}>Claim</Button>
+                    <Button variant="ghost" size="sm" disabled={migBusy !== null} onClick={() => void onDiscard(p.id, p.name)}>Discard</Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </OpsPanel>
+      )}
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat icon="shield" label="Active policies" value={govSummary?.activePolicies ?? 0} tone="blue" hint={`${govSummary?.policies ?? policies.length} total`} />
         <Stat icon="checklist" label="Pending approvals" value={govSummary?.pendingApprovals ?? pendingApprovals.length} tone={pendingApprovals.length > 0 ? 'orange' : 'green'} />

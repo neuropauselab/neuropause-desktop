@@ -16,8 +16,20 @@ import type {
   Job,
   Recommendation,
   UnifiedEntity,
+  UnifiedQuery,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+
+/**
+ * The Work Hub "today" feed query. `limit` MUST stay within the unified:query contract cap (max 500) — a larger
+ * value (this was 2000) fails the main-process Zod schema and surfaces to the operator as
+ * "Invalid request for unified:query", which is what broke the Meetings tile. Kept as a named, validated constant
+ * so a regression test pins it against the real contract.
+ */
+export const HUB_FEED_QUERY: UnifiedQuery = {
+  kinds: ['calendar_event', 'event', 'task', 'message'],
+  limit: 500,
+};
 import type { SectionId } from '@renderer/shell/sections';
 import { setPendingAssistantQuery } from '@renderer/assistant/assistantHandoff';
 import {
@@ -85,9 +97,7 @@ export function HubHost({ onNavigate }: { onNavigate?: (id: SectionId) => void }
     setData(LOADING);
     const period = briefPeriodForHour(new Date().getHours());
     void settleTile(() =>
-      ipc.unified
-        .query({ kinds: ['calendar_event', 'event', 'task', 'message'], limit: 2000 })
-        .then((r) => r.items),
+      ipc.unified.query(HUB_FEED_QUERY).then((r) => r.items),
     ).then((t) => setData((d) => ({ ...d, entities: t })));
     void settleTile(() => ipc.intelligence.briefing(period)).then((t) =>
       setData((d) => ({ ...d, brief: t })),

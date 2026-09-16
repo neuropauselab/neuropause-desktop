@@ -1,0 +1,99 @@
+{
+  "ARTIFACT": "INDEX",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:51.847Z",
+  "branch_head": "6175f3633925b0e7088f85b877563b71d7a3bbc0",
+  "written": [
+    {
+      "file": "certification/public-launch-003/00_SNAPSHOT.json",
+      "sha256": "a5a8d5d0398cffbf87abab747cea6663e3738dae6bfdf7fd583793f9ca551c44"
+    },
+    {
+      "file": "certification/public-launch-003/01_RELEASE_BLOCKER_REGISTER.json",
+      "sha256": "990c9a8cd46633a3a27928845d9d6091428a26325af3556d6669db85ad9ce43f"
+    },
+    {
+      "file": "certification/public-launch-003/02_RELEASE_GATE_MATRIX.md",
+      "sha256": "a48fb9ddad38c5e622748b699db15a4ef8fea841b44de4d96a361a5efab26d16"
+    },
+    {
+      "file": "certification/public-launch-003/03_CLOSURE_PLAN.md",
+      "sha256": "114798f9d6886627825e489ce90b81c6bd47e209137e1f9cb38d37ed3396286c"
+    },
+    {
+      "file": "certification/public-launch-003/04_HUMAN_HANDOFF.md",
+      "sha256": "5516966e63466141e0d2905672ccbd65e46f1773b098d64226824832f95d595b"
+    },
+    {
+      "file": "certification/public-launch-003/05_OPERATOR_ACTION_QUEUE.json",
+      "sha256": "8c065830dfbca4e3702aa7b93917bbcb14a968fe3d4f16581d9a1ff1edc04883"
+    },
+    {
+      "file": "certification/public-launch-003/06_ARTIFACT_IDENTITY_REGISTER.json",
+      "sha256": "bb1bce116ed55a7e8f65d86c9845a96ff1d8b18b445614d998d8fc9094867bbc"
+    },
+    {
+      "file": "certification/public-launch-003/07_PROVENANCE_CHAIN.json",
+      "sha256": "8cb7f3ef9ad1eeb00eef7b58493521a05187b652087d28c5807d1c13ab29bbf8"
+    },
+    {
+      "file": "certification/public-launch-003/08_APPLE_DISTRIBUTION.json",
+      "sha256": "a68455afc5cb6b9ae24b5334e7554a1f90feb98116098e15c2012d85be0568cf"
+    },
+    {
+      "file": "certification/public-launch-003/09_WINDOWS_DISTRIBUTION.json",
+      "sha256": "500a57b32d28a312b3ceb4266419aab67908f748fb51f060c0bf242e40835319"
+    },
+    {
+      "file": "certification/public-launch-003/10_PUBLIC_INFRASTRUCTURE.json",
+      "sha256": "ced360fce92cdf3b9b33e20c23dd69592723ca46dbe187697625aaf6f8285469"
+    },
+    {
+      "file": "certification/public-launch-003/11_UPDATE_ROLLBACK.json",
+      "sha256": "6b9b69ad2584579c877a6bae79bf6e7c9a51a3c7f175c285b03ab3014262d3a8"
+    },
+    {
+      "file": "certification/public-launch-003/12_CLEAN_MACHINE.json",
+      "sha256": "7db61905b4e8a9266ca0f3747c3fe8ee9596bd7604031854a8dd822668502813"
+    },
+    {
+      "file": "certification/public-launch-003/13_AI_GATEWAY_SECURITY.json",
+      "sha256": "60602820ce5c699833f147675c3e3a209c84eb1f6d0b85976d0cf12cd582bfd9"
+    },
+    {
+      "file": "certification/public-launch-003/14_AI_TOOL_GOVERNANCE.json",
+      "sha256": "3d5e512a7e4ea1f00d5c55c1d9a495bbb1dea22e93374210e941b83edbe15f71"
+    },
+    {
+      "file": "certification/public-launch-003/15_DEPENDENCY_SECURITY.json",
+      "sha256": "96f7ba9eed6b6ef851780feb6070a26394f59970b416094b7b5cbd1f9715e542"
+    },
+    {
+      "file": "certification/public-launch-003/16_SUPPORT_PRIVACY.json",
+      "sha256": "e96afb1e96f0c50a8b13607a27d2c4441e73620d0a7f2e88cafd9b68e182e5d1"
+    },
+    {
+      "file": "certification/public-launch-003/17_REGULATORY_FACTS.json",
+      "sha256": "a9f38086ed83410ffe76554ee6e0be9662a4494bb41135139535079301de4066"
+    },
+    {
+      "file": "certification/public-launch-003/18_HUMAN_DECISION_STATUS.json",
+      "sha256": "1189608a8d7c226c7fbe2864e4d3a79cf8e70a9a33a25a5698a54791cd2bf2dc"
+    },
+    {
+      "file": "certification/public-launch-003/19_NEGATIVE_CONTROLS.json",
+      "sha256": "63da9a4a5711ae90f89f6168f05f366f1bb458674790d8d6ba97b3a002a3e1b3"
+    },
+    {
+      "file": "certification/public-launch-003/20_RECONCILIATION.json",
+      "sha256": "68c68486f428f39eb39b40d76846410929a2b59a09907dff280066a3232e2db6"
+    },
+    {
+      "file": "certification/public-launch-003/21_FINAL_STATE.md",
+      "sha256": "a5c19e30e5cfef9472b974fc357ee418659762a5998178ab2b7c9974d8b8f5aa"
+    }
+  ]
+}

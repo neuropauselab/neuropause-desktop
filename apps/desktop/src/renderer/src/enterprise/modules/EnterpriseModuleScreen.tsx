@@ -6,7 +6,7 @@
  * module exposes one — purely from `module.fields`. Finance, CRM, Sales, … all
  * reuse this exact screen with zero module-specific UI code.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type {
   ActionAssessment,
@@ -17,10 +17,28 @@ import type {
   EnterpriseRecordInput,
   EnterpriseRecordSummary,
 } from '@neuropause/shared';
-import { validateEnterpriseRecordInput } from '@neuropause/shared';
+import {
+  validateEnterpriseRecordInput,
+  CREDIT_NOTES_MODULE_ID,
+  DEBIT_NOTES_MODULE_ID,
+  FINANCE_MODULE_ID,
+  GOODS_RECEIPTS_MODULE_ID,
+  ORDERS_MODULE_ID,
+  PAYMENTS_MODULE_ID,
+  PURCHASE_REQUESTS_MODULE_ID,
+  QUOTES_MODULE_ID,
+  SHIPPING_MODULE_ID,
+  VENDOR_BILLS_MODULE_ID,
+  VENDOR_PAYMENTS_MODULE_ID,
+} from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { ReorderExecutionPanel } from './ReorderExecutionPanel';
+
+/** The governed record-command union — derived from the ONE ipc helper, never duplicated. */
+type GovernedRecordOp = Parameters<typeof ipc.platform.dispatchRecordCommand>[0];
 import { dialogVariants, overlayVariants } from '@renderer/lib/motion';
 import { cn } from '@renderer/lib/cn';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { Button } from '@renderer/components/ui/Button';
 import { Badge } from '@renderer/components/ui/controls';
 import { Toggle } from '@renderer/components/ui/controls';
@@ -33,6 +51,8 @@ import { Skeleton } from '@renderer/components/ui/Skeleton';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { DocumentPanel } from './DocumentPanel';
 import { RelatedRecordsPanel } from './RelatedRecordsPanel';
+import { LinesEditor, linesEditorFor } from './LinesEditor';
+import { ReferenceField, referenceFieldFor } from './ReferenceField';
 
 type BadgeTone = 'neutral' | 'accent' | 'blue' | 'green' | 'orange' | 'purple' | 'teal' | 'pink';
 const BADGE_TONES = new Set<BadgeTone>([
@@ -65,8 +85,15 @@ function toFormState(fields: EnterpriseFieldDef[], record?: EnterpriseEntity): F
 
 function formToInput(fields: EnterpriseFieldDef[], state: FormState): EnterpriseRecordInput {
   const values: Record<string, EnterpriseFieldValue> = {};
-  for (const f of fields)
+  // S45 — readOnly fields are NOT rendered, so their form-state value is a snapshot frozen at
+  // form-open. Sending that snapshot back is stale data: a lifecycle action (or payment
+  // reconciliation) landing while an edit modal is open would make the save carry — and the
+  // machine-owned-status guard rightly refuse — a value the user never touched. Omit them; the
+  // update door merges the CURRENT stored value and creates fill declared defaults.
+  for (const f of fields) {
+    if (f.readOnly) continue;
     values[f.key] = f.type === 'boolean' ? Boolean(state[f.key]) : (state[f.key] as string);
+  }
   return { fields: values };
 }
 
@@ -107,6 +134,14 @@ export function EnterpriseModuleScreen({
 }): JSX.Element {
   const [records, setRecords] = useState<EnterpriseEntity[]>([]);
   const [loading, setLoading] = useState(true);
+  /**
+   * A FAILED/denied record read is named, never shown as "No … yet". The empty
+   * state invites the user to create a first record; rendering it over a
+   * permission denial or a backend fault tells them their data is gone and asks
+   * them to recreate it. Distinct from `records.length === 0`, which is honest
+   * emptiness.
+   */
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState(initialQuery);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
@@ -127,6 +162,10 @@ export function EnterpriseModuleScreen({
       setRecords(
         await ipc.enterpriseModules.records(module.id, { search: query || undefined, limit: 1000 }),
       );
+      setLoadError(null);
+    } catch (err) {
+      // A denied or failed read is surfaced, not swallowed into emptiness.
+      setLoadError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
@@ -203,6 +242,21 @@ export function EnterpriseModuleScreen({
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
           <Skeleton className="h-10" />
+        </div>
+      ) : loadError !== null ? (
+        <div role="alert" className="rounded-2xl border border-danger/40 bg-danger/10 p-4 text-sm text-danger">
+          <div className="font-semibold">{module.plural} could not be loaded.</div>
+          <p className="mt-1 text-xs leading-relaxed">
+            {loadError} — you may lack read permission for this module. Nothing was created; retry when the
+            problem is resolved.
+          </p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            className="mt-3 rounded-lg border border-danger/40 px-3 py-1.5 text-xs font-semibold hover:bg-danger/10"
+          >
+            Retry
+          </button>
         </div>
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -334,6 +388,13 @@ function ModuleForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
+  // S43 — a STABLE idempotency key for a governed create, minted ONCE per form instance. A retry of
+  // the SAME create (a transport failure the user resubmits, a double-submit) reuses this key and
+  // REPLAYS to exactly one durable record; a fresh create (a new form mount) mints a new key.
+  // S45 — shared by the governed Sales Order AND customer receipt creates (a form instance only
+  // ever creates one record, so one key per mount stays one key per submission).
+  const governedKey = useRef<string>(`gov-create-${crypto.randomUUID()}`);
+
   const set = (key: string, value: string | boolean): void =>
     setState((s) => ({ ...s, [key]: value }));
 
@@ -346,15 +407,114 @@ function ModuleForm({
     }
     setSaving(true);
     try {
+      // S43 — a Sales Order CREATE is routed through the GOVERNED command spine, not the
+      // non-governed module CRUD door. This is the ONE ERP write the production UI drives through
+      // `platform:command.dispatch` → Application Boundary → command bus → `sales:manage` RBAC →
+      // durable intent/journal → Sales Order persistence → domain event → outbox → governance audit.
+      // Every OTHER module (and every Sales Order EDIT) keeps the existing CRUD path unchanged, so
+      // this governed create can NEVER double-write through `enterprise:module.create`.
+      if (mode === 'create' && module.id === ORDERS_MODULE_ID) {
+        const gov = await ipc.platform.createSalesOrder(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not create the sales order.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
+      // S45 — a CLEARED customer receipt books real Dr Cash / Cr AR, so it is created through the
+      // governed `ReceiveCustomerPayment` command (status force-set 'cleared' server-side, same
+      // journal/idempotency/event/outbox/audit spine as the S43 create). Pending/void records keep
+      // the CRUD path — they carry no GL effect at creation (recorded policy, not narrowed here).
+      if (
+        mode === 'create' &&
+        module.id === PAYMENTS_MODULE_ID &&
+        String((input.fields ?? {}).status ?? 'cleared') === 'cleared'
+      ) {
+        const gov = await ipc.platform.receiveCustomerPayment(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not record the receipt.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
+      // S49 — the buy-side governed creates, exactly the S43/S45 pattern:
+      // a Purchase Request is born `draft` through the governed command; a CLEARED vendor
+      // payment (Dr AP / Cr Cash) goes through PaySupplierInvoice. Pending/void vendor
+      // payments keep the CRUD path — no GL at creation.
+      if (mode === 'create' && module.id === PURCHASE_REQUESTS_MODULE_ID) {
+        const gov = await ipc.platform.createPurchaseRequest(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not create the purchase request.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
+      if (
+        mode === 'create' &&
+        module.id === VENDOR_PAYMENTS_MODULE_ID &&
+        String((input.fields ?? {}).status ?? 'cleared') === 'cleared'
+      ) {
+        const gov = await ipc.platform.paySupplierInvoice(input.fields ?? {}, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not record the payment.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
+      // S142 — a PAYMENT REVERSAL is server-side a CREATE of an immutable `finance-payment-reversals`
+      // record that books the compensating GL and re-opens the settled document. It is routed through the
+      // governed `ReverseCustomerPayment` / `ReverseVendorPayment` commands (dark since S61) — the SAME
+      // journaled/idempotent/event/outbox/audit spine as every other consequential finance write — instead
+      // of the non-governed CRUD door. The command selection follows the form's `originalKind`, but the
+      // SERVER sets `originalKind` from the command TYPE (never the payload), the original payment id is a
+      // TARGET (never authority), and the reversal module's guards refuse a non-cleared / bank-reconciled /
+      // foreign-tenant / already-reversed / nonexistent original. `reason` is required by the module.
+      if (mode === 'create' && module.id === 'finance-payment-reversals') {
+        const fields = input.fields ?? {};
+        const originalPaymentId = String(fields.originalPaymentId ?? '').trim();
+        const reason = String(fields.reason ?? '');
+        const isVendor = String(fields.originalKind ?? '') === 'vendor';
+        const gov = isVendor
+          ? await ipc.platform.reverseVendorPayment(originalPaymentId, reason, governedKey.current)
+          : await ipc.platform.reverseCustomerPayment(originalPaymentId, reason, governedKey.current);
+        if (!gov.ok) {
+          setErrors({ _: gov.error?.message ?? 'Could not reverse the payment.' });
+          return;
+        }
+        onSaved();
+        return;
+      }
       const res =
         mode === 'create'
           ? await ipc.enterpriseModules.create(module.id, input)
           : await ipc.enterpriseModules.update(module.id, record!.id, input);
       if (!res.ok) {
-        setErrors(res.errors ?? { _: 'Could not save.' });
+        // S45 — an error keyed to a field this form does not RENDER (e.g. the machine-owned
+        // `status` refusal from a non-form caller's write racing this edit) would otherwise be
+        // invisible: the modal stayed open with no message. Fold unrendered-key errors into the
+        // form-level slot so every refusal is seen.
+        const raw = res.errors ?? { _: 'Could not save.' };
+        const rendered = new Set(module.fields.filter((f) => !f.readOnly).map((f) => f.key));
+        const errs: Record<string, string> = {};
+        const hidden: string[] = [];
+        for (const [k, v] of Object.entries(raw)) {
+          if (k === '_' || rendered.has(k)) errs[k] = v;
+          else hidden.push(v);
+        }
+        if (hidden.length) errs._ = [errs._, ...hidden].filter(Boolean).join(' ');
+        setErrors(errs);
         return;
       }
       onSaved();
+    } catch (err) {
+      // A thrown save — a permission denial that rejects, or an IPC/transport
+      // failure — used to escape uncaught: the modal stayed open with no reason
+      // shown. Surface it in the form's own error slot.
+      setErrors({ _: err instanceof Error ? err.message : String(err) });
     } finally {
       setSaving(false);
     }
@@ -378,6 +538,18 @@ function ModuleForm({
     >
       <div className="space-y-3.5">
         {errors._ && <p className="text-sm text-syspink">{errors._}</p>}
+        {/* S47 pilot fence (visibility, not policy): editing an ISSUED-family invoice's economic
+            fields books real GL ADJUSTMENT entries — deliberate glPosting drift-correction
+            behavior whose governance is the OPEN reversal-policy memo. The fence makes the
+            defined behavior VISIBLE before the user saves; it blocks nothing. */}
+        {mode === 'edit' &&
+          module.id === FINANCE_MODULE_ID &&
+          ['issued', 'partially_paid', 'paid'].includes(String(record?.fields.status ?? '')) && (
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+              This invoice is issued. Changing its amounts books general-ledger adjustment
+              entries.
+            </p>
+          )}
         {module.fields
           .filter((f) => !f.readOnly)
           .map((f) => (
@@ -389,7 +561,25 @@ function ModuleForm({
               help={f.help}
               error={errors[f.key]}
             >
-              {f.type === 'textarea' ? (
+              {/* S50 — census-registered procurement fields get structured editors in place
+                  of raw JSON / free-text ids. Both serialize into the SAME form-state key,
+                  so the submitted payload shape is unchanged (renderer-only retirement). */}
+              {linesEditorFor(module.id, f.key) ? (
+                <LinesEditor
+                  id={`f-${f.key}`}
+                  config={linesEditorFor(module.id, f.key)!}
+                  value={String(state[f.key] ?? '')}
+                  onChange={(v) => set(f.key, v)}
+                />
+              ) : referenceFieldFor(module.id, f.key) ? (
+                <ReferenceField
+                  id={`f-${f.key}`}
+                  config={referenceFieldFor(module.id, f.key)!}
+                  value={String(state[f.key] ?? '')}
+                  placeholder={f.placeholder}
+                  onChange={(v) => set(f.key, v)}
+                />
+              ) : f.type === 'textarea' ? (
                 <Textarea
                   id={`f-${f.key}`}
                   value={String(state[f.key] ?? '')}
@@ -424,6 +614,23 @@ function ModuleForm({
       </div>
     </Modal>
   );
+}
+
+/**
+ * D-7b — the message for a mutation the boundary REFUSED BY RESOLVING.
+ *
+ * `EnterpriseModuleMutationResult.errors` is `field key -> message`, with `_`
+ * documented as the record-level key. This reads that structure; it never
+ * inspects English prose, so it cannot drift into classifying refusals by
+ * regex -- the defect D-6 exists to prevent.
+ */
+function describeMutationFailure(
+  result: { errors?: Record<string, string> },
+  fallback: string,
+): string {
+  const errors = result.errors;
+  if (!errors) return fallback;
+  return errors._ ?? Object.values(errors)[0] ?? fallback;
 }
 
 const RISK_TONE: Record<string, BadgeTone> = { low: 'green', medium: 'orange', high: 'pink' };
@@ -505,6 +712,12 @@ function RecordDetail({
 }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [actionMsg, setActionMsg] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null);
+  /**
+   * D-7b — the DELETE/ARCHIVE failure channel, deliberately separate from
+   * `actionMsg`: `runAction` clears that slot on every custom action, so a hold
+   * notice parked there would be erased by an unrelated click.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const act = async (fn: () => Promise<unknown>): Promise<void> => {
     setBusy(true);
@@ -521,12 +734,28 @@ function RecordDetail({
   // which renders here — evidence, recommendation and the safe alternative —
   // and only an explicit "Delete anyway" resends with force.
   const [deleteAssessment, setDeleteAssessment] = useState<ActionAssessment | null>(null);
+  /**
+   * Round 36 — Gate 12: the DESTRUCTIVE dialog is the one place a leaked Tab
+   * or a missing Escape is most dangerous. Focus is trapped while it is open,
+   * returns to the opener on close, and Escape cancels (never confirms).
+   */
+  const deleteDialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(deleteDialogRef, deleteAssessment !== null);
+  useEffect(() => {
+    if (deleteAssessment === null) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') setDeleteAssessment(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [deleteAssessment]);
   // The refusal raises a durable HOLD in the main process. Holding onto its id
   // is what lets the safer route actually close the hold — otherwise archiving
   // would leave an open hold describing a problem the user already solved.
   const [holdId, setHoldId] = useState<string | null>(null);
   const requestDelete = async (force: boolean): Promise<void> => {
     setBusy(true);
+    setActionError(null);
     try {
       const result = await ipc.enterpriseModules.remove(module.id, record.id, force);
       if (!result.ok && result.assessment) {
@@ -534,9 +763,22 @@ function RecordDetail({
         setHoldId(result.holdId ?? null);
         return;
       }
+      // A refusal WITHOUT an assessment used to fall straight through to
+      // `onChanged()` — the modal closed and the row looked deleted when the
+      // delete had been refused. The channel refuses by RESOLVING `{ok:false}`,
+      // so no catch ever saw it.
+      if (!result.ok) {
+        setActionError(describeMutationFailure(result, 'The record could not be deleted.'));
+        return;
+      }
       setDeleteAssessment(null);
       setHoldId(null);
       onChanged();
+    } catch (err) {
+      // The permission gate for this channel is enforced in the handler and
+      // THROWS. Rendered verbatim: re-wording a refusal here would mean
+      // classifying it by regex on English prose.
+      setActionError(err instanceof Error && err.message ? err.message : 'The request failed.');
     } finally {
       setBusy(false);
     }
@@ -545,22 +787,49 @@ function RecordDetail({
   /** Archive instead — then close the hold that recommended exactly this. */
   const takeAlternative = async (): Promise<void> => {
     setBusy(true);
+    setActionError(null);
     try {
-      await ipc.enterpriseModules.setStatus(module.id, record.id, 'archived');
+      const archived = await ipc.enterpriseModules.setStatus(module.id, record.id, 'archived');
+      // THE ARCHIVE IS NOT ASSUMED. This channel refuses by RESOLVING
+      // `{ok:false}`, and the result used to be discarded — so a refused archive
+      // still closed the hold with the note "Archived instead of deleting",
+      // which would have been a false statement written into governance
+      // evidence. Nothing is claimed about the hold until the archive is real.
+      if (!archived.ok) {
+        setActionError(describeMutationFailure(archived, 'The record could not be archived.'));
+        return;
+      }
       if (holdId) {
-        await ipc.holds
+        const closed = await ipc.holds
           .resolve(
             holdId,
             'took_alternative',
             'Archived instead of deleting; every link keeps resolving.',
           )
-          // A hold that cannot be closed must not fail the archive that already
-          // happened — the Holds screen can still resolve it by hand.
-          .catch(() => undefined);
+          // A hold that cannot be closed must still never fail the archive that
+          // already happened — that part of the original reasoning stands. What
+          // changed is that the outcome is no longer discarded: `hold:resolve`
+          // answers `HoldRecord | null`, and an unknown, already-resolved or
+          // out-of-scope hold RESOLVES with null, so the catch never ran for the
+          // most likely failure. Both shapes collapse to "not closed" here.
+          .catch(() => null);
+        if (!closed) {
+          // The archive DID happen; only the hold is still open. `onRefresh`
+          // updates the list WITHOUT unmounting this component, so the message
+          // survives to be read — `onChanged()` would call `setDetail(null)` and
+          // render it zero frames.
+          setActionError(
+            'Archived. The related hold could not be closed and is still open — closing it needs governance permission.',
+          );
+          onRefresh?.();
+          return;
+        }
       }
       setDeleteAssessment(null);
       setHoldId(null);
       onChanged();
+    } catch (err) {
+      setActionError(err instanceof Error && err.message ? err.message : 'The request failed.');
     } finally {
       setBusy(false);
     }
@@ -568,10 +837,79 @@ function RecordDetail({
 
   // Custom record actions (e.g. Convert Lead → Customer). The list is refreshed
   // behind the modal, which stays open to show the deterministic result message.
+  //
+  // S45 — the CONSEQUENTIAL O2C lifecycle actions are routed through the GOVERNED command spine
+  // (`platform:command.dispatch` → Application Boundary → per-command RBAC → durable journal →
+  // domain event → outbox → governance audit) instead of the legacy `enterprise:module.action`
+  // door. The command routes wrap the SAME module actions, so behavior is identical — what changes
+  // is that the write is journaled, idempotent, and crash-recoverable. Every OTHER module action
+  // (reserve stock, pick list, convert lead, fulfill/close/cancel, …) keeps the existing path.
   const runAction = async (key: string): Promise<void> => {
+    // S45 (O2C) + S49 (procurement): the (module, action) → governed-command routing table.
+    // Every entry wraps the SAME module action the legacy door ran — behavior identical, but the
+    // write is journaled, idempotent, event-emitting, and crash-recoverable. Actions absent from
+    // this table keep the existing legacy path unchanged.
+    const GOVERNED: Record<string, Record<string, GovernedRecordOp>> = {
+      [ORDERS_MODULE_ID]: { ship: 'ShipSalesOrder', convertToInvoice: 'InvoiceSalesOrder' },
+      [FINANCE_MODULE_ID]: { issue: 'IssueCustomerInvoice', cancel: 'CancelCustomerInvoice' },
+      [QUOTES_MODULE_ID]: { convertToOrder: 'ConvertQuoteToSalesOrder' },
+      // ERP Session 57 — the reversal/settlement promotion set (existing semantics, new spine).
+      [CREDIT_NOTES_MODULE_ID]: { issue: 'IssueCreditNote', cancel: 'CancelCreditNote' },
+      [DEBIT_NOTES_MODULE_ID]: { issue: 'IssueDebitNote', cancel: 'CancelDebitNote' },
+      [PAYMENTS_MODULE_ID]: { clear: 'ClearCustomerPayment' },
+      [VENDOR_PAYMENTS_MODULE_ID]: { clear: 'ClearVendorPayment' },
+      [SHIPPING_MODULE_ID]: { ship: 'ShipShipmentDocument' },
+      [PURCHASE_REQUESTS_MODULE_ID]: {
+        submit: 'SubmitPurchaseRequest',
+        approve: 'ApprovePurchaseRequest',
+        reject: 'RejectPurchaseRequest',
+        createPurchaseOrder: 'ConvertPurchaseRequestToPO',
+      },
+      [GOODS_RECEIPTS_MODULE_ID]: { post: 'PostGoodsReceipt' },
+      [VENDOR_BILLS_MODULE_ID]: { approve: 'ApproveSupplierInvoice' },
+    };
+    const governedOp = GOVERNED[module.id]?.[key] ?? null;
     setBusy(true);
     setActionMsg(null);
     try {
+      if (governedOp) {
+        // One key per user gesture: a double-click is blocked by `busy`, a crash mid-flight is
+        // recovered by the journal's intent HOLD, and a deliberate LATER retry is a NEW gesture
+        // (new key) answered truthfully by the module status machine ("already shipped"), never
+        // masked by a stale replayed success.
+        const gov = await ipc.platform.dispatchRecordCommand(
+          governedOp,
+          record.id,
+          `${governedOp}-${record.id}-${crypto.randomUUID()}`,
+        );
+        const done: Record<string, string> = {
+          ShipSalesOrder: 'Order shipped.',
+          InvoiceSalesOrder: 'Invoice generated.',
+          IssueCustomerInvoice: 'Invoice issued.',
+          ConvertQuoteToSalesOrder: 'Quote converted to a sales order.',
+          SubmitPurchaseRequest: 'Request submitted.',
+          ApprovePurchaseRequest: 'Request approved.',
+          RejectPurchaseRequest: 'Request rejected.',
+          ConvertPurchaseRequestToPO: 'Purchase order created.',
+          PostGoodsReceipt: 'Receipt posted — stock received.',
+          ApproveSupplierInvoice: 'Supplier invoice approved.',
+          CancelCustomerInvoice: 'Invoice cancelled — the ledger reversal is booked.',
+          IssueCreditNote: 'Credit note issued.',
+          CancelCreditNote: 'Credit note cancelled.',
+          IssueDebitNote: 'Debit note issued.',
+          CancelDebitNote: 'Debit note cancelled.',
+          ClearCustomerPayment: 'Payment cleared — cash booked and the invoice reconciled.',
+          ClearVendorPayment: 'Payment cleared — the bill reconciled and cash booked.',
+          ShipShipmentDocument: 'Shipment shipped — stock issued.',
+        };
+        setActionMsg(
+          gov.ok
+            ? { tone: 'ok', text: done[governedOp] ?? 'Done.' }
+            : { tone: 'error', text: gov.error?.message ?? 'Action failed.' },
+        );
+        onRefresh?.();
+        return;
+      }
       const res = await ipc.enterpriseModules.action(module.id, record.id, key);
       setActionMsg(
         res.ok
@@ -635,7 +973,9 @@ function RecordDetail({
               // scaling up from behind the scrim reads as "in front of what
               // you were doing", which is what a blocking assessment IS.
               <motion.div
+                ref={deleteDialogRef}
                 role="alertdialog"
+                aria-modal="true"
                 aria-label="High-risk delete"
                 variants={overlayVariants}
                 initial="initial"
@@ -691,6 +1031,14 @@ function RecordDetail({
                       this link will show a gap until it is restored.
                     </p>
                   </div>
+                  {actionError !== null && (
+                    <div
+                      role="alert"
+                      className="mt-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+                    >
+                      {actionError}
+                    </div>
+                  )}
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
                     <Button size="sm" onClick={() => setDeleteAssessment(null)} disabled={busy}>
                       Cancel
@@ -725,6 +1073,14 @@ function RecordDetail({
         </>
       }
     >
+      {deleteAssessment === null && actionError !== null && (
+        <div
+          role="alert"
+          className="mb-3 rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+        >
+          {actionError}
+        </div>
+      )}
       {actionMsg && (
         <div
           className={`mb-3 rounded-md px-3 py-2 text-sm ${
@@ -739,6 +1095,18 @@ function RecordDetail({
       {/* Line items + approval. Renders nothing for a module with no document
           spec, so the 90-odd master-data modules are unaffected. */}
       <DocumentPanel moduleId={module.id} recordId={record.id} onChanged={onChanged} />
+      {/* S89 — governed reorder EXECUTION. Renders ONLY on the S86 decision report, and only offers
+          "Create Purchase Request" for rows the S88 policy marks executable. Explicit two-step
+          confirmation → the governed CreatePurchaseRequestFromReorderRecommendation command → one
+          draft PR. Nothing automatic; no PO/inventory/GL. */}
+      {module.id === 'inventory-reorder-decision' && (
+        <ReorderExecutionPanel
+          reportId={record.id}
+          reportNumber={String(record.fields.reportNumber ?? '')}
+          rowsJson={String(record.fields.rows ?? '[]')}
+          onCreated={onRefresh}
+        />
+      )}
       {/*
         Cross-domain connections for this record (Program 6). Loaded with the
         detail, not the list, so opening a module does not traverse every row.

@@ -77,7 +77,10 @@ import {
   type DeterministicPorts,
 } from './deterministicAnswers';
 import { renderReportMaterial } from './productivity';
+import { assistantMailSendIntent } from '../capabilities/assistantMailIntent';
+import { servingDraftMailer } from '../ai/brain/mailDraftGateway';
 import type { ConversationStore } from './conversationStore';
+import type { CapabilityCatalogView } from '../capabilities/capabilityDiscoveryService';
 
 /* ── Ports ─────────────────────────────────────────────────────────────────── */
 
@@ -85,6 +88,13 @@ export interface AssistantContextPorts {
   /** Local workspace contexts (id/name/active). */
   workspaces?: () => { active: { id: string; name: string } | null; count: number };
   connectors?: () => { id: string; connected: boolean; problem: string | null }[];
+  /**
+   * The live, tenant-scoped capability catalog — what this user's connected accounts can actually do (read/mutate,
+   * consequential, approval, availability, governed-certified or not). Discovery metadata only: no credential, no
+   * callable, no authority. Present so the assistant/AI knows the available capabilities before deciding anything;
+   * it never grants execution.
+   */
+  capabilities?: () => CapabilityCatalogView;
   executions?: () => { active: number };
   pendingApprovals?: () => number;
   automations?: () => { id: string; name: string; actionCount: number; active: boolean }[];
@@ -337,6 +347,48 @@ export class AssistantService {
         resolveAnalyticsQuestion(input.text) !== null ||
         // Phase 6 Stage 13 — the ten digital-twin questions likewise.
         resolveTwinQuestion(input.text) !== null);
+
+    // ── Wave-2 Slice-13 — an explicit mail.send request becomes a schema-constrained candidate via the trusted,
+    // deterministic generator: recipients are extracted LITERALLY from THIS live turn (never resolved from names,
+    // contacts, or synced content), and the untrusted model only drafts subject/body. On a clear INTENT we hand the
+    // params to the renderer through `envelope.mailIntent` + a deep link to the Connector Center, where the EXISTING
+    // M365WritePanel renders the proposal via the Slice-12 feed (one surface). The AI gains NO authority; the human
+    // still confirms downstream through the certified path. Only the user's explicit live turn reaches here. ──
+    if (!cfg.operational) {
+      // BRAIN-1 ③ — the draft lane goes through the gateway's serving selector.
+      // Today it serves the deterministic referenceDrafter (zero-model); flipping
+      // to a real model is eval-gated (DECISIONS D-13). The deterministic guards
+      // in assistantMailSendIntent own `to`/action regardless of the drafter.
+      const mail = assistantMailSendIntent(input.text, {}, servingDraftMailer());
+      if (mail.kind === 'INTENT') {
+        const envelope = baseEnvelope(correlationId, mode, intent, now);
+        envelope.text = `I've prepared an email to ${mail.params.to.join(', ')} for your review. Open the Microsoft 365 panel in the Connector Center — nothing is sent without your explicit confirmation.`;
+        envelope.mailIntent = { to: [...mail.params.to], subject: mail.params.subject, body: mail.params.body };
+        envelope.navigation = { section: 'connectors', query: null };
+        envelope.grounded = true;
+        envelope.confidence = 0.9;
+        envelope.trace.phases = phases;
+        const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+        publish('assistant.turn.mail-intent', { recipients: mail.params.to.length });
+        emitPhase('done');
+        this.inflight.delete(conversation.id);
+        await this.deps.store.upsert(conversation);
+        return { conversation, messageId };
+      }
+      // A send-shaped turn with an UNRESOLVED recipient (a name/alias, or none) never guesses an address (rule 1) —
+      // the assistant ASKS. No mailIntent, no proposal, no execution.
+      if (mail.kind === 'NEEDS_CLARIFICATION') {
+        const envelope = baseEnvelope(correlationId, mode, intent, now, { clarification: mail.question });
+        envelope.trace.phases = phases;
+        const messageId = this.appendTurn(conversation, input.text, [], envelope, now);
+        publish('assistant.turn.clarification', { intent: 'mail-send' });
+        emitPhase('done');
+        this.inflight.delete(conversation.id);
+        await this.deps.store.upsert(conversation);
+        return { conversation, messageId };
+      }
+    }
+
     if (
       !cfg.operational &&
       !productivityResolved &&
@@ -422,8 +474,11 @@ export class AssistantService {
     const retrieval = cfg.retrieval
       ? this.retrieve(input.text, intent, cfg.retrieval, now, correlationId, toolCalls)
       : { items: [] as AiContextItem[], unavailable: [] as AssistantUnavailable[] };
-    const recalled =
-      cfg.retrieval && this.deps.recallMemories ? this.safeRecall(input.text, now, correlationId) : [];
+    const recall =
+      cfg.retrieval && this.deps.recallMemories
+        ? this.safeRecall(input.text, now, correlationId)
+        : { memories: [] as { title: string }[], unavailable: [] as AssistantUnavailable[] };
+    const recalled = recall.memories;
     phases.push({ phase: 'retrieval', durationMs: Date.now() - t1 });
 
     // ── Deterministic findings (always present; the offline floor). ──
@@ -475,7 +530,13 @@ export class AssistantService {
     envelope.draft = draft;
     envelope.findings = findings;
     envelope.structured = productivity.structured;
-    envelope.unavailable = [...snapshot.unavailable, ...retrieval.unavailable, ...productivity.unavailable];
+    envelope.unavailable = [
+      ...snapshot.unavailable,
+      ...retrieval.unavailable,
+      // Round 36 — Gate 15: a failed memory recall is reported, not silent.
+      ...recall.unavailable,
+      ...productivity.unavailable,
+    ];
     envelope.navigation = targets.navigate ?? (intent.intent === 'search' && targets.searchQuery ? { section: 'search', query: targets.searchQuery } : null);
     envelope.sources = this.assembleSources(snapshot, retrieval.items, recalled.length);
     if (productivity.structured) {
@@ -927,11 +988,23 @@ export class AssistantService {
     }
   }
 
-  private safeRecall(text: string, now: string, correlationId: string): { title: string }[] {
+  /**
+   * P13C ROUND 36 — GATE 15. This was the ONE exception to this file's stated
+   * contract ("a failing subsystem becomes an explicit `unavailable` — never a
+   * silent zero", line 17): a memory-recall throw returned `[]` with no
+   * report, so the assistant answered ungrounded and told the user nothing.
+   * Same shape as the sibling `retrieve` catch, now with the same honesty.
+   */
+  private safeRecall(
+    text: string,
+    now: string,
+    correlationId: string,
+  ): { memories: { title: string }[]; unavailable: AssistantUnavailable[] } {
     try {
-      return this.deps.recallMemories!(text, now, correlationId);
-    } catch {
-      return [];
+      return { memories: this.deps.recallMemories!(text, now, correlationId), unavailable: [] };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      return { memories: [], unavailable: [{ system: 'memory', reason }] };
     }
   }
 

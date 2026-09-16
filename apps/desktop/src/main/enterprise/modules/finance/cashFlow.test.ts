@@ -159,6 +159,8 @@ describe('Cash flow module over a real ledger', () => {
       expect(String(empty.values.note)).toContain('no cash/bank accounts tagged');
       expect(empty.values.entryCount).toBe(0);
       expect(empty.values.reconciled).toBe('yes');
+      // NP-011 C — the tile law: even the empty statement names its register honestly.
+      expect(String(empty.values.sourceLineage)).toMatch(/^(No journal entries yet|Computed over \d+ journal entries)/);
     }
 
     // A real book: cash (the seeded control account, auto-detected), operating revenue,

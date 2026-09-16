@@ -87,6 +87,7 @@ interface DeveloperContextValue {
   setPlan: (tier: PlanTier) => Promise<void>;
   createKey: (name: string, scopes: ApiScope[], expiresAt?: string | null) => Promise<ApiKeyWithSecret>;
   revokeKey: (id: string) => Promise<void>;
+  rotateKey: (id: string) => Promise<ApiKeyWithSecret | { error: string } | null>;
   createOAuthApp: (input: { name: string; redirectUris: string[]; scopes: ApiScope[]; grantTypes: OAuthGrantType[] }) => Promise<OAuthApplicationWithSecret>;
   deleteOAuthApp: (id: string) => Promise<void>;
   // marketplace
@@ -270,6 +271,13 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
     return res;
   }, [refreshLive]);
   const revokeKey = useCallback(async (id: string) => { await ipc.ecosystem.revokeKey(id); await refreshLive(); }, [refreshLive]);
+  // S146 — rotate a key. The store returns the new secret exactly once (like createKey) and revokes
+  // the old id atomically; a { error } refusal (unknown/revoked/other tenant) is returned, never thrown.
+  const rotateKey = useCallback(async (id: string): Promise<ApiKeyWithSecret | { error: string } | null> => {
+    const res = (await ipc.ecosystem.rotateKey(id)) as ApiKeyWithSecret | { error: string } | null;
+    await refreshLive();
+    return res;
+  }, [refreshLive]);
   const createOAuthApp = useCallback(async (input: { name: string; redirectUris: string[]; scopes: ApiScope[]; grantTypes: OAuthGrantType[] }) => {
     const res = await ipc.ecosystem.createOAuthApp(input);
     await refreshLive();
@@ -347,6 +355,7 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
       setPlan,
       createKey,
       revokeKey,
+      rotateKey,
       createOAuthApp,
       deleteOAuthApp,
       listingDetail,
@@ -374,7 +383,7 @@ export function DeveloperProvider({ children }: { children: ReactNode }): JSX.El
       ready, dashboard, keys, oauthApps, analytics, sdks, listings, marketplaceStats, events,
       gatewayVersions, gatewayMetrics, gatewayAudit, billing, plans, seats, licenses, purchases,
       routes, openapi, webhooks, webhookStats, extensions,
-      refreshAll, setPlan, createKey, revokeKey, createOAuthApp, deleteOAuthApp, listingDetail,
+      refreshAll, setPlan, createKey, revokeKey, rotateKey, createOAuthApp, deleteOAuthApp, listingDetail,
       createListing, createVersion, submit, review, publish, rollback, install, rate,
       runGatewayRequest, assignSeat, releaseSeat, purchase,
       runApiRequest, createWebhook, setWebhookEnabled, deleteWebhook, loadDeliveries, loadDeadLetters, replayDelivery,

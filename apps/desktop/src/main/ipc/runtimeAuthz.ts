@@ -72,6 +72,10 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * plain-language summary written by the assistant and carries record titles.
    */
   [IpcChannel.ExecMemoryAudit]: 'intelligence:read',
+  // FG-1 (Wave-2 Slice 10) — the read-only M365 proposal producer. Gated at the SAME tier as the M365 write
+  // channel: no principal may stage a proposal it could not execute (propose is not a lower-tier probe of
+  // selection state). DATA ONLY — the handler never executes. Non-frozen accompaniment to the FG-1 frozen pair.
+  [IpcChannel.CapabilityProposeM365Action]: 'connectors:manage',
 
   /**
    * P13C Round 8 — a paired companion device belongs to one organization, and the
@@ -123,6 +127,11 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.AiConfigSetProvider]: 'cloud:operate',
   [IpcChannel.AiConfigSetModel]: 'cloud:operate',
   [IpcChannel.AiConfigSetCredential]: 'cloud:operate',
+  // P13C — moved off PUBLIC_CHANNELS: it reads the stored vault credential and
+  // spends against it. `org:manage` rather than `cloud:operate` because the same
+  // channel also serves a bare localhost Ollama probe, and `cloud:operate` is
+  // platform-only. Full reasoning at its row in ai/aiAuthzGate.ts.
+  [IpcChannel.AiConfigTest]: 'org:manage',
   [IpcChannel.AiConfigSetMode]: 'cloud:operate',
   /**
    * P13C ROUND 17 · D-5. Listed here AND in `AI_CHANNEL_AUTHORITY` because
@@ -135,6 +144,9 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    */
   [IpcChannel.AiPreferenceGet]: 'org:read',
   [IpcChannel.AiPreferenceSet]: 'org:manage',
+  // Round 34 — local-model pull: install-level disk state, but the local-AI
+  // setup path first-run needs; same tenant-RBAC reasoning as the row above.
+  [IpcChannel.AiConfigPullModel]: 'org:manage',
   [IpcChannel.AiConfigSetExternalConsent]: 'cloud:operate',
   /**
    * P13C ROUND 3 — feedback came OFF the public allowlist.
@@ -569,6 +581,7 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
    * renderer message was not.
    */
   [IpcChannel.DiagnosticsGet]: 'operations:read',
+  [IpcChannel.SecurityAuditIntegrityStatus]: 'operations:read', // S115 — read-only audit-integrity status
   /**
    * P13C ROUND 10 — NEW-M2. THE CLASSIFICATION WAS APPLIED TO A CHANNEL, NOT TO
    * THE DATA.
@@ -792,6 +805,10 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
 
   // Executive Center snapshot (rolls every layer into one live view).
   [IpcChannel.ExecutiveCenterSnapshot]: 'intelligence:read',
+  // FG-S80b — governed on-demand KPI capture. The refresh half of the SAME executive KPI-intelligence
+  // surface as ExecutiveCenterSnapshot (tenant-scoped; persists only system-derived analytics, exactly
+  // as the snapshot read above already records a health datapoint), so it carries the sibling's scope.
+  [IpcChannel.KpiCapture]: 'intelligence:read',
 
   // Governance / context / relationship trace reads (decision provenance +
   // entity relationship intelligence).
@@ -1110,7 +1127,9 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
   IpcChannel.AiConfigHealth,
   IpcChannel.AiConfigDetectOllama,
 
-  IpcChannel.AiConfigTest,
+  // P13C — `AiConfigTest` REMOVED from the allowlist: it is now gated at
+  // `cloud:operate`. A channel is open or it is guarded; leaving a stale row
+  // here would make it BOTH, which the classification check refuses.
   IpcChannel.AiConfigMigrationStatus,
   // P13C Round 10 — NEW-M8. `AiConfigMigrate` REMOVED: Round 9 (F21) gated it at
   // `cloud:operate` in `ai/aiAuthzGate.ts` — it writes the install's provider,

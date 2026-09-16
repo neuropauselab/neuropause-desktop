@@ -1,0 +1,23 @@
+exe=C:\Users\accept\AppData\Local\Programs\NeuroPause\NeuroPause.exe
+-- FIRST LAUNCH (fresh profile) --
+process.running.after.launch=True
+log.path=C:\Users\accept\AppData\Roaming\@neuropause\desktop\logs\app.log
+startup.complete=1
+secure.ipc=[2026-08-15T11:33:22.640Z] INFO (secure-ipc) Secure IPC handlers registered {"count":722}
+org.runtime.ready=[2026-08-15T11:33:21.974Z] INFO (org-runtime) Organization runtime ready {"orgs":1,"units":13,"roles":6,"users":1}
+ai.engine=[2026-08-15T11:33:21.963Z] INFO (ai-engine-manager) AI engine configured {"provider":"claude","configured":false}
+tenant.recovered=0
+tenant.refused=2
+shutdown.flush=
+no.handler.errors=0
+runtime.init.fail=0
+-- REPEATED LAUNCH x5 --
+launch1 startups=2 no-handler=0 init-fail=0
+launch2 startups=3 no-handler=0 init-fail=0
+launch3 startups=4 no-handler=0 init-fail=0
+launch4 startups=5 no-handler=0 init-fail=0
+launch5 startups=6 no-handler=0 init-fail=0
+-- RESTART PERSISTENCE --
+tenant.LOST=0
+workspace.ready=[2026-08-15T11:36:13.460Z] INFO (workspace) Workspace manager ready {"workspaces":1,"active":"workspace-default"}
+== DONE ==

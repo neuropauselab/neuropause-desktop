@@ -349,18 +349,30 @@ describe('segregation of duties on high-risk approval', () => {
     expect(audit.some((a) => a.action === 'dataplane.import.approved')).toBe(true);
   });
 
-  it('does not demand approve rights when nothing high-risk is approved', async () => {
+  // C3 Transition Integrity (P13C / F-1): a submitted import that CONTAINS a
+  // high-risk table is classified C3 by PRESENCE. If required approval is absent,
+  // the WHOLE transition is HOLD and produces no effect — it must NOT silently
+  // skip the high-risk table and return `nothing_imported` (the F-1 defect).
+  it('an unapproved high-risk table HOLDs the whole transition — no effect', async () => {
     granted = new Set<EnterprisePermission>(['data:read', 'data:import']);
     sub = build();
     const plan = (await handlerFor(IpcChannel.DataPlaneAnalyze)({
       filename: 'c.xlsx',
       contentBase64: b64(customers),
     })) as { planId: string };
-    const run = (await handlerFor(IpcChannel.DataPlaneImport)({
-      planId: plan.planId,
-      approvals: [{ tableName: 'Customers', approved: false }],
-    })) as { status: string };
-    expect(run.status).toBe('nothing_imported');
+    const custStore = stores.get('crm-customers');
+    const before = custStore?.list().length ?? 0;
+
+    // The handler surfaces the CST HOLD as its actual contract — a thrown reason.
+    await expect(
+      handlerFor(IpcChannel.DataPlaneImport)({
+        planId: plan.planId,
+        approvals: [{ tableName: 'Customers', approved: false }],
+      }),
+    ).rejects.toThrow(/APPROVAL_REQUIRED/);
+
+    // NO EFFECT — the authoritative destination is unchanged.
+    expect(custStore?.list().length ?? 0).toBe(before);
   });
 });
 
@@ -503,8 +515,15 @@ describe('import lifecycle notification', () => {
       filename: 'c.xlsx',
       contentBase64: b64(workbook),
     })) as { planId: string };
-    await handlerFor(IpcChannel.DataPlaneImport)({ planId: plan.planId, approvals: [] });
+    const custStore = stores.get('crm-customers');
+    const before = custStore?.list().length ?? 0;
+    // Customers is high-risk; with no approval the transition HOLDs — nothing is
+    // imported (via a governed refusal, NOT a silent skip) and no event fires.
+    await expect(
+      handlerFor(IpcChannel.DataPlaneImport)({ planId: plan.planId, approvals: [] }),
+    ).rejects.toThrow(/APPROVAL_REQUIRED/);
     expect(onImported).not.toHaveBeenCalled();
+    expect(custStore?.list().length ?? 0).toBe(before); // NO EFFECT
   });
 });
 

@@ -1,0 +1,709 @@
+{
+  "key": "updater",
+  "generated_at": "2026-09-12T17:10:00Z",
+  "mode": "READ-ONLY subsystem map",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "head_date": "2026-09-12 19:56:36 +0530",
+    "version": "1.0.0-rc.30",
+    "latest_tag": "v1.0.0-rc.29",
+    "git_describe": "v1.0.0-rc.29-5-gcec399f",
+    "classification_note": "All repo facts MEASURED via git rev-parse/describe/tag at report time"
+  },
+  "toolchain_versions": {
+    "electron-updater": "6.8.9 (node_modules/electron-updater/package.json)",
+    "builder-util-runtime": "9.7.0",
+    "electron": "42.8.1",
+    "electron-builder": "26.15.3",
+    "app-builder-lib": "26.15.3",
+    "@electron/notarize": "^3.1.1 (declared in apps/desktop/package.json:44)",
+    "vitest": "1.6.1 (observed in run banner)",
+    "classification": "MEASURED"
+  },
+  "audited_sources_sha256_16": {
+    "apps/desktop/src/main/services/appUpdater.ts": "08d9e787fc523db8",
+    "apps/desktop/src/main/services/updater/updateChannels.ts": "ce370abca36738ec",
+    "apps/desktop/src/main/services/updater/updateChannels.test.ts": "fcd1284289025359",
+    "apps/desktop/src/main/updater/index.ts": "c43a008cee993c2a",
+    "apps/desktop/src/main/buildInfo.ts": "760e31d331573c10",
+    "apps/desktop/scripts/verify-release-artifacts.cjs": "b5c4eab9a1d97eab",
+    "apps/desktop/src/main/release/verifyReleaseArtifacts.test.ts": "67e85395d6151125",
+    "apps/desktop/electron-builder.yml": "7217e84dff978c36",
+    "packages/shared/src/types/update.ts": "9006c1da8b551f97",
+    "node_modules/electron-updater/out/AppUpdater.js": "99921022d181fbd0",
+    "node_modules/electron-updater/out/MacUpdater.js": "4824eb5d8c600f61",
+    "node_modules/builder-util-runtime/out/httpExecutor.js": "13050c5e04755632"
+  },
+  "architecture_map": {
+    "components": [
+      {
+        "name": "AppUpdater service (main)",
+        "file": "apps/desktop/src/main/services/appUpdater.ts",
+        "lines": "56-241",
+        "role": "Wraps electron-updater; state machine idle/checking/available/not-available/downloading/downloaded/error; persists update-prefs.json + update-history.json under userData (lines 29-34)"
+      },
+      {
+        "name": "Pure channel/semver/rollback-target logic",
+        "file": "apps/desktop/src/main/services/updater/updateChannels.ts",
+        "lines": "1-120",
+        "role": "resolveChannel/feedChannel/allowsPrerelease/compareVersions/pickRollbackTarget; Electron-free, unit-tested"
+      },
+      {
+        "name": "IPC module",
+        "file": "apps/desktop/src/main/updater/index.ts",
+        "lines": "24-48",
+        "role": "5 secure handlers update:getStatus/checkNow/download/installOnQuit/setChannel; broadcasts update:event on every status transition (line 25)"
+      },
+      {
+        "name": "Build identity",
+        "file": "apps/desktop/src/main/buildInfo.ts",
+        "lines": "63-82",
+        "role": "version/channel/commit/buildTime from resources/build-info.json + env overrides; channel via resolveChannel(NEUROPAUSE_CHANNEL ?? generated.channel) (line 68)"
+      },
+      {
+        "name": "Shared contracts",
+        "file": "packages/shared/src/types/update.ts",
+        "lines": "9-59",
+        "role": "UpdateChannel, UpdatePhase (7 states), UpdateInfo, UpdateStatus{phase,channel,currentVersion,available,progress,error,supported,checkedAt}, UpdateEvent"
+      },
+      {
+        "name": "Shared UI meta",
+        "file": "packages/shared/src/types/releaseChannelMeta.ts",
+        "lines": "35-158",
+        "role": "RELEASE_CHANNEL_META (internal selectable:false line 58), phase labels, updateStatusHeadline (error → 'Update error: <msg>' lines 132-133), can* gates"
+      },
+      {
+        "name": "IPC channel ids + allowlist + zod",
+        "file": "packages/shared/src/ipc/channels.ts; packages/shared/src/ipc/contracts.ts",
+        "lines": "channels.ts:809-814,1783-1787,2025; contracts.ts:2331-2338",
+        "role": "update:* ids; secure allowlist; update:event broadcast; UpdateSetChannelRequest zod enum"
+      },
+      {
+        "name": "Runtime authz",
+        "file": "apps/desktop/src/main/ipc/runtimeAuthz.ts",
+        "lines": "659-663",
+        "role": "checkNow/download/installOnQuit/setChannel → 'cloud:operate'; getStatus → 'operations:read'"
+      },
+      {
+        "name": "Renderer self-update UI",
+        "file": "apps/desktop/src/renderer/src/settings/ReleaseChannelCard.tsx",
+        "lines": "58-220+",
+        "role": "Settings card; subscribes to update:event; buttons Check now / Download update / Restart to install; channel SegmentedControl from selectableReleaseChannels()"
+      },
+      {
+        "name": "Renderer ipc seam",
+        "file": "apps/desktop/src/renderer/src/lib/ipc.ts",
+        "lines": "2268-2277",
+        "role": "ipc.updater.{getStatus,checkNow,download,installOnQuit,setChannel,onEvent}"
+      },
+      {
+        "name": "Service wiring",
+        "file": "apps/desktop/src/main/services/serviceManager.ts; apps/desktop/src/main/runtimeCore.ts",
+        "lines": "serviceManager.ts:23,139; runtimeCore.ts:277,1652",
+        "role": "appUpdater started by ServiceManager; initUpdater({broadcast}) in runtimeCore"
+      },
+      {
+        "name": "electron-builder publish config",
+        "file": "apps/desktop/electron-builder.yml",
+        "lines": "42-45",
+        "role": "provider: generic, url: https://neuropause033.com/updates, channel: beta"
+      },
+      {
+        "name": "Release-artifact verifier",
+        "file": "apps/desktop/scripts/verify-release-artifacts.cjs",
+        "lines": "89-185",
+        "role": "presence + feed parse + version parity (Gate 27) + sha512/size of files[] and top-level path against local dist/"
+      },
+      {
+        "name": "Notarization hook",
+        "file": "apps/desktop/scripts/notarize.cjs",
+        "lines": "48-134",
+        "role": "afterSign; skips w/o APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID; throws on failure only for tag push or NEUROPAUSE_REQUIRE_NOTARIZATION; writes dist/notarization-status.json"
+      },
+      {
+        "name": "CI release workflows",
+        "file": ".github/workflows/macos-release.yml; .github/workflows/windows-release.yml",
+        "lines": "mac:96-133,220-252; win:81-114,242-258",
+        "role": "package → verify-release-artifacts → (gated) scp feed+payloads to droplet 64.227.128.218:/opt/neuropause-site/website/updates/ and cp beta-mac.yml latest-mac.yml"
+      },
+      {
+        "name": "Store-app Update Center (DIFFERENT subsystem)",
+        "file": "apps/desktop/src/renderer/src/operations/UpdatesPanel.tsx",
+        "lines": "13-18,86-94,185",
+        "role": "Updates INSTALLED STORE APPS via ipc.catalog/ipc.nps (has 'nightly' channel + ipc.nps.rollback); NOT the desktop binary updater — name collision risk"
+      }
+    ],
+    "data_flow": "Renderer (user click) → ipc.updater.* → secureBridge (zod + runtimeAuthz 'cloud:operate' + audit) → appUpdater → electron-updater autoUpdater (MacUpdater on darwin, NsisUpdater on win32; main.js:44-48) → GenericProvider GET <url>/<channel><-mac>.yml → semver compare → (user click) download zip with sha512 DigestTransform → (user click) quitAndInstall → MacUpdater localhost proxy → Electron native autoUpdater (Squirrel.Mac) verifies code signature → relaunch."
+  },
+  "facts": [
+    {
+      "id": "U01",
+      "fact": "autoUpdater.autoDownload=false, autoInstallOnAppQuit=false, allowDowngrade=false are set in wire()",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:87-89",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U02",
+      "fact": "autoUpdater.channel is assigned AFTER allowDowngrade=false (line 91 after line 89) and again in setChannel() (line 163) with no subsequent allowDowngrade reset",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:89-91,161-164",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U03",
+      "fact": "electron-updater 6.8.9 `set channel(value)` unconditionally executes `this.allowDowngrade = true`; its JSDoc says to set allowDowngrade explicitly AFTER setting channel",
+      "evidence": "node_modules/electron-updater/out/AppUpdater.js:31,33-45 (line 44: this.allowDowngrade = true)",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U04",
+      "fact": "Effective runtime value of autoUpdater.allowDowngrade after wire() and after every setChannel() is TRUE, contradicting the DECLARED 'allowDowngrade: false' in docs/release/RELEASE-PIPELINE.md:51,111, docs/release/RC1-CHECKLIST.md:32 and HANDOFF-2026-09-12.md:182",
+      "evidence": "DERIVED from U02+U03; declared at docs/release/RELEASE-PIPELINE.md:51,111; docs/release/RC1-CHECKLIST.md:32; /Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md:182",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U05",
+      "fact": "With allowDowngrade true, isUpdateAvailable() returns true when the feed version is OLDER than the running version (semver.lt) — an older/stale feed would be offered and installable as an 'update'",
+      "evidence": "node_modules/electron-updater/out/AppUpdater.js:339-363 (line 362: return this.allowDowngrade && isLatestVersionOlder)",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U06",
+      "fact": "The allowDowngrade/channel ordering dates from the RC1 baseline commit a4da551 (2026-07-03) and has never changed",
+      "evidence": "git blame -L 85,92 apps/desktop/src/main/services/appUpdater.ts; git log -S allowDowngrade",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U07",
+      "fact": "No test file imports appUpdater.ts; the module header states it must not be pulled into unit tests. The channel/allowDowngrade ordering is therefore untested",
+      "evidence": "grep -rln appUpdater --include=*.test.ts apps/desktop/src → no results; apps/desktop/src/main/services/appUpdater.ts:13-15",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "U08",
+      "fact": "allowPrerelease is documented by electron-updater as '*GitHub provider only*'; GenericProvider.getLatestVersion() performs no prerelease filtering — it fetches <channel>.yml and returns whatever version it carries",
+      "evidence": "node_modules/electron-updater/out/AppUpdater.js:121; node_modules/electron-updater/out/providers/GenericProvider.js:18-45",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U09",
+      "fact": "docs/release/RELEASE-PIPELINE.md:47-49 declares stable 'never accepts prerelease versions (allowsPrerelease(stable) === false)'; under the generic provider this flag has no effect, and CI aliases beta-mac.yml → latest-mac.yml, so the stable channel receives -rc versions",
+      "evidence": "docs/release/RELEASE-PIPELINE.md:47-49; .github/workflows/macos-release.yml:250; U08",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U10",
+      "fact": "Publish config baked into every build: provider generic, url https://neuropause033.com/updates, channel beta; the locally built app carries Contents/Resources/app-update.yml with exactly these values plus updaterCacheDirName '@neuropausedesktop-updater'",
+      "evidence": "apps/desktop/electron-builder.yml:42-45; apps/desktop/dist/mac-universal/NeuroPause.app/Contents/Resources/app-update.yml (cat)",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U11",
+      "fact": "DNS: neuropause033.com apex has NO A, AAAA or CNAME record at 1.1.1.1 and 8.8.8.8 (status NOERROR, ANSWER 0, SOA authority max.ns.cloudflare.com, serial 2412112114); www./updates./downloads. subdomains also return no records; local resolver: 'Can't find neuropause033.com: No answer'. api.neuropause033.com DOES resolve (104.21.22.28, 172.67.202.47). github.com and cdnjs.cloudflare.com resolved and returned HTTP/2 200 from the same sandbox at the same time",
+      "evidence": "dig @1.1.1.1 / @8.8.8.8 neuropause033.com A|AAAA|CNAME; nslookup; curl -I https://github.com (200) — executed 2026-09-12 ~17:05Z",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U12",
+      "fact": "curl -I https://neuropause033.com/updates/{beta-mac,latest-mac,beta,latest}.yml all fail with 'curl: (6) Could not resolve host'",
+      "evidence": "curl executed 2026-09-12 ~17:04Z",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U13",
+      "fact": "The droplet named in CI (64.227.128.218) answers HTTP with 308 Permanent Redirect → https://neuropause033.com/updates/beta-mac.yml, i.e. it redirects to the unresolvable host",
+      "evidence": "curl -I -H 'Host: neuropause033.com' http://64.227.128.218/updates/beta-mac.yml",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U14",
+      "fact": "Whether the feed files physically exist on the droplet could not be measured: the HTTPS probe with --resolve/-k against the IP was denied by the sandbox policy",
+      "evidence": "tool denial on curl --resolve neuropause033.com:443:64.227.128.218",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "U15",
+      "fact": "Consequence of U11: every packaged client's checkForUpdates() fails DNS resolution → GenericProvider throws (not 404, not ECONNREFUSED → no retry) → AppUpdater.checkForUpdates catch emits 'error' → appUpdater phase 'error' with the error message; no update and no roll-forward is deliverable until DNS is restored",
+      "evidence": "node_modules/electron-updater/out/providers/GenericProvider.js:25-42; node_modules/electron-updater/out/AppUpdater.js:269-273; apps/desktop/src/main/services/appUpdater.ts:117-120,130-133",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U16",
+      "fact": "Feed-unreachable semantics in source: HTTP 404 → ERR_UPDATER_CHANNEL_FILE_NOT_FOUND thrown immediately; ECONNREFUSED → up to 3 retries with 0/1/2s backoff then throw; any other error (ENOTFOUND, timeout, TLS) → thrown immediately",
+      "evidence": "node_modules/electron-updater/out/providers/GenericProvider.js:21-44",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U17",
+      "fact": "checkedAt is set only on a successful checkForUpdates (after await); failed checks leave checkedAt unchanged",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:128-133",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U18",
+      "fact": "'update-not-available' is emitted when isUpdateAvailable() is false: version equal (line 345), minimumSystemVersion unsupported (348, 364-379), staging rollout mismatch (351-354), or older-and-downgrade-disallowed (362). 'error' is emitted from checkForUpdates' catch (feed fetch/parse failure, invalid semver ERR_UPDATER_INVALID_VERSION line 342) and from dispatchError during download",
+      "evidence": "node_modules/electron-updater/out/AppUpdater.js:339-363,400-412,269-273,476-478",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U19",
+      "fact": "sha512 verification of the FULL download: executeDownload passes fileInfo.info.sha512 into downloadOptions; MacUpdater's task calls httpExecutor.download(url, dest, downloadOptions); builder-util-runtime configurePipes inserts DigestTransform(sha512) into the response pipeline; DigestTransform._flush→validate() throws ERR_CHECKSUM_MISMATCH on mismatch",
+      "evidence": "node_modules/electron-updater/out/AppUpdater.js:559-566; node_modules/electron-updater/out/MacUpdater.js:105; node_modules/builder-util-runtime/out/httpExecutor.js:468-471,413-433",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U20",
+      "fact": "sha512 verification of the DIFFERENTIAL download: DifferentialDownloader attaches DigestTransform(blockAwareFileInfo.sha512) with isValidateOnEnd=false and calls validate() on file finish, rejecting on mismatch",
+      "evidence": "node_modules/electron-updater/out/differentialDownloader/DifferentialDownloader.js:121-135",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U21",
+      "fact": "sha512 verification of a CACHED update from a previous launch: getValidCachedUpdateFile compares cached update-info.json sha512 to the feed's, then re-hashes the file on disk (hashFile sha512/base64) and cleans the pending dir on mismatch",
+      "evidence": "node_modules/electron-updater/out/DownloadedUpdateHelper.js:88-131,137-149",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U22",
+      "fact": "A feed file entry with neither sha512 nor sha2 is refused before download (ERR_UPDATER_NO_CHECKSUM)",
+      "evidence": "node_modules/electron-updater/out/providers/Provider.js:124-134",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U23",
+      "fact": "On any download error (incl. checksum mismatch) executeDownload calls removeFileIfAny() (clears pending cache + unlinks) and rethrows; downloadUpdate's errorHandler dispatches 'error'; appUpdater transitions to phase 'error' with err.message. A wrong-digest payload is therefore REFUSED and deleted, and the user sees 'Update error: sha512 checksum mismatch, expected …'",
+      "evidence": "node_modules/electron-updater/out/AppUpdater.js:609-639,449-459,476-478; apps/desktop/src/main/services/appUpdater.ts:117-120; packages/shared/src/types/releaseChannelMeta.ts:132-133",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U24",
+      "fact": "macOS install path: MacUpdater serves the verified zip over a 127.0.0.1 HTTP proxy with a random 64-byte basic-auth password and random file URL, sets nativeUpdater.setFeedURL to it, and quitAndInstall() triggers Electron's native autoUpdater (Squirrel.Mac) checkForUpdates → install",
+      "evidence": "node_modules/electron-updater/out/MacUpdater.js:122-230,240-256",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U25",
+      "fact": "Squirrel.Mac (bundled with electron 42.8.1) imports SecCodeCopySelf, SecCodeCopyDesignatedRequirement, SecStaticCodeCreateWithPath, SecStaticCodeCheckValidityWithErrors, SecRequirementCreateWithData and carries strings 'verifyCodeSignatureOfBundle:', 'Could not get code signature for running application', 'Code signature at URL %@ did not pass validation', 'verifyAndPrepareUpdate:fromBundle:'",
+      "evidence": "nm -u / strings node_modules/electron/dist/Electron.app/Contents/Frameworks/Squirrel.framework/Squirrel",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U26",
+      "fact": "Squirrel.Mac validates the downloaded .app against the RUNNING app's designated requirement (same signing identity/Team) and refuses installation otherwise; the refusal surfaces as nativeUpdater 'error' → MacUpdater re-emits 'error' (MacUpdater.js:18-21) → appUpdater phase 'error'. No electron-updater JS code performs this check; it lives in the native framework. Electron's own docs state the app must be signed for macOS auto-update — that statement is not present in node_modules and was not measured",
+      "evidence": "INFERRED from U25 symbol set; propagation MEASURED at node_modules/electron-updater/out/MacUpdater.js:18-21",
+      "classification": "INFERRED"
+    },
+    {
+      "id": "U27",
+      "fact": "The locally built rc.30 app is AD-HOC signed (Signature=adhoc, flags linker-signed, TeamIdentifier=not set, Identifier=Electron, Info.plist=not bound, Sealed Resources=none), universal (x86_64 arm64), CFBundleShortVersionString 1.0.0-rc.30, LSMinimumSystemVersion 12.0, build-info.json commit cec399f branch pilot/public-launch dirty:false channel beta buildTime 2026-09-12T17:00:45Z backendUrl https://api.neuropause033.com",
+      "evidence": "codesign -dv --verbose=2, lipo -archs, PlistBuddy, cat build-info.json on apps/desktop/dist/mac-universal/NeuroPause.app",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U28",
+      "fact": "An ad-hoc/unsigned running app cannot accept ANY Squirrel.Mac update (its designated requirement is cdhash-bound or absent), so an unsigned first release can never self-update to a signed one — users must re-install manually",
+      "evidence": "INFERRED from U25-U27; consistent with .github/workflows/macos-release.yml:11-16 and HANDOFF-2026-09-12.md §4 'ships unsigned; Gatekeeper then blocks it'",
+      "classification": "INFERRED"
+    },
+    {
+      "id": "U29",
+      "fact": "apps/desktop/dist/ currently contains ONLY mac-universal/NeuroPause.app — no .dmg, no -mac.zip, no *-mac.yml, no notarization-status.json; verify-release-artifacts.cjs would FAIL its three 'present:' checks against this dist",
+      "evidence": "ls -la apps/desktop/dist; apps/desktop/scripts/verify-release-artifacts.cjs:105-110",
+      "classification": "MEASURED (ls) / DERIVED (verifier outcome)"
+    },
+    {
+      "id": "U30",
+      "fact": "Windows: NsisUpdater.verifySignature returns null (skips code-signature verification) when app-update.yml has no publisherName; electron-builder.yml declares no win.publisherName; app-builder-lib PublishManager injects publisherName only when the Windows packager has code-signing verification forced (i.e. a signing cert is configured)",
+      "evidence": "node_modules/electron-updater/out/NsisUpdater.js:52-57,84-100; apps/desktop/electron-builder.yml:80-99; node_modules/app-builder-lib/out/publish/PublishManager.js:202-206",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U31",
+      "fact": "Windows unsigned builds (WIN_CSC_LINK absent per HANDOFF §4) therefore ship an app-update.yml without publisherName → Windows updates are verified by sha512 only, never by Authenticode publisher",
+      "evidence": "DERIVED from U30 + /Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md:96-101",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U32",
+      "fact": "filterFilesForArch(files, isArm64Mac): isArm64File = url.pathname includes 'arm64' OR info.url includes 'arm64'. If isArm64Mac AND any arm64 file exists → keep only arm64 files; otherwise keep only NON-arm64 files. isArm64Mac = uname -a contains 'ARM' || process.arch==='arm64' || Rosetta (sysctl.proc_translated: 1)",
+      "evidence": "node_modules/electron-updater/out/MacUpdater.js:27-36,55-80",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U33",
+      "fact": "For the universal build the zip name contains 'universal' not 'arm64', so on both arm64 and x64 Macs the filter keeps the universal zip and findFile picks it (findFile prefers a name containing process.arch, else first .zip)",
+      "evidence": "DERIVED from U32 + node_modules/electron-updater/out/providers/Provider.js:74-90 + .github/workflows/macos-release.yml:199-200 (NeuroPause-universal.dmg) + electron-builder.yml:59-65",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U34",
+      "fact": "Differential download old-blockmap URL is derived by substituting oldVersion for newVersion in the new file's pathname; for an rc.29 (arm64-named) → rc.30 (universal-named) step the derived old blockmap does not exist, so the differential path fails and falls back to a full download (benign)",
+      "evidence": "node_modules/electron-updater/out/providers/Provider.js:22-26; node_modules/electron-updater/out/MacUpdater.js:93-106",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U35",
+      "fact": "Rollback primitive: pickRollbackTarget(current, history) returns the highest recorded version strictly older than current; it is pure and side-effect free",
+      "evidence": "apps/desktop/src/main/services/updater/updateChannels.ts:107-120",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U36",
+      "fact": "AppUpdater.rollbackTarget() exists (line 188) but has ZERO callers anywhere in apps/ or packages/ (only its definition matches); recordVersion() only appends the running version to update-history.json and logs the target at debug level. No code path performs a downgrade, reinstall, or revert",
+      "evidence": "grep -rn 'rollbackTarget\\b' apps packages → only apps/desktop/src/main/services/appUpdater.ts:188; apps/desktop/src/main/services/appUpdater.ts:187-190,224-238",
+      "classification": "MEASURED / ABSENT"
+    },
+    {
+      "id": "U37",
+      "fact": "AUTOMATIC_ROLLBACK for the app updater: not supported. The only 'automatic rollback' code in the repo belongs to packages/operator-deployment (Kubernetes rollout), packages/operations/deployment.ts, packages/production/upgradeStrategy.ts, and the assistant's constant NO_ROLLBACK = 'No automatic rollback — review the target before approving.'",
+      "evidence": "grep AUTOMATIC_ROLLBACK|autoRollback|automatic rollback across repo; apps/desktop/src/main/assistant/assistantModel.ts:319; packages/operator-deployment/src/rollback.ts:32",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "U38",
+      "fact": "Documented rollback strategy is (1) halt distribution by un-publishing/re-pointing the feed, (2) roll forward via hotfix, (3) restore pre-migration backup, (4) Recovery Center; 'Production never downgrades in place'. HANDOFF: 'No auto-update rollback… reverting means a manual re-install'",
+      "evidence": "docs/release/RELEASE-PIPELINE.md:103-125; docs/release/RC1-RUNBOOK.md:165-171; /Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md:182-183",
+      "classification": "DECLARED"
+    },
+    {
+      "id": "U39",
+      "fact": "Failure states surfaced to the user: UpdatePhase 'error' + UpdateStatus.error string; Settings card badge tone 'pink' + headline 'Update error: <message>'; IPC-level failures toast 'Could not check for updates' / 'Could not start the download' / 'Could not install the update' / 'Could not switch channel'; when status fetch fails: 'Update status unavailable' + Retry",
+      "evidence": "packages/shared/src/types/update.ts:12-19,45; packages/shared/src/types/releaseChannelMeta.ts:87-97,132-133; apps/desktop/src/renderer/src/settings/ReleaseChannelCard.tsx:43,90,102,115,131,141-155",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U40",
+      "fact": "installOnRestart() silently returns the current status (no error, no toast) when phase !== 'downloaded' or app not packaged; quitAndInstall is fire-and-forget via setImmediate — a native install failure is only observable through a later 'error' event",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:150-156",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U41",
+      "fact": "electron-updater logger mapping sends electron-updater 'info' messages (including 'Update … not available … downgrade is allowed/disallowed') to log.debug, so the effective allowDowngrade value is visible only at debug level",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:92-97; node_modules/electron-updater/out/AppUpdater.js:405",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U42",
+      "fact": "A background check runs 10 s after start in packaged builds (network read only; no download/install); download and install each require a renderer action, authz 'cloud:operate', and are audited",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:76-77; apps/desktop/src/main/updater/index.ts:29-42; apps/desktop/src/main/ipc/runtimeAuthz.ts:659-663,1182-1200",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U43",
+      "fact": "The only caller of update:installOnQuit is the Settings ReleaseChannelCard 'Restart to install' button; no assistant/AI/automation module references UpdateCheckNow/UpdateDownload/UpdateInstallOnQuit/UpdateSetChannel",
+      "evidence": "grep -rn installOnRestart|UpdateInstallOnQuit|quitAndInstall apps packages; grep -rln IpcChannel.Update(CheckNow|Download|InstallOnQuit|SetChannel) apps/desktop/src → ipc.ts, updater/index.ts, runtimeAuthz.ts, round11PublicChannelClosure.test.ts only",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U44",
+      "fact": "Runtime authz history: P13C Round 11 M-5 found the four updater mutations reachable with no auth ('sender-frame trust only… every SIGNED-OUT session'); now mapped to 'cloud:operate'",
+      "evidence": "apps/desktop/src/main/ipc/runtimeAuthz.ts:650-663,1182-1200",
+      "classification": "MEASURED (code) / DECLARED (history comment)"
+    },
+    {
+      "id": "U45",
+      "fact": "Channel model: UPDATE_CHANNELS = stable|beta|internal; resolveChannel('internal') heals to 'beta' (Phase 8.5); feedChannel(stable)='latest'; internal is selectable:false in UI; build stamps channel from version prerelease (-rc.* → beta, none → stable, 'internal' prefix → internal) unless NEUROPAUSE_CHANNEL overrides",
+      "evidence": "apps/desktop/src/main/services/updater/updateChannels.ts:12-41; packages/shared/src/types/releaseChannelMeta.ts:52-59,74-76; apps/desktop/scripts/generate-build-info.cjs:30-33,70",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U46",
+      "fact": "Persisted state: userData/update-prefs.json {channel} and userData/update-history.json {versions[]}; both best-effort (write failures swallowed)",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:29-34,197-238",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U47",
+      "fact": "verify-release-artifacts.cjs checks: installer/payload/feed presence; feed parseable; feed.version === apps/desktop/package.json version (Gate 27); every files[] entry exists with matching base64 sha512 and size; top-level path/sha512 checked independently. It reads ONLY local dist/, checks no code signature, no notarization, and does not inspect the asar",
+      "evidence": "apps/desktop/scripts/verify-release-artifacts.cjs:1-20,72-83,105-181",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U48",
+      "fact": "verify:release runs after every package script and in both release workflows BEFORE any publish step; verify:universal (asar dependency/arch guard) runs in package:mac only",
+      "evidence": "apps/desktop/package.json:16,22,23,27,28,31; .github/workflows/macos-release.yml:130-133; .github/workflows/windows-release.yml:114",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U49",
+      "fact": "Executed: vitest run on updateChannels.test.ts (14 tests) + verifyReleaseArtifacts.test.ts (9 tests) → 2 files, 23/23 passed, 946 ms, vitest 1.6.1",
+      "evidence": "npx vitest run src/main/services/updater/updateChannels.test.ts src/main/release/verifyReleaseArtifacts.test.ts (apps/desktop) at 22:38:05 local",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U50",
+      "fact": "vitest include glob 'src/main/**/*.test.ts' covers both files; CI runs `npm run test -w @neuropause/desktop`",
+      "evidence": "apps/desktop/vitest.config.ts:15-16; .github/workflows/desktop-ci.yml:82; apps/desktop/package.json:18",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U51",
+      "fact": "Tests pin: resolveChannel('internal')→'beta'; feed lock every selectable channel ∈ {latest, beta}; pickRollbackTarget semantics; verifier fails on tampered files[] sha512, tampered top-level sha512, missing payload, version-parity mismatch, and applies parity even when expectedVersion not injected",
+      "evidence": "apps/desktop/src/main/services/updater/updateChannels.test.ts:18-27,74-107; apps/desktop/src/main/release/verifyReleaseArtifacts.test.ts:65-149",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U52",
+      "fact": "Test fixture still uses arm64 artifact names (NeuroPause-arm64.dmg, NeuroPause-1.0.0-rc.1-arm64-mac.zip) — the verifier's rules are extension-based (.dmg/-mac.zip/-mac.yml) so it is arch-agnostic; no test exercises universal-named artifacts",
+      "evidence": "apps/desktop/src/main/release/verifyReleaseArtifacts.test.ts:22-23; apps/desktop/scripts/verify-release-artifacts.cjs:72-77",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U53",
+      "fact": "CI feed publish is gated on repo variable PUBLISH_TO_SITE=='true' AND HAS_DEPLOY_KEY AND a tag ref, continue-on-error; it scp's beta*.yml, *-mac.zip, *.blockmap to /opt/neuropause-site/website/updates/ and runs `cp -f beta-mac.yml latest-mac.yml`; final `curl -fsS https://neuropause033.com/updates/beta-mac.yml` is a reachability proof but cannot fail the job",
+      "evidence": ".github/workflows/macos-release.yml:236-252; windows mirror .github/workflows/windows-release.yml:242-258",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U54",
+      "fact": "HANDOFF declares PUBLISH_TO_SITE unset ('CI never publishes') and all signing/notarization/deploy secrets absent",
+      "evidence": "/Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md:96-101",
+      "classification": "DECLARED"
+    },
+    {
+      "id": "U55",
+      "fact": "macOS signing is fail-open-to-unsigned in CI (CSC_IDENTITY_AUTO_DISCOVERY=false when APPLE_CSC_LINK absent); notarize.cjs skips without Apple creds and writes notarization-status.json {state:'skipped'}; on a tag push a notarization failure throws",
+      "evidence": ".github/workflows/macos-release.yml:84-123; apps/desktop/scripts/notarize.cjs:48-59,82-94,124-127",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U56",
+      "fact": "No v1.0.0-rc.30 tag exists; HEAD is 5 commits past v1.0.0-rc.29; releaseDiscipline.test.ts (Gate 27) pins manifest parity, CHANGELOG section, and 'version not spent by an existing tag'",
+      "evidence": "git tag --list; git describe; apps/desktop/src/main/release/releaseDiscipline.test.ts:52-106",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U57",
+      "fact": "dmg.artifactName 'NeuroPause-${arch}.${ext}' carries no version (HANDOFF item 5); the -mac.zip keeps electron-builder's default versioned name",
+      "evidence": "apps/desktop/electron-builder.yml:79; /Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md:184-186",
+      "classification": "MEASURED / DECLARED"
+    },
+    {
+      "id": "U58",
+      "fact": "desktop-update-plan.md is NOT an app-updater document: it is the plan for integrating the frozen NeuroPause CST baseline (@neuropause/cst 1.3.0) into the Desktop at rc.20",
+      "evidence": "desktop-update-plan.md:1-15",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U59",
+      "fact": "UpdatesPanel.tsx ('Update Center') manages INSTALLED STORE APPS (ipc.catalog.checkUpdate, ipc.nps.update/rollback) with a 'nightly' channel written to renderer prefs — it does not touch the desktop self-updater; the comment says 'Desktop/runtime self-update is a managed status surface pending the Phase-4 updater'",
+      "evidence": "apps/desktop/src/renderer/src/operations/UpdatesPanel.tsx:13-25,36-57,86-94,185",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "U60",
+      "fact": "Feed integrity model: the YAML feed is not signed; trust rests on TLS to the generic URL plus sha512 self-consistency between feed and payload. A server-side substitution of BOTH feed and payload is accepted by electron-updater; only the OS-level code-signature check (Squirrel.Mac, or NSIS publisherName when signed) would refuse it",
+      "evidence": "DERIVED from U19-U26, U30; node_modules/electron-updater/out/providers/GenericProvider.js:18-24",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "U61",
+      "fact": "Evidence root: NP-B-018 predicate register lists 'NP-S165-UPDATER-CUSTODY-DECISION-MEMO.md' but that file was not found under /Users/saurabhpatel/neuropause-desktop or the repo; no NP-B-016..023 directory contains updater execution evidence",
+      "evidence": "/Users/saurabhpatel/neuropause-desktop/NP-B-018/NP-B-018-PREDICATE-REGISTER.json:4965; find … -name NP-S165-UPDATER-CUSTODY-DECISION-MEMO.md → none",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "U62",
+      "fact": "Updater git history on this branch: e7bffd3 universal build; 59f367e generic provider at neuropause033.com/updates; 565e128 verify-release-artifacts; 09cb6ce/e51f9f4 release discipline; a4da551 RC1 baseline",
+      "evidence": "git log --oneline -- apps/desktop/src/main/services/appUpdater.ts apps/desktop/src/main/services/updater/ apps/desktop/src/main/updater/index.ts apps/desktop/scripts/verify-release-artifacts.cjs apps/desktop/electron-builder.yml",
+      "classification": "MEASURED"
+    }
+  ],
+  "electron_updater_source_confirmations": {
+    "a_sha512_verification": {
+      "answer": "YES, in three places: full download (builder-util-runtime httpExecutor.js:468-471 DigestTransform → :430-431 ERR_CHECKSUM_MISMATCH), differential download (DifferentialDownloader.js:121-135), cached file re-hash (DownloadedUpdateHelper.js:113-128). Missing checksum in feed → ERR_UPDATER_NO_CHECKSUM (Provider.js:127-129).",
+      "classification": "MEASURED"
+    },
+    "b_macos_same_identity_required": {
+      "answer": "electron-updater JS does NOT check signatures on macOS; it hands the verified zip to Electron's native autoUpdater (Squirrel.Mac) via a localhost proxy (MacUpdater.js:122-230). Squirrel.framework imports SecCodeCopyDesignatedRequirement/SecStaticCodeCheckValidityWithErrors and carries 'Code signature at URL %@ did not pass validation' (MEASURED symbols). That it enforces same-identity is INFERRED/DECLARED (Electron docs), not measured here. Signature failure path: nativeUpdater 'error' → MacUpdater emits 'error' (MacUpdater.js:18-21) → phase 'error'. 'update-not-available' is never produced by signature problems — it is only produced by isUpdateAvailable()===false (AppUpdater.js:404-406).",
+      "classification": "MEASURED (symbols, propagation) / INFERRED (policy)"
+    },
+    "c_filterFilesForArch": {
+      "answer": "MacUpdater.js:30-36. arm64 file := name contains 'arm64'. On arm64 Macs (incl. Rosetta): if any arm64 file → only arm64 files; else non-arm64 files. On x64 Macs: only non-arm64 files. 'universal' names contain no 'arm64' → universal zip is selected on every Mac. findFile then prefers a name containing process.arch, else the first .zip (Provider.js:74-90).",
+      "classification": "MEASURED / DERIVED"
+    },
+    "d_feed_unreachable": {
+      "answer": "GenericProvider.js:21-44: 404 → ERR_UPDATER_CHANNEL_FILE_NOT_FOUND; ECONNREFUSED → 3 retries (0/1/2 s) then throw; anything else (DNS ENOTFOUND, timeout) → throw. AppUpdater.checkForUpdates catch emits 'error' (AppUpdater.js:269-273); appUpdater sets phase 'error' + error text (appUpdater.ts:117-120,130-133). Today the baked host neuropause033.com has no DNS record (MEASURED), so this is the live path for every client.",
+      "classification": "MEASURED"
+    },
+    "e_allowDowngrade_false_semantics": {
+      "answer": "AppUpdater.js:339-363: eq → not available; gt → available; lt → available only if allowDowngrade. Default false (line 138). BUT `set channel()` forces allowDowngrade=true (line 44) and appUpdater.ts sets channel AFTER allowDowngrade=false (lines 89-91) and again in setChannel (163) → effective value is TRUE. The declared 'downgrade off' invariant is not what runs.",
+      "classification": "MEASURED (source) / DERIVED (effective value)"
+    }
+  },
+  "rollback_summary": {
+    "what_exists": "A pure rollback-TARGET selector (pickRollbackTarget) and a version history file. rollbackTarget() has no caller. No downgrade/reinstall/revert path exists in the updater.",
+    "automatic_rollback_supported": false,
+    "documented_mechanism": "Halt distribution (un-publish feed) + roll forward via hotfix; manual re-install for a true revert (RELEASE-PIPELINE.md §3; HANDOFF item 4).",
+    "unintended_downgrade_path": "Because allowDowngrade is effectively true (U04), publishing an OLDER version to the feed WOULD be offered as an update — an undocumented, untested 'rollback by feed' path that also makes a stale feed actionable.",
+    "classification": "MEASURED + DERIVED"
+  },
+  "failure_states_surfaced": [
+    "phase 'error' + error string (feed unreachable, feed 404, YAML parse error, invalid semver, checksum mismatch, download I/O, native install error) → badge 'Error' (pink) + 'Update error: <msg>'",
+    "phase 'not-available' → 'You are on the latest version (<v>)' (also produced for OS-too-old, staging miss, older-feed-when-downgrade-disallowed — indistinguishable to the user)",
+    "supported:false (dev build) → 'Automatic updates are not available in this build.'",
+    "IPC throw → toasts 'Could not check for updates' / 'Could not start the download' / 'Could not install the update' / 'Could not switch channel'",
+    "status fetch failure → 'Update status unavailable' + Retry",
+    "SILENT: installOnRestart() when phase !== 'downloaded' (returns status, no message)"
+  ],
+  "architecture_invariant_assessment": {
+    "AI_never_authorizes": {
+      "status": "PASS",
+      "reason": "No AI/assistant/automation module references any update:* channel (U43); install requires renderer user action + 'cloud:operate' + audit (U42)."
+    },
+    "client_not_final_authority": {
+      "status": "PARTIAL",
+      "reason": "Client decides to install, but payload integrity (sha512) and OS code-signature (Squirrel.Mac) are external checks. Feed itself is unsigned (U60) — server custody is the authority, with no NeuroPause policy layer in the loop."
+    },
+    "network_connection_not_authorization": {
+      "status": "PASS",
+      "reason": "A reachable feed only yields 'available'; download and install are separate user-driven, authz-gated steps (U01, U42)."
+    },
+    "stale_authorization_rejected": {
+      "status": "FAIL",
+      "reason": "Effective allowDowngrade=true (U04/U05) means a stale/older feed is accepted as an installable update; no feed freshness/signature check exists (U60)."
+    }
+  },
+  "gates": {
+    "UPDATE": {
+      "status": "FAIL",
+      "measured": [
+        "sha512 refusal of tampered payloads exists in library code and is exercised by verifier tests (U19-U23, U49)",
+        "Feed host neuropause033.com has no DNS record at 1.1.1.1/8.8.8.8/local resolver; droplet redirects to it (U11-U13) → no client can check for updates today",
+        "Built app is ad-hoc signed, TeamIdentifier not set (U27) → cannot accept a Squirrel.Mac update (U28, INFERRED)",
+        "allowDowngrade effectively true due to channel-setter ordering (U02-U04)",
+        "Local dist has no dmg/zip/yml; verify:release would fail (U29)",
+        "No rc.30 tag (U56)",
+        "23/23 updater unit tests pass (U49)"
+      ],
+      "declared": [
+        "'allowDowngrade: false' (RELEASE-PIPELINE.md:51,111; RC1-CHECKLIST.md:32; HANDOFF:182) — contradicted by measured source",
+        "'stable never accepts prerelease' (RELEASE-PIPELINE.md:47-49) — not enforced under generic provider (U08-U09)",
+        "PUBLISH_TO_SITE unset; signing secrets absent (HANDOFF §4)",
+        "Electron requires signed app for macOS auto-update (Electron docs; not in node_modules)"
+      ],
+      "not_measured": [
+        "Whether feed files exist on the droplet (HTTPS probe denied, U14)",
+        "Squirrel.Mac same-identity enforcement behaviour on a real signed→signed update",
+        "An end-to-end update on a real signed build (never performed per macos-release.yml:11-16)"
+      ]
+    },
+    "ROLLBACK": {
+      "status": "FAIL",
+      "measured": [
+        "pickRollbackTarget is pure and tested (U35, U49)",
+        "rollbackTarget() has zero callers; no revert code path (U36)",
+        "AUTOMATIC_ROLLBACK absent for the updater (U37)",
+        "Undocumented downgrade path is live because allowDowngrade is effectively true (U04-U05)"
+      ],
+      "declared": [
+        "Rollback = halt feed + roll forward hotfix + restore backup + Recovery Center (RELEASE-PIPELINE.md §3)",
+        "'No auto-update rollback… manual re-install' (HANDOFF:182-183)"
+      ],
+      "not_measured": [
+        "Recovery Center / pre-migration backup restore behaviour (outside this subsystem)"
+      ]
+    }
+  },
+  "gaps": [
+    "G1 (BLOCKER, MEASURED): update feed host neuropause033.com has no DNS A/AAAA/CNAME record; every packaged client will hit phase 'error' on check; no roll-forward possible.",
+    "G2 (HIGH, MEASURED source): allowDowngrade is effectively TRUE at runtime (channel setter ordering), contradicting three docs and the HANDOFF; enables stale/older-feed installs.",
+    "G3 (HIGH, MEASURED): built app is ad-hoc signed / no Team ID → macOS Squirrel updates cannot install; first public build cannot self-update to a signed successor (INFERRED).",
+    "G4 (MED, MEASURED): Windows builds without WIN_CSC_LINK ship app-update.yml without publisherName → no Authenticode verification of updates.",
+    "G5 (MED, DERIVED): stable channel = alias of beta feed under generic provider; allowsPrerelease has no effect; docs claim otherwise.",
+    "G6 (MED, ABSENT): appUpdater.ts has no tests; the ordering defect and the silent installOnRestart no-op are unpinned.",
+    "G7 (LOW, MEASURED): rollbackTarget() is dead code; 'rollback preparation' claim in the module header (lines 9-10) has no consumer.",
+    "G8 (LOW, MEASURED): verify-release-artifacts.cjs does not verify code signature or notarization; notarization-status.json is not consumed by any gate.",
+    "G9 (LOW, MEASURED): desktop-update-plan.md is misnamed relative to the updater; UpdatesPanel.tsx 'Update Center' with a 'nightly' channel is a store-app surface that can be confused with the self-updater.",
+    "G10 (LOW, ABSENT): NP-S165-UPDATER-CUSTODY-DECISION-MEMO.md is referenced by NP-B-018 but not present in either root.",
+    "G11 (INFO, ABSENT): could not probe the droplet over HTTPS (sandbox denial) — feed file presence on the server is unknown."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Move `autoUpdater.allowDowngrade = false` to AFTER `autoUpdater.channel = …` in wire() and add it after the channel assignment in setChannel(); add a unit test with a stubbed autoUpdater asserting allowDowngrade===false after wire() and after setChannel()",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/services/appUpdater.ts"
+      ],
+      "risk": "Behaviour change only removes an unintended downgrade path; no user-visible change on a correctly published feed"
+    },
+    {
+      "action": "Add a verifier check (or a separate `verify:signed` script) that runs `codesign -dv --verbose=2` on dist/mac-universal/*.app and fails on Signature=adhoc / TeamIdentifier=not set when GITHUB_REF is a tag; read dist/notarization-status.json and fail when state!=='notarized' on a tag",
+      "effort": "M",
+      "files": [
+        "apps/desktop/scripts/verify-release-artifacts.cjs",
+        "apps/desktop/package.json",
+        ".github/workflows/macos-release.yml"
+      ],
+      "risk": "Would fail every current CI run until Apple secrets exist — that is the intended signal"
+    },
+    {
+      "action": "Add `win.publisherName` to electron-builder.yml (or assert it is injected) so NSIS updates verify Authenticode even if signing config changes",
+      "effort": "S",
+      "files": [
+        "apps/desktop/electron-builder.yml"
+      ],
+      "risk": "Requires the real certificate CN; wrong value blocks all Windows updates"
+    },
+    {
+      "action": "Correct docs: RELEASE-PIPELINE.md:47-51,110-113, RC1-CHECKLIST.md:32 — state that downgrade is off only after the ordering fix, and that stable receives beta feed content under the generic provider until a separate latest feed is published",
+      "effort": "S",
+      "files": [
+        "docs/release/RELEASE-PIPELINE.md",
+        "docs/release/RC1-CHECKLIST.md"
+      ],
+      "risk": "None"
+    },
+    {
+      "action": "Either wire rollbackTarget() into diagnostics (Release Diagnostics surface) or delete it and the 'rollback preparation' header claim",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/services/appUpdater.ts"
+      ],
+      "risk": "None"
+    },
+    {
+      "action": "Make installOnRestart() return/emit an explicit error when phase !== 'downloaded' instead of silently returning",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/services/appUpdater.ts",
+        "apps/desktop/src/renderer/src/settings/ReleaseChannelCard.tsx"
+      ],
+      "risk": "None"
+    },
+    {
+      "action": "Update the verifier test fixture to universal-named artifacts (NeuroPause-universal.dmg, NeuroPause-<v>-universal-mac.zip) so the tested shape matches what CI publishes",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/release/verifyReleaseArtifacts.test.ts"
+      ],
+      "risk": "None"
+    },
+    {
+      "action": "Add a CI step (non-publish) that resolves the feed host with `dig +short` and HEADs <url>/beta-mac.yml, failing loudly when DNS is empty — the current curl is inside a continue-on-error publish step",
+      "effort": "S",
+      "files": [
+        ".github/workflows/macos-release.yml",
+        ".github/workflows/windows-release.yml"
+      ],
+      "risk": "None"
+    }
+  ],
+  "human_decisions_required": [
+    "DNS for neuropause033.com apex (and any updates./downloads. host): restore or re-point; the baked feed URL cannot be changed in shipped binaries without a re-install.",
+    "Provide Developer ID Application signing + notarization credentials (APPLE_CSC_LINK, APPLE_CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID) — without them no macOS build can ever self-update; the first public build must be signed or it strands every installer.",
+    "Provide WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD or accept sha512-only Windows update verification.",
+    "Decide whether an operator-driven 'downgrade via feed' is a sanctioned rollback mechanism (then document + gate it) or forbidden (then apply the allowDowngrade ordering fix).",
+    "Decide whether 'stable' should remain an alias of the beta feed for rc.* releases, or whether latest-mac.yml must be withheld until a non-prerelease version exists.",
+    "Set repo variable PUBLISH_TO_SITE and DEPLOY_SSH_KEY only after DNS/signing are resolved; publishing now would push a feed to an unreachable host.",
+    "Locate or formally declare absent the NP-S165-UPDATER-CUSTODY-DECISION-MEMO.md referenced in NP-B-018."
+  ],
+  "not_measured_or_blocked": [
+    "HTTPS content on droplet 64.227.128.218 for /updates/* and /downloads/NeuroPause.dmg (sandbox denied --resolve probe)",
+    "Real signed-build end-to-end update (never executed per macos-release.yml:11-16)",
+    "Squirrel.Mac enforcement semantics beyond exported symbols/strings",
+    "Full desktop test suite (a background revalidation is running; only 2 files executed here)"
+  ]
+}

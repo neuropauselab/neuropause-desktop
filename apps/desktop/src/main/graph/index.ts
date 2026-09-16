@@ -46,6 +46,7 @@ import { pluginGraphProjection } from '../plugins/pluginExtensionConsumers';
 import { graphStore } from './graphInstance';
 import { projectGraph } from './projector';
 import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 const log = createLogger('graph');
 
@@ -81,6 +82,9 @@ export interface GraphSubsystem {
 
 export async function initGraph(deps: GraphSubsystemDeps): Promise<GraphSubsystem> {
   await graphStore.load();
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('graph-store', () => graphStore.flush());
 
   /**
    * P13B — a rebuild has an owner, or it does not happen.

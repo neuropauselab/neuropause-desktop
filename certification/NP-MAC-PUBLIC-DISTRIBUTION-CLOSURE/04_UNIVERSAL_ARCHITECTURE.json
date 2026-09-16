@@ -1,0 +1,32 @@
+{
+  "ARTIFACT": "04_UNIVERSAL_ARCHITECTURE",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "main_executable": {
+    "path": "Contents/MacOS/NeuroPause",
+    "class": "MAIN_EXECUTABLE",
+    "archs": [
+      "x86_64",
+      "arm64"
+    ],
+    "size": 118992,
+    "sha256": "e5ee77ce8f3ad3bb43dd4470897b622d2c93428d74b6fe3b0d8baacaed402b11"
+  },
+  "required": [
+    "x86_64",
+    "arm64"
+  ],
+  "result": {
+    "status": "PASS",
+    "checks": 3
+  },
+  "classification": "MEASURED"
+}

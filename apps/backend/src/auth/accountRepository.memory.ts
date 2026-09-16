@@ -21,6 +21,7 @@ interface TokenRow {
   consumedAt: string | null;
 }
 
+export const revokedSessionsFor: string[] = [];
 export function createMemoryAuthAccountRepo(users: MemUser[]): AuthAccountRepo {
   const tokens: TokenRow[] = [];
   const view = (u: MemUser | undefined) =>
@@ -36,6 +37,9 @@ export function createMemoryAuthAccountRepo(users: MemUser[]): AuthAccountRepo {
     async setEmailVerified(userId) {
       const u = users.find((x) => x.id === userId);
       if (u) u.emailVerified = true;
+    },
+    async revokeAllSessions(userId) {
+      revokedSessionsFor.push(userId);
     },
     async updatePasswordHash(userId, passwordHash) {
       const u = users.find((x) => x.id === userId);

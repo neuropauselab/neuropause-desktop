@@ -65,7 +65,15 @@ export async function rotateTokens(
 
     if (session.revoked_at || session.rotated_to) {
       // Reuse of a consumed token => possible theft. Burn the chain.
-      await client.query(
+      //
+      // NP-GLOBAL-PUBLIC-LAUNCH-002 §21 — MEASURED LIVE 2026-09-13: this UPDATE ran
+      // on the transaction client and the `throw` below made withTransaction()
+      // ROLLBACK it. The caller saw 401 refresh_reused while every session of
+      // the user stayed valid — the successor token still refreshed. The burn
+      // now runs on the pool (autocommit) so it survives the throw; the rotated
+      // row we hold FOR UPDATE is excluded by `revoked_at IS NULL`, so there is
+      // no lock conflict.
+      await query(
         `UPDATE auth_sessions SET revoked_at = now()
           WHERE user_id = $1 AND revoked_at IS NULL`,
         [session.user_id],

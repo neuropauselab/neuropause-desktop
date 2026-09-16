@@ -1,0 +1,75 @@
+{
+  "ARTIFACT": "15_DEPENDENCY_SECURITY",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:51.847Z",
+  "branch_head": "6175f3633925b0e7088f85b877563b71d7a3bbc0",
+  "audit": {
+    "info": 0,
+    "low": 0,
+    "moderate": 5,
+    "high": 1,
+    "critical": 0,
+    "total": 6
+  },
+  "findings_measured": [
+    "body-parser moderate transitive fixAvailable=true range=1.20.5-1.20.6",
+    "express moderate direct fixAvailable=true range=4.22.2",
+    "js-yaml high direct(root)/transitive(electron-updater@6.8.9 → js-yaml@4.3.0 in desktop asar) fixAvailable=true range=4.0.0-4.3.1",
+    "qs moderate transitive fixAvailable=true range=2.2.5-6.15.3",
+    "react-router moderate transitive fixAvailable=react-router-dom@7.18.3 (semver-major) range=6.0.0-7.17.0",
+    "react-router-dom moderate direct fixAvailable=7.18.3 (semver-major)"
+  ],
+  "reviewer": [
+    {
+      "item": "js-yaml@4.3.0 (electron-updater feed parsing)",
+      "status": "OPEN",
+      "reason": "Runtime-relevant in the shipped desktop asar; js-yaml.load runs on the HTTPS update feed 10 s after every packaged launch; availability-only impact; semver-patch fix 4.3.2 exists so FIXED is achievable without a major; ACCEPTED_RISK is a defensible human alternative (first-party feed) but must be recorded by the release owner."
+    },
+    {
+      "item": "qs@6.15.3 / body-parser@1.20.6 / express@4.22.2 (backend)",
+      "status": "OPEN",
+      "reason": "express is required by the backend bundle and its default extended query parser runs qs.parse on every unauthenticated request before any rate limiter; moderate availability-only advisories; no complete non-major fix (express pins qs ~6.15.1; express 5 is major); partial non-major fix body-parser 1.20.8 and S132 Option A override exist. ACCEPTED_RISK with recorded mitigations is the alternative; decision is the release owner's. Note the production backend is currently not deployed (api host HTTP 530 per 002/32)."
+    },
+    {
+      "item": "react-router / react-router-dom@6.30.6",
+      "status": "NOT_RUNTIME_RELEVANT",
+      "reason": "Absent from the desktop asar and backend bundle; imported only by apps/web, which no workflow or deploy file publishes, has no SSR, and has only literal navigation targets. Becomes OPEN (fix 7.18.3 is semver-major) if apps/web is ever deployed."
+    }
+  ],
+  "statuses": [
+    {
+      "package": "js-yaml",
+      "severity": "high",
+      "status": "HUMAN_REVIEW",
+      "justification": "reachable in the packaged desktop main process via electron-updater feed parsing; input is the release feed over HTTPS from our host; exploitation needs feed control; non-major fix available"
+    },
+    {
+      "package": "express",
+      "severity": "moderate",
+      "status": "HUMAN_REVIEW",
+      "justification": "backend request path; DoS vectors via qs; non-major fix available"
+    },
+    {
+      "package": "body-parser",
+      "severity": "moderate",
+      "status": "HUMAN_REVIEW",
+      "justification": "transitive of express; non-major fix"
+    },
+    {
+      "package": "qs",
+      "severity": "moderate",
+      "status": "HUMAN_REVIEW",
+      "justification": "transitive; non-major fix"
+    },
+    {
+      "package": "react-router / react-router-dom",
+      "severity": "moderate",
+      "status": "HUMAN_REVIEW",
+      "justification": "apps/web only (desktop renderer does not use SSR hydration); fix is semver-major (7.18.3)"
+    }
+  ],
+  "rule": "no upgrade applied; no finding suppressed; decision is the release owner's"
+}

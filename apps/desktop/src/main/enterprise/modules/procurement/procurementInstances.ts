@@ -22,9 +22,13 @@ import { createPurchaseOrderModule } from './purchaseOrderModule';
 import { createGoodsReceiptModule } from './goodsReceiptModule';
 import { createRfqModule } from './rfqModule';
 import { createSupplierPerformanceModule } from './supplierPerformanceModule';
+import { createMultiLineReceiptModule, MULTILINE_RECEIPTS_MODULE_ID } from './multiLineReceiptModule';
 import { runGoodsReceiptAi, runPurchaseOrderAi, runSupplierAi } from './procurementAi';
 
 const store = (id: string): string => enterpriseModuleStorePath(app.getPath('userData'), id);
+
+// ERP Session 7-Fix — first-class multi-line goods receipt (header → N lines → N movements).
+export const multiLineReceiptModule = createMultiLineReceiptModule(store(MULTILINE_RECEIPTS_MODULE_ID));
 
 export const supplierModule = createSupplierModule(store(SUPPLIERS_MODULE_ID), (s, h) => runSupplierAi(aiEngine, s, h));
 export const purchaseRequestModule = createPurchaseRequestModule(store(PURCHASE_REQUESTS_MODULE_ID));

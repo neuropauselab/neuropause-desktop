@@ -501,3 +501,65 @@ describe('conversation continuity + interrupt + branch', () => {
     expect(env.memoryCapture).toEqual({ outcome: 'stored', type: 'conversation' });
   });
 });
+
+/* ── P13C ROUND 36 — GATE 15: memory recall joins the honesty contract ────── */
+
+describe('memory recall honesty (round 36)', () => {
+  it('a throwing recallMemories becomes an explicit unavailable — never a silent zero', async () => {
+    const h = mkHarness({
+      recallMemories: () => {
+        throw new Error('memory store sealed');
+      },
+    });
+    const { conversation, messageId } = await h.service.ask({ text: 'summarize today' });
+    const env = conversation.messages.find((m) => m.id === messageId)!.envelope!;
+    // The one exception to the file's line-17 contract, closed: the failure
+    // is named, and the turn still completes grounded on everything else.
+    expect(env.unavailable.some((u) => u.system === 'memory' && /sealed/.test(u.reason))).toBe(true);
+    expect(env.trace.recalledMemories).toBe(0);
+  });
+});
+
+/* ── Wave-2 Slice-13 — mail.send intent detection on a live turn (data only, never sends) ───────── */
+
+describe('assistant mail.send intent detection', () => {
+  const envOf = (conversation: Awaited<ReturnType<AssistantService['ask']>>['conversation'], messageId: string) =>
+    conversation.messages.find((m) => m.id === messageId)!.envelope!;
+
+  it('a mail.send turn with a literal address sets envelope.mailIntent + a deep link to the connector center', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Email alice@example.com the quarterly report.' });
+    const env = envOf(conversation, messageId);
+    expect(env.mailIntent).toBeTruthy();
+    expect(env.mailIntent!.to).toEqual(['alice@example.com']);
+    expect(env.navigation).toEqual({ section: 'connectors', query: null });
+    // Detection only: nothing is executed here. The renderer routes it through the certified propose→confirm path.
+    expect(h.execRequests).toHaveLength(0);
+  });
+
+  it('recipients come from THIS turn only — exactly the literally-typed addresses (recipient literalism)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Send an email to a@b.com and c@d.com about Friday.' });
+    expect(envOf(conversation, messageId).mailIntent!.to).toEqual(['a@b.com', 'c@d.com']);
+  });
+
+  it('a non-mail turn leaves mailIntent unset (no hijack of the normal pipeline)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'summarize today' });
+    expect(envOf(conversation, messageId).mailIntent ?? null).toBeNull();
+  });
+
+  it('a send-shaped turn with no literal address ASKS (clarification), never a mailIntent (rule 1)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Send an email saying the meeting is tomorrow.' });
+    const env = envOf(conversation, messageId);
+    expect(env.mailIntent ?? null).toBeNull();
+    expect(env.clarification).toMatch(/which email address/i);
+  });
+
+  it('an out-of-scope action turn does NOT emit mailIntent (deny-by-default)', async () => {
+    const h = mkHarness();
+    const { conversation, messageId } = await h.service.ask({ text: 'Delete all emails from Bob.' });
+    expect(envOf(conversation, messageId).mailIntent ?? null).toBeNull();
+  });
+});

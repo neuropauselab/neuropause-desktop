@@ -123,7 +123,11 @@ export const SECTIONS: SectionDef[] = [
   // unification surface over EXISTING sections and IPC feeds (additive; every
   // tile loads independently and degrades to an explicit unavailable state).
   { id: 'mission-control', label: 'Mission Control', icon: 'gauge', phase: 23, placement: 'primary', group: 'today', description: 'Organization-wide operations at a glance — your command landing.' },
-  { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary', group: 'today', description: 'Your strategic priorities and the outcomes that matter today.' },
+  // NP-008 census F-N8-1: this surface renders the SEEDED autonomous-intelligence
+  // goals — the same store its sibling strategy-center shows WITH a Preview label.
+  // Until a user can author real outcomes, presenting seeded strategy as "today's
+  // intent" without the label is fake-as-real; `preview` states the truth.
+  { id: 'intent-home', label: "Today's Intent", icon: 'command', phase: 22, placement: 'primary', group: 'today', preview: true, description: 'Your strategic priorities and the outcomes that matter today.' },
   // Phase 6 Stage 3 — Universal Search: one query across every existing index
   // (federated engine, app records, semantic memory, business modules). Additive;
   // placed after the two landing surfaces so their nav locks hold unchanged.
@@ -159,7 +163,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'decision-center', label: 'Decision Center', icon: 'sparkles', phase: 21, placement: 'primary', group: 'today', hidden: true },
   { id: 'home', label: 'Home', icon: 'home', phase: 2, placement: 'primary', group: 'today', hidden: true },
   { id: 'organization', label: 'Organization', icon: 'user', phase: 10, placement: 'primary', group: 'business', description: 'Manage your organization — members, workspaces, and roles.' },
-  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary', group: 'business', preview: true, description: 'The executive command center — decisions, org, operations, and governed AI.' },
+  { id: 'enterprise', label: 'Enterprise', icon: 'grid', phase: 7, placement: 'primary', group: 'business', preview: true, tier: 'advanced', description: 'The executive command center — decisions, org, operations, and governed AI.' },
   // Business Workspace (EBS v1.0): a family-grouped presentation over the existing enterprise modules.
   { id: 'business', label: 'Business', icon: 'layers', phase: 7, placement: 'primary', group: 'business', description: 'Your business modules — finance, sales, CRM, HR, projects, and more.' },
   // Enterprise Administration v1.0 — a reuse-only admin control center over existing services.
@@ -186,14 +190,14 @@ export const SECTIONS: SectionDef[] = [
   { id: 'commercial-center', label: 'Commercial Center', icon: 'store', phase: 20, placement: 'primary', group: 'platform', preview: true, description: 'Commercial operations — pricing, packaging, billing, and go-to-market.', tier: 'advanced' },
   // Product Operations & Release Management v1.0 — a read-only operations lens over existing services.
   { id: 'product-ops', label: 'Release Ops', icon: 'package', phase: 20, placement: 'primary', group: 'platform', description: 'Shipping the product — releases, build health, quality, deployment, and commercial metrics.', tier: 'advanced' },
-  { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary', group: 'platform', preview: true, description: 'The org-facing storefront for workers, connectors, templates, and partners.', tier: 'advanced' },
+  { id: 'ecosystem', label: 'Ecosystem', icon: 'globe', phase: 8, placement: 'primary', group: 'platform', preview: true, description: 'The org storefront and partner exchange — discover and share workers, connectors, and templates.', tier: 'advanced' },
   { id: 'cloud', label: 'Cloud', icon: 'database', phase: 9, placement: 'primary', group: 'platform', preview: true, description: 'NeuroPause cloud — tenants, identity federation, sync, and the API gateway.', tier: 'advanced' },
   { id: 'control-plane', label: 'Control Plane', icon: 'gauge', phase: 11, placement: 'primary', group: 'platform', hidden: true },
   { id: 'infrastructure', label: 'Infrastructure', icon: 'server', phase: 13, placement: 'primary', group: 'platform', description: 'Discover and map your external cloud platforms, resources, and topology.', tier: 'advanced' },
   { id: 'federation', label: 'Federation', icon: 'layers', phase: 9, placement: 'primary', group: 'platform', preview: true, tier: 'advanced', description: 'Cross-organization federation — trust, sharing, and exchange.' },
   { id: 'federation-center', label: 'Federation Center', icon: 'globe', phase: 10, placement: 'primary', group: 'platform', hidden: true },
   { id: 'store', label: 'AI Store', icon: 'store', phase: 3, placement: 'primary', group: 'workspace', description: 'Discover, install, and launch AI apps.' },
-  { id: 'marketplace', label: 'Enterprise Marketplace', icon: 'store', phase: 9, placement: 'primary', group: 'workspace', preview: true, description: 'Signed, governed packages — workers, connectors, templates, and packs.' },
+  { id: 'marketplace', label: 'Enterprise Marketplace', icon: 'store', phase: 9, placement: 'primary', group: 'workspace', preview: true, tier: 'advanced', description: 'Signed, governed packages — publisher trust and org-wide install policy.' },
   { id: 'workspace', label: 'Workspace', icon: 'workspace', phase: 2, placement: 'primary', group: 'workspace' },
   { id: 'operations', label: 'Runtime', icon: 'cpu', phase: 3, placement: 'primary', group: 'platform', description: 'Installed apps, plugins, runtime sessions, downloads, updates, and permissions.', tier: 'advanced' },
   { id: 'workforce', label: 'AI Workforce', icon: 'cpu', phase: 6, placement: 'primary', group: 'ai', description: 'Run and supervise AI workers — approvals, automations, and the executive assistant.' },

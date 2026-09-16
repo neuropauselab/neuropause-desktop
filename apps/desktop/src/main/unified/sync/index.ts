@@ -18,6 +18,7 @@ import { connectorStore } from '../../connectors/connectorStore';
 import { CONNECTOR_MANIFESTS, MANIFEST_BY_ID } from '../../connectors/manifests';
 import { unifiedStore } from '../storeInstance';
 import { activeTenantScope } from '../../enterprise';
+import { m365WriteStates } from '../../connectors/m365WriteStates';
 import { syncStateStore } from './syncStateInstance';
 import { stateToSnapshot } from './syncStateStore';
 import { SyncOrchestrator, type OrchestratorPorts } from './orchestrator';
@@ -148,12 +149,67 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       stateToSnapshot(syncStateStore.get(c, a), orchestrator.retrySize(c, a)),
     );
 
+  /**
+   * S19 (FG-7) — join the TRUTHFUL five write states onto each Microsoft 365
+   * snapshot from the single S34a ActionRecord source of truth. The key is
+   * resolved SYNCHRONOUSLY by the caller (inside its principal context); this
+   * async step only needs the id string. No parallel counting: the old disjoint
+   * `writeCount` is retired in the panel.
+   *
+   * ── F-P45 · THE KEY IS A WORKSPACE ID, AND THE PARAMETER SAYS SO ────────────────────────────────────────────
+   * This read previously passed `activeTenantScope()?.tenantId` — the ORGANIZATION id — to a store whose rows are
+   * written under the WORKSPACE id (`connectors/index.ts:641` → `deps.workspaceId()`). Two separately-seeded
+   * namespaces with no mapping at the query boundary, so **every counter read zero on every call, forever** — and
+   * `EXTERNALLY_OBSERVED` was pinned to 0 by construction no matter what the read-back reconciler recorded.
+   *
+   * The parameter is named `workspaceId` deliberately. The persisted column is still called `tenantId` and that
+   * RENAME IS OWED AND NOT DONE HERE (it is governance-class and needs its own gate); naming the local truthfully
+   * is what stops the next reader repeating the substitution. **The value was never the defect — the name was.**
+   *
+   * `activeTenantScope()` resolves the workspace from the SAME two authorities in the SAME precedence as the
+   * writer's `deps.workspaceId()`: the background principal when one is bound, else the `workspaceStore` session
+   * (`backgroundPrincipal.ts:167`, `tenantContext.ts:480`). That is why the two keys meet, and the regression pin
+   * derives each side independently rather than asserting the equality into place.
+   */
+  const withWriteStates = async (
+    snaps: ConnectorSyncSnapshot[],
+    workspaceId: string | null,
+  ): Promise<ConnectorSyncSnapshot[]> => {
+    if (workspaceId === null) return snaps;
+    return Promise.all(
+      snaps.map(async (s) => {
+        if (s.connectorId !== 'microsoft-entra') return s;
+        const w = await m365WriteStates(workspaceId, s.connectorId, s.accountId);
+        return {
+          ...s,
+          writeStates: {
+            requested: w.requested,
+            authorized: w.authorized,
+            executed: w.executed,
+            providerAcknowledged: w.providerAcknowledged,
+            externallyObserved: w.externallyObserved,
+          },
+        };
+      }),
+    );
+  };
+
   // Re-broadcast sync-state changes so the dashboard refreshes live.
   // P13C Round 7 — `changed` fires synchronously inside the per-workspace sync
   // fan-out, so `connectedAccounts()` and `syncStateStore.get()` resolve to the
   // RUN'S workspace. Same pattern as the six sibling broadcasts.
-  const onStateChanged = (): void =>
-    deps.broadcast(IpcChannel.ConnectorSyncState, runOutsidePrincipal(() => snapshots()));
+  const onStateChanged = (): void => {
+    // Resolve the snapshots + tenant SYNCHRONOUSLY inside the principal context;
+    // the write-state join is async but only needs the tenantId string.
+    const { snaps, workspaceId } = runOutsidePrincipal(() => ({
+      snaps: snapshots(),
+      // F-P45 — the evidence store is WORKSPACE-keyed. See `withWriteStates`.
+      workspaceId: activeTenantScope()?.workspaceId ?? null,
+    }));
+    void withWriteStates(snaps, workspaceId).then((enriched) =>
+      deps.broadcast(IpcChannel.ConnectorSyncState, enriched),
+    );
+  };
   syncStateStore.on('changed', onStateChanged);
 
   /**
@@ -186,7 +242,16 @@ export async function initSync(deps: SyncSubsystemDeps): Promise<SyncSubsystem> 
       schema: ConnectorSyncStateRequest,
       requireAuth: true,
       permission: 'connectors:read', // P4.1 RBAC
-      handler: (p) => snapshots((p as TConnectorSyncStateRequest).connectorId),
+      handler: async (p) =>
+        withWriteStates(
+          snapshots((p as TConnectorSyncStateRequest).connectorId),
+          // F-P45 — MINIMUM ACCOMPANIMENT, not scope creep (§2 #2). `withWriteStates` has TWO callers: this
+          // on-demand IPC read and the live broadcast above. Correcting only one would leave the shared
+          // parameter carrying a different namespace per caller — the panel would read 0 on first load and
+          // real counts on the next sync event, or the reverse. An inconsistent contract is a worse defect
+          // than the one being fixed, so both callers move together or neither does.
+          activeTenantScope()?.workspaceId ?? null,
+        ),
     },
   ];
 

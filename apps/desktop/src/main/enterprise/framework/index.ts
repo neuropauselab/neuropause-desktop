@@ -25,6 +25,7 @@ import {
 export * from './enterpriseRecordStore';
 export * from './enterpriseModule';
 export * from './moduleRegistry';
+export * from './transactionGraph';
 
 /** Canonical on-disk location for a module's record store (userData). */
 export function enterpriseModuleStorePath(userDataDir: string, moduleId: string): string {

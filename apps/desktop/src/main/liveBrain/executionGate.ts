@@ -1,0 +1,223 @@
+/**
+ * S5.4 Phase 0 · FG-10 · the L6 EXECUTION-TIME GATE — the non-frozen logic behind the one gated call
+ * inside `connectors/index.ts` (before `governedSend`).
+ *
+ * For an L6-proposal-driven `mail.send`, it RE-DERIVES admissibility from the runtime substrate and
+ * refuses on any mismatch (deny-by-default); the proposal's own words are never re-trusted. A refusal
+ * returns an OBSERVABLE `DENIED` `ConnectorWriteResult` — the SAME shape the FG-4 guard denial returns,
+ * never a silent drop (condition 3). Non-`mail.send`, or a `mail.send` with no stashed L6 proposal, →
+ * `{ ok: true }` (SKIP): the existing assistant/deterministic path is behaviorally IDENTICAL (condition 2).
+ *
+ * GATE ≠ OBSERVER: the FG-5 ActionRecord observer stays best-effort and never blocks; THIS gate MAY
+ * refuse — but only L6-proposal-driven executions, never the non-L6 path. Execution order in the handler:
+ * FG-10 (this) runs FIRST, then the FG-4 first-real-send guard, then `governedSend` — so a refused
+ * proposal never touches the latch.
+ */
+import type { ConnectorWriteResult } from '@neuropause/shared';
+import { gateL6Execution } from './proposalStore';
+import type { ExecutionDeps } from './proposalExecutionBoundary';
+import type { AuthorityRequirement, VerificationPlan, ProposalTarget } from './proposal';
+import { isCertifiedConsequentialCapability, mutationAssuranceFor } from '../capabilities/liveCapabilitySources';
+import { createLogger } from '../logger';
+import { actionRecord, type GovernanceVerdict } from '../connectors/actionRecord';
+
+const log = createLogger('l6-gate');
+
+export type L6GateResult = { readonly ok: true } | { readonly ok: false; readonly refusal: ConnectorWriteResult };
+
+/**
+ * Shared authority derivation (RBAC/CST via L4) — the SINGLE source both propose and execute use.
+ * EXPORTED so the propose lane (`brainProposeLane`) builds with LITERALLY these functions — a proposal formed from any
+ * other derivation would fail the execution-time re-derivation comparison (deny-by-default), which is the point.
+ */
+export function deriveAuthority(capabilityId: string, target: ProposalTarget): AuthorityRequirement {
+  return {
+    requiresApproval: true,
+    governanceStatus: mutationAssuranceFor(target.connector),
+    requiredGate: 'human-confirm + CST admission',
+    /**
+     * A recorded CONTRACT LABEL — never an authority input (F-N16-2).
+     *
+     * `null` means "no source for this capability", not "no policy": there is
+     * no action→policy registry to consult, so only the one case with a known
+     * literal is named. The ENFORCING paths carry their own values
+     * (`connectors/index.ts` for the send path, `cst/governedAction.ts` for the
+     * cohorts) and those are authoritative for "under which contract did this
+     * execute" — this one answers only "what does the proposal claim".
+     *
+     * Nothing decides on it: the CST kernel's sole use interpolates it into an
+     * evidence label, never a comparison, and `boundDecisionClaim` deliberately
+     * excludes it (I-A3-STEP2-FINDING-1 — weaker provenance must not be
+     * represented as stronger). Pinned in `authorityReconciliation.test.ts`.
+     */
+    policyVersion: capabilityId === 'mail.send' ? 'm365-send-policy-1' : null,
+  };
+}
+
+/**
+ * S23 — the oracle registry's HONEST needs-statement per capability: what independent read-back would have to exist
+ * before this capability's effects could ever be VERIFIED. An entry here is an UNVERIFIABLE declaration, not an oracle.
+ */
+const ORACLE_NEEDS: Record<string, string> = {
+  'calendar.create': 'a calendar read-back oracle (event GET-by-id corroboration)',
+};
+
+/** Shared oracle-registry derivation — mail.send → the S16 plan; else honestly UNVERIFIABLE with its need stated. */
+export function deriveOracle(capabilityId: string): VerificationPlan {
+  return capabilityId === 'mail.send'
+    ? { verifiable: 'send-corroboration', oracleId: 'verifyEffect', note: 'send-corroboration, not delivery', needs: null, productionWired: false }
+    : { verifiable: false, oracleId: null, note: 'no oracle for this capability', needs: ORACLE_NEEDS[capabilityId] ?? 'a per-capability oracle', productionWired: false };
+}
+
+export interface RuntimeExecuteDeps {
+  workspaceId(): string | null;
+  /**
+   * ROUTE A (F-P24) — OPTIONAL BY NECESSITY, NOT BY PREFERENCE. The production call site already supplies this
+   * (the same `deps` object the send observer reads), so production rows carry a real actor. It is optional so
+   * that existing callers passing only `workspaceId` keep type-checking unchanged — widening it to required
+   * would have edited a dozen existing assertions to buy nothing.
+   */
+  actor?(): string | null;
+}
+export interface ExecuteRequestLike {
+  readonly actionId: string;
+  readonly accountId: string;
+  readonly params: Readonly<Record<string, unknown>>;
+  /** ROUTE A — present on every production request; optional here for the same reason as `actor`. */
+  readonly connectorId?: string;
+}
+
+export function l6ExecutionGate(deps: RuntimeExecuteDeps, r: ExecuteRequestLike, nowMs?: number): L6GateResult {
+  if (r.actionId !== 'mail.send') return { ok: true }; // only the certified consequential capability is gated
+  const tenantId = deps.workspaceId() ?? '';
+  // Phase-0 placeholder state hash (stable per tenant → no false drift); the propose seam supplies the real one.
+  const stateHash = tenantId;
+  const execDeps: ExecutionDeps = {
+    nowMs: nowMs ?? Date.now(),
+    currentTenantId: tenantId,
+    currentStateHash: stateHash,
+    stateHashAtProposal: stateHash,
+    authorityFor: deriveAuthority,
+    oracleFor: deriveOracle,
+    // ONE named authority — the same predicate discovery uses (F-N16-1). A
+    // second copy of this rule is how discovery and the boundary drifted apart.
+    isCertifiedConsequential: isCertifiedConsequentialCapability,
+  };
+  /**
+   * ROUTE A (F-P24) — MINT THE GOVERNANCE EVIDENCE WHERE THE GOVERNANCE DECISION IS MADE.
+   *
+   * §2 #19 keeps GOVERNANCE, EXECUTION and VERIFICATION as separate evidence classes. The observer at
+   * `connectors/index.ts:641` is EXECUTION-class — it runs after `governedSend` returns and its subject is what
+   * the executor did — and **a governance decision that produced no execution has nothing for it to observe.**
+   * Recording it there would borrow an execution emitter to carry a governance fact, which is the collapse that
+   * law forbids. So the record is minted here, at the moment the fact becomes true.
+   *
+   * DECISION-NEUTRAL BY CONSTRUCTION: fire-and-forget and self-catching, exactly the shape of the `:641`
+   * observer. It returns nothing, alters no branch, and **the gate's return value is byte-identical for all
+   * three outcomes** — a throwing store cannot change what this function decides.
+   *
+   * `admit` mints nothing HERE on purpose: an admitted send proceeds to `governedSend` and is recorded by the
+   * execution-class observer. Emitting for it would double-record one action.
+   */
+  const emitGovernance = (verdict: GovernanceVerdict): void => {
+    void actionRecord
+      .observeGovernance(
+        { connectorId: r.connectorId ?? '', accountId: r.accountId, actionId: r.actionId, params: r.params },
+        verdict,
+        { actor: deps.actor?.() ?? '', tenantId },
+      )
+      .catch(() => {});
+  };
+  /**
+   * F-P48 — GOVERN THE IDENTITY CONDITION, NOT THE LOOKUP RESULT.
+   *
+   * **THIS REFUSAL IS NOT ABOUT THE PROPOSAL. IT IS ABOUT THE PRECONDITION FOR ASKING ABOUT THE PROPOSAL.**
+   *
+   * An unresolved workspace makes the proposal key meaningless, so a lookup MISS carries no information: we did
+   * not fail to find a proposal — we were never in a position to look. Previously that miss fell through to SKIP
+   * and the send PROCEEDED. **A gate that skips on a key miss is not a gate, it is a lookup with a permissive
+   * default**, and the miss happened exactly when identity was least certain.
+   *
+   * WHY `IDENTITY_UNRESOLVED` IS NOT ONE OF `proposalExecutionBoundary`'s SEVEN: those answer *why was this
+   * proposal rejected*; this answers *why was no proposal question asked*. **They cannot share an enum because
+   * they cannot share a moment** — the seven are reachable only AFTER `takeProposal` returns a proposal, this
+   * only BEFORE it is called. Not `NO_PROPOSAL` either: the legitimate skip also has no proposal, so the name
+   * would describe both cases and distinguish neither.
+   *
+   * BEFORE THE LOOKUP, DELIBERATELY: after it, the two skips are indistinguishable.
+   *
+   * `deps.workspaceId()` is TOTAL in production (`runtimeCore.ts:474-478` coalesces twice), so `''` IS the
+   * unresolved signal and the `??` above is untouched. `''` and `null` are treated identically, because **an
+   * empty id is an unresolved id wearing a string** — the rule `connectorVault.clear()` already learned after a
+   * missing workspace once wiped every workspace's credentials.
+   *
+   * THE LEGITIMATE SKIP IS UNAFFECTED and that is the whole point: a human-composed send from
+   * `M365WritePanel.tsx:106` arrives with a RESOLVED workspace and no proposal, and still proceeds.
+   */
+  if (tenantId === '') {
+    log.warn(`L6-GATE REFUSE capability=${r.actionId} — IDENTITY_UNRESOLVED (no workspace resolved)`);
+    emitGovernance('DENY');
+    return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: 'IDENTITY_UNRESOLVED' } } };
+  }
+  /**
+   * F-P8 (scoped) — REJECT LOCALLY WHAT THE PROVIDER WILL REJECT ANYWAY.
+   *
+   * A send with no recipient is a MALFORMED REQUEST: Graph requires at least one, so dispatching it means making
+   * an external call to Microsoft for something that cannot succeed. The refusal is GOVERNANCE-CLASS — the
+   * system declined to act, execution NOT_STARTED — and never an execution failure, because nothing was
+   * attempted (§2 #19). That is also why the check cannot live in `mail.ts`/`actionSdk.ts`: inside `action.run`
+   * a throw becomes EXECUTION_FAILED, and the evidence would then say the send was attempted and failed.
+   *
+   * ── AT LEAST ONE, NEVER EXACTLY ONE ──────────────────────────────────────────────────────────────────────
+   * The read-back oracle can only corroborate a single-recipient send, but that is a **CAPABILITY LIMIT, NOT A
+   * REQUIREMENT**: a two-recipient email is a perfectly good email, and refusing it would make the user pay for
+   * our verifier's incompleteness. Multi-recipient sends PROCEED here and are simply unverifiable — F-P55's
+   * subject, not this rule's.
+   *
+   * ── WHY THIS RULE AND NOT THE OTHER TWO ON THE PROPOSE LANE ──────────────────────────────────────────────
+   * `m365ActionProposal.ts` also checks ADDRESS FORMAT (:101) and caps MAX_RECIPIENTS (:105). Both stay there:
+   *   ADDRESS FORMAT — a format check CAN BE WRONG IN THE COSTLY DIRECTION. Graph rejecting a bad address costs
+   *     nothing; us rejecting a good one stops the user sending. **REJECT LOCALLY ONLY WHERE LOCAL REJECTION
+   *     CANNOT BE WRONG** — an empty recipient list is the only one of the three that qualifies.
+   *   MAX_RECIPIENTS — a PRODUCT POLICY, not a provider requirement, and policy belongs where policy is decided.
+   * Recorded here so a future reader does not "complete" the transfer and reintroduce a corrected error.
+   *
+   * ── THE REASON/DETAIL SPLIT ──────────────────────────────────────────────────────────────────────────────
+   * A REASON NAMES THE QUESTION FOR AN AUDITOR ("is this a well-formed request?"); A DETAIL NAMES THE FIELD FOR
+   * A DEVELOPER. So a second well-formedness rule extends the detail rather than multiplying the enum into a
+   * list of symptoms. The detail is VERBATIM from `m365ActionProposal.ts:104`, so the propose lane and the
+   * execute lane state one rule in one sentence.
+   *
+   * **THE DETAIL IS THE RULE, NEVER THE VALUE — NO REQUEST-DERIVED TEXT, EVER (pinned).** F-P26: NP-013's
+   * `redactCredentialText` is PINNED to preserve email shapes, so an interpolated address would look protected
+   * and would not be. Interpolating the offending value is the obvious next step for the next rule, and it is
+   * the step this pin exists to stop.
+   */
+  const to = r.params.to;
+  if (!Array.isArray(to) || to.filter((a) => typeof a === 'string' && a.trim() !== '').length === 0) {
+    log.warn(`L6-GATE REFUSE capability=${r.actionId} — MALFORMED_REQUEST (no recipient)`);
+    emitGovernance('DENY');
+    return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: 'MALFORMED_REQUEST', detail: 'at least one recipient is required' } } };
+  }
+  const gate = gateL6Execution({ tenantId, capabilityId: r.actionId, account: r.accountId, params: r.params }, execDeps);
+  if (gate.gate === 'refuse') {
+    log.warn(`L6-GATE REFUSE capability=${r.actionId} tenant=${tenantId} — ${gate.reason}`);
+    emitGovernance('DENY');
+    return { ok: false, refusal: { ok: false, message: 'L6 execution gate refused', data: { outcome: 'DENIED', reason: gate.reason } } };
+  }
+  /**
+   * A SKIP IS NOT A REFUSAL, AND THIS RECORD MUST NOT SAY IT WAS.
+   *
+   * F-P48: the gate did not DECIDE — the proposal lookup missed and the send proceeds. Writing `DENY` here would
+   * assert a refusal that never happened and make an **ungated send look governed**, which is strictly worse than
+   * the present silence. `NOT_EVALUATED` is a record whose purpose is to make **the ABSENCE of a decision**
+   * visible. The two cases are told apart by the VERDICT FIELD, never by prose.
+   *
+   * This makes the skip VISIBLE. It does not make it refuse — F-P48 stays open until that behaviour is ruled.
+   */
+  if (gate.gate === 'skip') emitGovernance('NOT_EVALUATED');
+  // Observability: ADMIT (a stashed L6 proposal re-derived clean and was consumed) is distinguishable from SKIP in the
+  // main log — the running-app proof that a send was Brain-PROPOSED, not merely governed. Never alters the outcome.
+  if (gate.gate === 'admit') log.info(`L6-GATE ADMIT capability=${gate.capabilityId} tenant=${tenantId}`);
+  return { ok: true }; // 'admit' (proceed) or 'skip' (non-L6 / no stashed proposal — unchanged)
+}

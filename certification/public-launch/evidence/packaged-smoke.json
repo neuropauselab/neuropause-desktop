@@ -1,0 +1,185 @@
+{
+  "test": "packaged-smoke",
+  "started_at": "2026-09-13T03:59:35.200Z",
+  "source": {
+    "kind": "zip",
+    "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/NeuroPause-1.0.0-rc.30-universal-mac.zip",
+    "sha256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075"
+  },
+  "checks": [
+    {
+      "ok": true,
+      "label": "zip extracted",
+      "detail": ""
+    },
+    {
+      "ok": true,
+      "label": "main executable present",
+      "detail": "/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-ro5Eka/zip/NeuroPause.app/Contents/MacOS/NeuroPause"
+    },
+    {
+      "ok": true,
+      "label": "bare specifiers parsed from the packaged bundles",
+      "detail": "@neuropause/cst/dist/src/kernel.js, @neuropause/cst/dist/src/stores.js, @neuropause/cst/dist/src/types.js, electron-updater, ws"
+    },
+    {
+      "ok": true,
+      "label": "quarantine attribute state (Gatekeeper applies only to quarantined bytes)",
+      "detail": "ABSENT (locally produced bytes; Gatekeeper verdict measured separately by spctl)"
+    },
+    {
+      "ok": true,
+      "label": "packaged app launched (playwright electron.launch)",
+      "detail": "498 ms to launch"
+    },
+    {
+      "ok": true,
+      "label": "app.isPackaged === true (real packaged artifact)",
+      "detail": "true"
+    },
+    {
+      "ok": true,
+      "label": "app.isReady()",
+      "detail": "true"
+    },
+    {
+      "ok": true,
+      "label": "userData isolated to the fresh profile",
+      "detail": "/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-profile-82HYi1"
+    },
+    {
+      "ok": true,
+      "label": "main process runs from app.asar",
+      "detail": "/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-ro5Eka/zip/NeuroPause.app/Contents/Resources/app.asar"
+    },
+    {
+      "ok": true,
+      "label": "production modules load inside the packaged main process (process.mainModule.require)",
+      "detail": "5/5 loaded"
+    },
+    {
+      "ok": true,
+      "label": "first BrowserWindow appeared",
+      "detail": "514 ms"
+    },
+    {
+      "ok": true,
+      "label": "renderer loaded from the packaged bundle",
+      "detail": "file:///private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-ro5Eka/zip/NeuroPause.app/Contents/Resources/app.asar/out/renderer/index.html"
+    },
+    {
+      "ok": true,
+      "label": "renderer rendered visible text",
+      "detail": "Working locally — your data stays on this device. Connect an account to sync NeuroPause Search apps, actions, and your work ⌘ K SA Default ▾ TODAY Mission Contr"
+    },
+    {
+      "ok": true,
+      "label": "no uncaught renderer page errors",
+      "detail": "none"
+    },
+    {
+      "ok": true,
+      "label": "first-run screenshot captured",
+      "detail": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/verification/packaged-smoke-first-run.png"
+    },
+    {
+      "ok": true,
+      "label": "process exited after app.close()",
+      "detail": "code=0 signal=null"
+    },
+    {
+      "ok": true,
+      "label": "clean exit code",
+      "detail": "code=0 signal=null"
+    },
+    {
+      "ok": true,
+      "label": "no MODULE_NOT_FOUND in process output",
+      "detail": "0"
+    },
+    {
+      "ok": true,
+      "label": "no uncaught exception / unhandled rejection in process output",
+      "detail": "0"
+    }
+  ],
+  "module_source": "parsed 5 bare specifiers from the asar main/preload bundles",
+  "executable_sha256": "e5ee77ce8f3ad3bb43dd4470897b622d2c93428d74b6fe3b0d8baacaed402b11",
+  "quarantine_xattr_present": false,
+  "main_process": {
+    "isPackaged": true,
+    "version": "1.0.0-rc.30",
+    "name": "@neuropause/desktop",
+    "userData": "/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-profile-82HYi1",
+    "appPath": "/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-ro5Eka/zip/NeuroPause.app/Contents/Resources/app.asar",
+    "ready": true,
+    "electron": "42.8.1",
+    "node": "24.18.1",
+    "chrome": "148.0.7778.280",
+    "arch": "arm64",
+    "platform": "darwin",
+    "execPath": "/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-ro5Eka/zip/NeuroPause.app/Contents/MacOS/NeuroPause"
+  },
+  "main_started_ms": 513,
+  "module_loads": {
+    "mechanism": "process.mainModule.require",
+    "results": [
+      {
+        "module": "@neuropause/cst/dist/src/kernel.js",
+        "load_status": "PASS",
+        "resolution": null,
+        "export_type": "object"
+      },
+      {
+        "module": "@neuropause/cst/dist/src/stores.js",
+        "load_status": "PASS",
+        "resolution": null,
+        "export_type": "object"
+      },
+      {
+        "module": "@neuropause/cst/dist/src/types.js",
+        "load_status": "PASS",
+        "resolution": null,
+        "export_type": "object"
+      },
+      {
+        "module": "electron-updater",
+        "load_status": "PASS",
+        "resolution": null,
+        "export_type": "object"
+      },
+      {
+        "module": "ws",
+        "load_status": "PASS",
+        "resolution": null,
+        "export_type": "function"
+      }
+    ]
+  },
+  "renderer": {
+    "title": "NeuroPause — Today's Intent",
+    "url": "file:///private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-smoke-ro5Eka/zip/NeuroPause.app/Contents/Resources/app.asar/out/renderer/index.html",
+    "visible_text_excerpt": "Working locally — your data stays on this device. Connect an account to sync NeuroPause Search apps, actions, and your work ⌘ K SA Default ▾ TODAY Mission Control Today's Intent PREVIEW Search Assistant Work Hub Ask NeuroPause Understand Holds BUSINESS Opportunities Organization Business Administration Data Medical Devices WORKSPACE Intelligence Collaboration Knowledge Automation AI Store Workspace Connectors AI Memory AI & OPERATIONS AI Operations Operations AI Workforce SYSTEM Notifications Getting Started Advanced Settings Preview Today's Intent runs on real code with in-memory or seeded data — not live production enterprise state · in active development. Founder CEO CTO CFO COO Sales Marketing HR Legal Operations 9 outcomes 6 on track 0 at risk 3 off track 2 blocked Overall progress 67% Strategic reasoning confidence 75% TODAY'S INTENT — WHAT MOST NEEDS YOU NOW Expand industry readiness Off track · Average industry activation ≥ 60% PROGRESS TOWARD OUTCOME 0% Now 0% · target 60% Growth Target horizon 365 days 3 evidence signals Blocked by Raise workforce reliability NEXT BEST ACTION Advance \"Expand industry readiness\" Requires approval — Side-effect approval (1 step). Open in Strategy Center RISKS This outcome is off track Average industry activation ≥ 60% — now 0% of 60. Blocked by \"Raise workforce reliability\" A dependency is off track. APPROVALS Side-effect approval Requires approval via \"Side-effect approval\" (1 step(s)) before execution. 1 approval step. RECOMMENDATIONS No strategic decisions are linked to this outcome right now. OBJECTIVES Ready suites 0% suites in ready state: 0 suites / 12 suites TIMELINE 25% checkpoint 365 days · At risk 50% checkpoint 365 days · Off track Target 365 days · Off track DEPENDENCIES Raise workforce reliability Blocking EVIDENCE industry:erp industry:healthcare industry:manufacturing Real platform signal ids backing this outcome's current value. Not shown for this outcome (no real per-intent source): AI workers · Connectors · Analytics. These panels are withheld rather than fabricated. YOUR OUTCOMES — PICK ONE TO FOCUS ITS WORKSPACE Off track 365 days Expand industry readiness Activate industry solution suites across target verticals. Average industry activation ≥ 60% 0% Blocked by Raise workforce reliability Off track 90 days Raise workforce reliability Drive the AI workforce job success rate above 90%. Workforce success rate ≥ 90% 0% Next: Advance \"Raise workforce reliability\" Off track 180 days Improve cloud cost efficiency Raise utilization of paid cloud capacity so spend is not wasted on idle headroom (a measurable proxy for cost efficiency; P14 stores no baseline). Cloud capacity utilization ≥ 70% 3% Next: Advance \"Improve cloud cost efficiency\" On track 90 days Relieve capacity pressure Keep infrastructure capacity pressure in the low band. Capacity pressure score < 30 100% Blocked by Improve cloud cost efficiency On track 30 days Close compliance control gaps Enable the governance controls backing",
+    "page_errors": [],
+    "console_errors": [],
+    "ready_ms": 4604
+  },
+  "screenshot": {
+    "path": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/artifacts/mac-final/verification/packaged-smoke-first-run.png",
+    "sha256": "0d59b84f3dce69990d23858f3ee04ac0c4643ee8c9962a38ff7ad99fa9cf6504"
+  },
+  "process_exit": {
+    "code": 0,
+    "signal": null,
+    "at": 34761
+  },
+  "log_bytes": 32676,
+  "log_sha256": "83857c7420f2f16cb4842dd2f5215934e4699791caed15a6cb0d8fce329c7281",
+  "log_signals": {
+    "module_not_found": 0,
+    "uncaught": 0,
+    "crash": 4
+  },
+  "ended_at": "2026-09-13T04:00:11.859Z",
+  "result": "PASS"
+}

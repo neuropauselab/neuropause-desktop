@@ -36,8 +36,15 @@ export interface ExecuteEngineDeps {
     /** P8.3 — chain id so execution events share the originating job/goal correlation. */
     correlationId?: string;
   }) => void;
-  /** Durable persistence hook (V5.8). Engine stays unaware of the implementation. */
-  persist?: (session: ExecutionSession) => void;
+  /**
+   * Durable persistence hook (V5.8). Engine stays unaware of the implementation.
+   *
+   * P13C I-A.3 Step 5 — returns `Promise<void>` so the governed path can AWAIT durable
+   * completion before the consequential effect. (Non-governed persists remain
+   * fire-and-forget; the composition root must return the store's promise, not discard
+   * it — otherwise "awaited persist" would await nothing.)
+   */
+  persist?: (session: ExecutionSession) => Promise<void> | void;
   /**
    * P13C Round 2 — the resolved tenant. Injected so the engine stays free of
    * the enterprise root, matching every other dep here.
@@ -52,12 +59,37 @@ export interface ExecuteEngineDeps {
 
 const MAX_HISTORY = 200;
 
+/**
+ * P13C I-A.3 Step 5 — read the governed durable-consumption identity from an in-process
+ * request. Returns `null` for non-governed requests (no claim). The claim rides
+ * `req.params.claim` by reference (Phase-I-A.3 transport); the renderer cannot inject it
+ * (`ExecuteRunRequest` is `.strict()` with no params). The engine consumes only the three
+ * durable-identity strings — it does not verify the claim (binding/expiry/actor/tenant
+ * verification is the separate Boundary-B gate).
+ */
+function readGovernedClaim(req: ExecutionRequest): { decisionId: string; bindingDigest: string; claimNonce: string } | null {
+  const params = req.params as Record<string, unknown> | undefined;
+  const claim = params?.claim as Record<string, unknown> | undefined;
+  if (!claim || typeof claim.decisionId !== 'string' || claim.decisionId.length === 0) return null;
+  return {
+    decisionId: claim.decisionId,
+    bindingDigest: typeof claim.bindingDigest === 'string' ? claim.bindingDigest : '',
+    claimNonce: typeof claim.claimNonce === 'string' ? claim.claimNonce : '',
+  };
+}
+
 export class ExecuteEngine {
   private readonly executors = new Map<ExecutionKind, ExecutionExecutor>();
   private readonly sessions = new Map<string, ExecutionSession>();
   private readonly history: ExecutionSession[] = [];
   private seq = 0;
   private readonly now: () => number;
+  /**
+   * P13C I-A.3 Step 5 — durable single-use ledger (runtime index over the durable
+   * ExecutionStore, NOT the authority). Holds the `decisionId` of every admitted
+   * governed execution; hydrated at boot in `seedHistory` from persisted sessions.
+   */
+  private readonly consumedDecisions = new Set<string>();
 
   constructor(private readonly deps: ExecuteEngineDeps = {}) {
     this.now = deps.now ?? Date.now;
@@ -106,10 +138,53 @@ export class ExecuteEngine {
        */
       tenantId: this.deps.tenantId?.() ?? null,
     };
+    const startedMs = this.now();
+
+    // P13C I-A.3 Step 5 — governed durable consumption (claim-bearing requests ONLY).
+    // check → reserve is a SINGLE synchronous section (no `await` between them), so two
+    // concurrent submissions of the same decision cannot both reserve. Non-governed
+    // executions carry no claim and are unaffected.
+    const claim = readGovernedClaim(req);
+    if (claim) {
+      if (this.consumedDecisions.has(claim.decisionId)) {
+        // Single-use: this governance decision was already admitted to an execution.
+        this.finish(session, startedMs, false, null, 'Governed decision already admitted to execution (single-use).');
+        return session;
+      }
+      this.consumedDecisions.add(claim.decisionId); // reserve (synchronous)
+      session.decisionId = claim.decisionId; // stamp
+      session.bindingDigest = claim.bindingDigest;
+      session.claimNonce = claim.claimNonce;
+    }
+
     if (session.steps[0]) session.steps[0].state = 'running';
     this.sessions.set(id, session);
-    this.deps.persist?.(session);
-    const startedMs = this.now();
+
+    if (claim) {
+      // AWAIT durable persistence BEFORE the consequential effect. Persistence failure
+      // ⇒ roll back the reservation + un-stamp (so nothing marks the decision consumed)
+      // and REFUSE — no executor runs, no effect.
+      try {
+        await this.deps.persist?.(session);
+      } catch (err) {
+        this.consumedDecisions.delete(claim.decisionId);
+        delete session.decisionId;
+        delete session.bindingDigest;
+        delete session.claimNonce;
+        this.finish(
+          session,
+          startedMs,
+          false,
+          null,
+          `Durable admission failed; execution refused: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return session;
+      }
+    } else {
+      // Non-governed: unchanged fire-and-forget (never awaited before the effect).
+      void Promise.resolve(this.deps.persist?.(session)).catch(() => {});
+    }
+
     this.emit('execution.started', 'normal', { kind: req.kind, label: session.label, id }, session.correlationId);
 
     const setStep = (index: number): void => {
@@ -170,7 +245,8 @@ export class ExecuteEngine {
     this.sessions.delete(session.id);
     this.history.unshift({ ...session, steps: session.steps.map((s) => ({ ...s })) });
     this.pruneHistoryForOwner();
-    this.deps.persist?.(this.history[0]);
+    // Post-effect result write — fire-and-forget (never on the pre-effect governed path).
+    void Promise.resolve(this.deps.persist?.(this.history[0])).catch(() => {});
 
     this.emit(
       ok ? 'execution.completed' : 'execution.failed',
@@ -261,6 +337,10 @@ export class ExecuteEngine {
    */
   seedHistory(sessions: ExecutionSession[]): void {
     for (const s of sessions) {
+      // P13C I-A.3 Step 5 — hydrate the durable single-use ledger from persisted
+      // decisions BEFORE the history prune, so the consumed set is not bounded by the
+      // history cap (a pruned session must not become replayable).
+      if (typeof s.decisionId === 'string' && s.decisionId.length > 0) this.consumedDecisions.add(s.decisionId);
       if (!this.history.some((h) => h.id === s.id)) this.history.push({ ...s });
     }
     // Newest first, bounded.

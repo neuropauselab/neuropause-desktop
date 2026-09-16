@@ -154,15 +154,21 @@ export class IdentityStore {
           m,
         );
       }
-    } else if (res.state !== 'loaded') {
+    } else if (res.state !== 'first-run') {
       /**
-       * A corrupt or future-versioned file empties the question queue.
+       * A corrupt or future-versioned file empties the question queue, and the
+       * operator must be able to tell "no open questions" apart from "I could
+       * not read the file" — those are opposite statements.
        *
-       * Silently, before this: the screen said "no open questions" and meant
-       * "I could not read the file". Those are opposite statements and the
-       * operator has to be able to tell them apart.
+       * GATE 19 — but a MISSING file (`first-run`) is neither: a fresh profile,
+       * or a local-mode install that has never synced an external identity, has
+       * no `identity.json` yet, so an empty queue is exactly correct. Logging
+       * that at ERROR on every boot was a spurious "cry wolf" that broke the
+       * clean-boot claim this gate audits. Excluding `first-run` and warning (not
+       * erroring) mirrors graphStore/memoryStore, which use the same reader and
+       * the same distinction; only a genuinely unreadable file is surfaced now.
        */
-      log.error('Identity state could not be read; the question queue will look empty', {
+      log.warn('Identity state could not be read; the question queue will look empty', {
         state: res.state,
         path: this.filePath,
       });

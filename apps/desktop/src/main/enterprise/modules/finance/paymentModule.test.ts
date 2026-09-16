@@ -215,7 +215,14 @@ async function createIn(moduleId: string, fields: Record<string, unknown>) {
 
 async function newInvoice(fields: Record<string, unknown> = {}) {
   const res = await createIn('finance', { number: 'INV-1', customer: 'Acme', amount: 100, ...fields });
-  return res.record?.id as string;
+  const id = res.record?.id as string;
+  // ERP Session 95 — a customer invoice must be ISSUED before it carries Accounts Receivable that a
+  // receipt can settle. The payment path now refuses a draft/cancelled invoice (the sell-side mirror
+  // of the buy-side "approve the bill first" guard), so these reconciliation tests set the invoice to
+  // its ISSUED payable state. The `issue` ACTION is governed-command-only (S46), so this module-level
+  // unit test stamps the state directly on the store — the same shape the aging `inv()` fixture uses.
+  invoices.store.update(id, { fields: { status: 'issued', issueDate: '2026-07-08' }, actor: 'test', now: T0 });
+  return id;
 }
 
 describe('CRUD + guards', () => {
@@ -306,7 +313,7 @@ describe('invoice reconciliation (payments are the source of truth)', () => {
 });
 
 describe('AI summary', () => {
-  it('exposes aiSummary=true and no custom actions', async () => {
+  it('exposes aiSummary=true and exactly the S57 governed-clear action', async () => {
     const summaries = (await handler(IpcChannel.EnterpriseModulesList)({})) as Array<{
       id: string;
       aiSummary: boolean;
@@ -314,7 +321,10 @@ describe('AI summary', () => {
     }>;
     const pay = summaries.find((s) => s.id === 'finance-payments');
     expect(pay).toMatchObject({ aiSummary: true });
-    expect(pay?.actions).toEqual([]);
+    // S57 policy delta, deliberate: the module gained ONE action — `clear`, the governed
+    // ClearCustomerPayment affordance (the S46 fence had left pending payments with no
+    // clearing path). The pin stays exact so any FURTHER action addition fails here first.
+    expect(pay?.actions).toEqual([{ key: 'clear', label: 'Clear', icon: 'check' }]);
   });
 
   it('falls back to a deterministic summary; health stays deterministic', async () => {

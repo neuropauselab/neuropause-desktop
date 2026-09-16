@@ -42,6 +42,7 @@ import {
   AssistantPlanDecideRequest,
   IpcChannel,
 } from '@neuropause/shared';
+import type { AiContextItem } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
@@ -62,6 +63,8 @@ import {
   type ConversationMemoryDeps,
 } from '../ai/conversationMemory';
 import { connectorService } from '../connectors/connectorService';
+import { capabilityDiscoveryService } from '../capabilities/capabilityDiscoveryInstance';
+import { projectCapabilitiesForAI } from '../capabilities/capabilityAiContext';
 import { automationStore } from '../enterprise/automationInstance';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
@@ -78,6 +81,13 @@ const log = createLogger('workspace-assistant');
 
 export interface AssistantSubsystemDeps {
   broadcast: IpcBroadcaster;
+  /**
+   * S129 — optional read-only AI evidence-grounding source (S128). Returns governed, tenant-scoped,
+   * credential-free, provenance-tagged `AiContextItem[]` for the ACTIVE tenant (resolved server-side by
+   * the provider). Appended in `buildContext` exactly like the capability source. ABSENT ⇒ previous
+   * behavior unchanged. It grounds the Brain; it grants no execution.
+   */
+  evidenceContext?: (opts?: { query?: string; correlationId?: string; limit?: number; relevanceQuery?: string; includePosture?: boolean; includeConnectorIntel?: boolean }) => AiContextItem[];
   publish: (event: {
     type: string;
     category: string;
@@ -293,6 +303,9 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
         })),
       workers: () =>
         workerRegistry.summaries().map((w) => ({ id: w.id, name: w.name, role: w.role })),
+      // The live, tenant-scoped capability catalog composed from authoritative connector/account state. Read-only
+      // discovery metadata — no credential, no callable, no authority reaches the assistant/AI through this port.
+      capabilities: () => capabilityDiscoveryService.catalog(),
       timeline: (limit) => {
         const tl = getEnterpriseTimeline();
         if (!tl) throw new Error('enterprise timeline not initialized');
@@ -321,7 +334,21 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
       },
         getBriefing: () => brief,
       });
-      return builder.build(req);
+      // Ground the AI in the user's REAL, current capabilities — a read-only description (no credential, no callable,
+      // no authority). It makes the assistant capability-AWARE; it grants no execution.
+      const capabilityContext = projectCapabilitiesForAI(capabilityDiscoveryService.catalog());
+      // S129 — append GOVERNED operational evidence grounding (S128), exactly like the capability source:
+      // read-only, tenant-scoped (resolved server-side by the provider), credential-free, provenance-tagged,
+      // bounded. ABSENT dep ⇒ identical to prior behavior. It grounds the Brain; it grants no execution.
+      // S130 — pass the user's QUESTION as `relevanceQuery` so grounding RANKS the tenant's evidence by
+      // lexical relevance (non-excluding: it never empties the grounding — degrades to recency when the
+      // question has no lexical overlap). It is a relevance signal only, NOT a tenant selector (the
+      // provider resolves the tenant server-side and the evidence is already tenant-scoped).
+      // S133 — also request the aggregate operational-posture prefix so the Brain can answer health/reliability
+      // questions the bounded evidence rows cannot express (repo-wide ratios + top error). Read-only, bounded,
+      // credential-free, definitional (no invented SLO/verdict); tenant resolved server-side by the provider.
+      const evidence = deps.evidenceContext ? deps.evidenceContext({ relevanceQuery: req.query, includePosture: true, includeConnectorIntel: true }) : [];
+      return [...builder.build(req), ...capabilityContext, ...evidence];
     },
     runAi: (req) => aiEngine.run(req),
     recallMemories: (question, now, correlationId) =>

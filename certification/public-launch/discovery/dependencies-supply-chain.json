@@ -1,0 +1,865 @@
+{
+  "key": "dependencies-supply-chain",
+  "generated_at": "2026-09-12",
+  "scope": {
+    "repo": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "version": "1.0.0-rc.30",
+    "porcelain_count": 0,
+    "node": "v20.20.2",
+    "npm": "10.8.2",
+    "packageManager_declared": "npm@10.5.0 (package.json:11)",
+    "node_modules_nature": "real directory, not a symlink (ls -ld; readlink empty) — 689 entries",
+    "mode": "READ-ONLY; no file in the repo was modified; no upgrade performed; no build/test-suite run"
+  },
+  "raw_outputs": {
+    "npm_audit_prod": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/npm-audit-prod.json",
+    "npm_audit_all": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/npm-audit-all.json",
+    "desktop_prod_closure": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/desktop-prod-closure.json",
+    "backend_prod_closure": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/backend-prod-closure.json",
+    "npm_ls_all": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/npm-ls-all.json",
+    "npm_query_lifecycle": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/npm-query-lifecycle.json",
+    "desktop_cwd_prod_ls": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/desktop-cwd-prod-ls.json",
+    "notices_expected_list": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/notices-expected-list.txt",
+    "notices_committed_list": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/notices-committed-list.txt"
+  },
+  "1_npm_audit": {
+    "commands": [
+      "npm audit --json --omit=dev (exit 1)",
+      "npm audit --json (exit 1)"
+    ],
+    "prod_summary": {
+      "info": 0,
+      "low": 0,
+      "moderate": 5,
+      "high": 1,
+      "critical": 0,
+      "total": 6,
+      "classification": "MEASURED",
+      "evidence": "npm-audit-prod.json .metadata.vulnerabilities"
+    },
+    "full_summary": {
+      "info": 0,
+      "low": 0,
+      "moderate": 9,
+      "high": 8,
+      "critical": 1,
+      "total": 18,
+      "classification": "MEASURED",
+      "evidence": "npm-audit-all.json .metadata.vulnerabilities"
+    },
+    "dependency_counts": {
+      "prod": 330,
+      "dev": 802,
+      "optional": 138,
+      "peer": 39,
+      "peerOptional": 0,
+      "total": 1151,
+      "classification": "MEASURED",
+      "evidence": "npm-audit-all.json .metadata.dependencies"
+    },
+    "prod_vulnerable_packages": [
+      "body-parser",
+      "express",
+      "js-yaml",
+      "qs",
+      "react-router",
+      "react-router-dom"
+    ],
+    "full_vulnerable_packages": [
+      "@xmldom/xmldom",
+      "baseline-browser-mapping",
+      "body-parser",
+      "brace-expansion",
+      "browserslist",
+      "electron-vite",
+      "esbuild",
+      "express",
+      "fast-uri",
+      "js-yaml",
+      "nanoid",
+      "postcss",
+      "qs",
+      "react-router",
+      "react-router-dom",
+      "vite",
+      "vite-node",
+      "vitest"
+    ],
+    "high_critical_findings": [
+      {
+        "package": "js-yaml",
+        "installed_version": "4.3.0",
+        "severity": "high",
+        "audit_view": "PROD (--omit=dev) and FULL",
+        "advisories": [
+          {
+            "ghsa": "GHSA-5p4m-2wfm-xmqj",
+            "title": "Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported",
+            "range": ">=4.0.0 <4.3.1",
+            "cvss": 7.5,
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "cwe": [
+              "CWE-407"
+            ]
+          },
+          {
+            "ghsa": "GHSA-2883-xcg3-v3hh",
+            "title": "maxTotalMergeKeys does not limit CPU use for empty merge sources",
+            "range": ">=4.0.0 <4.3.2",
+            "cvss": 7.5,
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+            "cwe": [
+              "CWE-400",
+              "CWE-407"
+            ]
+          }
+        ],
+        "fix_available": "true (npm audit fixAvailable:true; fixed at 4.3.2, within desktop's transitive range and packages/deploy's ^4.1.0 — semver patch, NOT applied)",
+        "direct_or_transitive": {
+          "npm_audit_isDirect": true,
+          "why_isDirect": "packages/deploy/package.json devDependencies: \"js-yaml\": \"^4.1.0\" (workspace devDep counts as direct at the root) — DERIVED from packages/deploy/package.json devDependencies + npm ls js-yaml --all",
+          "desktop_prod_closure": "TRANSITIVE: @neuropause/desktop > electron-updater@6.8.9 > js-yaml@4.3.0 (desktop-prod-closure.json; npm ls js-yaml --all)",
+          "backend_prod_closure": "ABSENT (backend-prod-closure.json walk: js-yaml => ABSENT)",
+          "other_paths": "dev: electron-builder@26.15.3 (app-builder-lib, builder-util, dmg-builder), eslint@8.57.1, @eslint/eslintrc@2.1.4 — all dev"
+        },
+        "vulnerable_api_called": {
+          "call_sites": [
+            "node_modules/electron-updater/out/providers/Provider.js:96  result = (0, js_yaml_1.load)(rawData)  — parses the update channel file (beta-mac.yml / latest-mac.yml) fetched from the generic provider",
+            "node_modules/electron-updater/out/AppUpdater.js:486  js_yaml_1.load(readFile(this._appUpdateConfigPath))  — parses the local app-update.yml bundled in the app"
+          ],
+          "feed_source": "apps/desktop/electron-builder.yml:42-45 publish: provider generic, url https://neuropause033.com/updates, channel beta (first-party droplet, HTTPS)",
+          "classification": "MEASURED (code read); js-yaml load() is the advisory's affected function (DECLARED by advisory)"
+        },
+        "runtime_reachability": {
+          "status": "REACHABLE WITHOUT HUMAN ACTION in a packaged desktop build",
+          "evidence": [
+            "apps/desktop/src/main/services/appUpdater.ts:67-79 start(): if (!app.isPackaged) return; this.wire(); setTimeout(() => void this.checkNow(), 10_000)",
+            "apps/desktop/src/main/services/appUpdater.ts:124-135 checkNow() -> autoUpdater.checkForUpdates()",
+            "apps/desktop/src/main/runtimeCore.ts:1652 const updater = initUpdater({ broadcast })",
+            "apps/desktop/src/main/updater/index.ts:29 IpcChannel.UpdateCheckNow handler -> appUpdater.checkNow() (on-demand path)"
+          ],
+          "attacker_precondition": "Control of the YAML served at https://neuropause033.com/updates/beta-mac.yml (server compromise or TLS MITM). Input is first-party, HTTPS. INFERRED.",
+          "impact": "Main-process CPU exhaustion (availability only; C:N I:N A:H). No code execution. INFERRED from CVSS vector.",
+          "existing_mitigations": [
+            "HTTPS first-party feed (electron-builder.yml:44) — DECLARED",
+            "autoUpdater.autoDownload=false, autoInstallOnAppQuit=false, allowDowngrade=false (appUpdater.ts:87-89) — MEASURED (code read): parse happens but no download/install without a separate authorized IPC",
+            "update:checkNow IPC requires authority 'cloud:operate' (apps/desktop/src/main/ipc/runtimeAuthz.ts:659) — MEASURED (code read)",
+            "verify-release-artifacts.cjs checks feed sha512/size against binaries at package time (apps/desktop/scripts/verify-release-artifacts.cjs:11,47-59) — MEASURED (code read), build-side only"
+          ]
+        },
+        "mitigation_options": [
+          "A) Patch bump js-yaml to 4.3.2 (in-range for ^4 and for electron-updater's declared range; lockfile-only change) — NOT performed (rule: no upgrades)",
+          "B) Accept-and-monitor for rc.30 with a decision memo mirroring certification/DECISION-MEMO-S132-DEPENDENCY-REMEDIATION.md, citing: first-party HTTPS feed, no auto-install, availability-only impact",
+          "C) Operationally: keep the feed host hardened (already the release scp target: .github/workflows/macos-release.yml:245-250)"
+        ],
+        "decision_recommendation": "WAITING_FOR_HUMAN — the repo has explicitly not adopted a vulnerability gating threshold (.github/workflows/desktop-ci.yml:109-116). Recommend Option B for rc.30 (accept with memo) and Option A as the next dedicated dependency slice; do not regenerate the lockfile on a single-platform host (S132 memo line 13 measured 107 cross-platform entries stripped on Linux regen)."
+      },
+      {
+        "package": "vitest",
+        "installed_version": "1.6.1",
+        "severity": "critical",
+        "audit_view": "FULL only (dev)",
+        "advisories": [
+          {
+            "ghsa": "GHSA-5xrq-8626-4rwp",
+            "title": "When Vitest UI server is listening, arbitrary file can be read and executed",
+            "range": "<3.2.6",
+            "cvss": 9.8
+          }
+        ],
+        "direct_or_transitive": "DIRECT devDependency of 30+ workspaces (npm ls vitest --all); ABSENT from desktop and backend prod closures (MEASURED)",
+        "runtime_reachability": "NOT REACHABLE at product runtime; exploitable only when a developer runs the Vitest UI server (--ui) — apps/desktop/package.json scripts use 'vitest run' (no --ui). INFERRED for exploitability; MEASURED for absence from prod closures.",
+        "fix_available": "vitest 4.1.11 (semver-major) — NOT applied",
+        "decision_recommendation": "Accept for launch (dev-only tool); schedule major bump separately."
+      },
+      {
+        "package": "vite",
+        "installed_version": "5.4.21",
+        "severity": "high",
+        "audit_view": "FULL only (dev)",
+        "advisories": [
+          {
+            "ghsa": "GHSA-fx2h-pf6j-xcff",
+            "title": "server.fs.deny bypass on Windows alternate paths",
+            "cvss": 7.5
+          },
+          {
+            "ghsa": "GHSA-4w7w-66w2-5vf9",
+            "title": "Path traversal in optimized deps .map handling",
+            "severity": "moderate"
+          },
+          {
+            "ghsa": "GHSA-v6wh-96g9-6wx3",
+            "title": "launch-editor NTLMv2 hash disclosure (Windows)",
+            "severity": "moderate"
+          }
+        ],
+        "direct_or_transitive": "DIRECT devDependency of @neuropause/desktop and @neuropause/web; transitive via electron-vite@2.3.0, vitest@1.6.1; ABSENT from prod closures (MEASURED)",
+        "runtime_reachability": "Dev server only (electron-vite dev). NOT in shipped app.",
+        "fix_available": "vite 8.3.0 (major) — NOT applied",
+        "decision_recommendation": "Accept for launch (build/dev tooling)."
+      },
+      {
+        "package": "@xmldom/xmldom",
+        "installed_version": "0.8.13",
+        "severity": "high",
+        "audit_view": "FULL only (dev)",
+        "advisories_count": 9,
+        "direct_or_transitive": "TRANSITIVE: @neuropause/desktop > electron-builder@26.15.3 > app-builder-lib@26.15.3 > plist@3.1.0 > @xmldom/xmldom@0.8.13 (MEASURED npm ls); ABSENT from prod closures",
+        "runtime_reachability": "Build-time only (plist generation during electron-builder packaging on trusted CI/host input). Not shipped.",
+        "fix_available": "true (patch) — NOT applied",
+        "decision_recommendation": "Accept for launch (packaging tool)."
+      },
+      {
+        "package": "brace-expansion",
+        "installed_versions": [
+          "1.1.16",
+          "1.1.18",
+          "2.1.4",
+          "5.0.7"
+        ],
+        "severity": "high",
+        "audit_view": "FULL only (dev)",
+        "advisories": [
+          "GHSA-mh99-v99m-4gvg",
+          "GHSA-rgw5-rvv9-x895"
+        ],
+        "direct_or_transitive": "TRANSITIVE under electron-builder/app-builder-lib (glob/minimatch), eslint, @typescript-eslint, eslint-plugin-react (MEASURED npm ls); ABSENT from prod closures",
+        "runtime_reachability": "Build/lint tooling only.",
+        "decision_recommendation": "Accept for launch."
+      },
+      {
+        "package": "browserslist",
+        "installed_version": "4.28.4",
+        "severity": "high",
+        "audit_view": "FULL only (dev)",
+        "advisories": [
+          "GHSA-c83g-rgw3-j3cx",
+          "GHSA-73wf-gq98-2v4g"
+        ],
+        "direct_or_transitive": "TRANSITIVE: desktop > autoprefixer@10.5.2 / @vitejs/plugin-react > @babel/core (MEASURED); ABSENT from prod closures",
+        "runtime_reachability": "Build-time CSS/JS tooling only.",
+        "decision_recommendation": "Accept for launch."
+      },
+      {
+        "package": "fast-uri",
+        "installed_version": "3.1.5",
+        "severity": "high",
+        "audit_view": "FULL only (dev)",
+        "advisories": [
+          "GHSA-5jgf-p345-68v8",
+          "GHSA-f65p-4m7j-42xc",
+          "GHSA-fph4-wmhf-6fwf",
+          "GHSA-jqff-g426-hqxp"
+        ],
+        "direct_or_transitive": "TRANSITIVE: desktop > electron-builder > app-builder-lib > ajv@8.20.0 > fast-uri@3.1.5 (MEASURED); ABSENT from prod closures",
+        "runtime_reachability": "Build-time config validation in electron-builder only.",
+        "decision_recommendation": "Accept for launch."
+      },
+      {
+        "package": "nanoid",
+        "installed_version": "3.3.15",
+        "severity": "high",
+        "audit_view": "FULL only (dev)",
+        "advisories": [
+          "GHSA-28wg-ghj8-5hjv",
+          "GHSA-2v37-7h3g-55p8"
+        ],
+        "direct_or_transitive": "TRANSITIVE: desktop > postcss@8.5.16 > nanoid@3.3.15 (MEASURED); ABSENT from prod closures",
+        "runtime_reachability": "Build-time only.",
+        "decision_recommendation": "Accept for launch."
+      },
+      {
+        "package": "postcss",
+        "installed_version": "8.5.16",
+        "severity": "high",
+        "audit_view": "FULL only (dev)",
+        "advisories": [
+          "GHSA-r28c-9q8g-f849 (high)",
+          "GHSA-fxqj-rqcc-2cmp (moderate)"
+        ],
+        "direct_or_transitive": "DIRECT devDependency of @neuropause/desktop (apps/desktop/package.json:57); also via tailwindcss, autoprefixer, vite, tsup (MEASURED); ABSENT from prod closures",
+        "runtime_reachability": "Build-time only.",
+        "decision_recommendation": "Accept for launch."
+      }
+    ],
+    "moderate_prod_findings": [
+      {
+        "package": "qs",
+        "installed_version": "6.15.3",
+        "advisories": [
+          "GHSA-x5fp-wj9c-mxmx (CVSS 3.7)",
+          "GHSA-4mjr-xmp4-gh2g (CVSS 5.3)"
+        ],
+        "path": "@neuropause/backend > express@4.22.2 > qs@6.15.3 ; > body-parser@1.20.6 > qs@6.15.3 (MEASURED npm ls)",
+        "closure": "BACKEND prod only; ABSENT from desktop prod closure (MEASURED)",
+        "reachability": "express 4 default 'query parser' = extended (qs) and no app.set('query parser') found (grep apps/backend/src, MEASURED absent) -> req.query parsing uses qs on every HTTP request; express.urlencoded({extended:false}) (apps/backend/src/app.ts:66) does NOT use qs for bodies; body limits 256kb/1mb (app.ts:59,65-66). Impact availability-only. INFERRED.",
+        "prior_decision": "certification/DECISION-MEMO-S132-DEPENDENCY-REMEDIATION.md — Option A recommended (override + cross-platform lockfile regen), override attempt produced invalid lockfile; not applied (lines 12-13, 18-29)"
+      },
+      {
+        "package": "body-parser",
+        "installed_version": "1.20.6",
+        "via": "qs",
+        "closure": "backend prod only"
+      },
+      {
+        "package": "express",
+        "installed_version": "4.22.2",
+        "via": "qs",
+        "closure": "backend prod only; npm audit isDirect:true (apps/backend/package.json dependencies express ^4.19.2)"
+      },
+      {
+        "package": "react-router / react-router-dom",
+        "installed_version": "6.30.6",
+        "advisories": [
+          "GHSA-wrjc-x8rr-h8h6 open redirect via backslash in <Link>/useNavigate",
+          "GHSA-337j-9hxr-rhxg deserializeErrors() SSR hydration constructor injection (CVSS 6.1)"
+        ],
+        "path": "@neuropause/web > react-router-dom@6.30.6 > react-router@6.30.6 (MEASURED)",
+        "closure": "apps/web only; ABSENT from desktop and backend prod closures (MEASURED)",
+        "reachability": "apps/web/src/main.tsx:3,8 uses BrowserRouter only; no hydrateRoot/renderToString/StaticRouter (grep MEASURED absent) -> SSR advisory NOT reachable; open-redirect reachable only if a navigation target is user-controlled (not measured). apps/web is referenced by NO workflow and NO deploy/ file (grep .github/workflows deploy/ -> ABSENT); release workflows scp only the DMG and update feed to /opt/neuropause-site/website (.github/workflows/macos-release.yml:207-250).",
+        "fix_available": "react-router-dom 7.18.3 (semver-major) — NOT applied"
+      }
+    ],
+    "ci_audit_posture": {
+      "desktop_ci": "REPORT-ONLY: 'npm audit --audit-level=info || true' (.github/workflows/desktop-ci.yml:122) and 'npm audit --omit=dev --audit-level=high || true' (:125); rationale at :109-116 states a blocking threshold is 'a release-policy decision the repo has not made'. DECLARED+MEASURED (file read).",
+      "release_workflows": "ABSENT: no 'npm audit' in macos-release.yml or windows-release.yml (grep). backend-ci.yml: no audit step (grep).",
+      "dependabot": ".github/dependabot.yml present: npm weekly grouped (dev/prod), github-actions weekly. DECLARED.",
+      "stale_tracked_audit_json": "audit.json at repo root is TRACKED, last touched commit 6d585ae 2026-07-06 (git log), metadata total 11 vulns / 1008 deps, vulnerable set {app-builder-lib, dmg-builder, electron, electron-builder, electron-builder-squirrel-windows, electron-vite, esbuild, tar, vite, vite-node, vitest} — does NOT reflect current posture. MEASURED."
+    }
+  },
+  "2_lifecycle_scripts": {
+    "command": "npm query \":attr(scripts,[preinstall]), :attr(scripts,[install]), :attr(scripts,[postinstall])\" --json",
+    "count": 4,
+    "packages": [
+      {
+        "name": "electron-winstaller@5.4.0",
+        "location": "node_modules/electron-winstaller",
+        "script": "install: node ./script/select-7z-arch.js",
+        "dev": true
+      },
+      {
+        "name": "esbuild@0.21.5",
+        "location": "node_modules/esbuild",
+        "script": "postinstall: node install.js",
+        "dev": true
+      },
+      {
+        "name": "esbuild@0.27.7",
+        "location": "node_modules/tsup/node_modules/esbuild",
+        "script": "postinstall: node install.js",
+        "dev": true
+      },
+      {
+        "name": "esbuild@0.28.1",
+        "location": "node_modules/tsx/node_modules/esbuild",
+        "script": "postinstall: node install.js",
+        "dev": true
+      }
+    ],
+    "lockfile_hasInstallScript_entries": [
+      "node_modules/electron-winstaller@5.4.0 [dev]",
+      "node_modules/esbuild@0.21.5 [dev]",
+      "node_modules/fsevents@2.3.3 [dev][optional]",
+      "node_modules/tsup/node_modules/esbuild@0.27.7 [dev]",
+      "node_modules/tsx/node_modules/esbuild@0.28.1 [dev]"
+    ],
+    "prod_install_scripts": "NONE in desktop or backend prod closure (DERIVED: all 5 flagged entries are dev)",
+    "prepare_prepublish_note": "202 registry packages carry prepare/prepublish scripts (npm query) — these do NOT execute on npm ci for registry tarballs; listed for completeness only. DECLARED (npm semantics).",
+    "electron_binary_install": {
+      "finding": "electron@42.8.1 package.json has NO scripts field (node_modules/electron/package.json; lockfile entry has no hasInstallScript). The binary is fetched lazily: node_modules/electron/index.js:5-14 spawns install.js when path.txt is absent on first require('electron').",
+      "observed_timing": "node_modules/electron/install.js mtime 22:23:14 (npm ci); node_modules/electron/dist mtime 22:30:07 and path.txt 22:30:08 — populated ~7 min AFTER npm ci by another process (the background revalidation). MEASURED (stat). Which process triggered it: INFERRED.",
+      "integrity": "install.js:47-50 uses bundled checksums.json unless electron_use_remote_checksums is set; checksums.json has 75 entries incl. electron-v42.8.1-darwin-arm64.zip / darwin-x64.zip. MEASURED (file read). Whether the downloaded zip was verified against it: NOT MEASURED.",
+      "dist_arch": "node_modules/electron/dist/Electron.app: CFBundleShortVersionString 42.8.1, lipo -archs arm64 (host-arch dev binary; universal packaging done by electron-builder). MEASURED.",
+      "engines_mismatch": "electron@42.8.1 engines.node '>= 22.12.0' (package.json + lockfile) vs running Node v20.20.2, .nvmrc '20', CI node-version '20' (desktop-ci.yml:74, backend-ci.yml:32,92). npm engine-strict not set (no .npmrc found), so not enforced. MEASURED. Note root package.json engines node >=20.11.0."
+    }
+  },
+  "3_native_modules": {
+    "command": "find . -name '*.node' -type f (excluding .git)",
+    "count": 12,
+    "files": [
+      {
+        "path": "node_modules/fsevents/fsevents.node",
+        "bytes": 163626,
+        "arch": "x86_64 arm64",
+        "closure": "dev optional (chokidar/vite)"
+      },
+      {
+        "path": "node_modules/@node-rs/argon2-darwin-arm64/argon2.darwin-arm64.node",
+        "bytes": 537528,
+        "arch": "arm64",
+        "closure": "BACKEND prod (@node-rs/argon2@1.8.3 -> platform optional dep)"
+      },
+      {
+        "path": "node_modules/@rollup/rollup-darwin-arm64/rollup.darwin-arm64.node",
+        "bytes": 1780336,
+        "arch": "arm64",
+        "closure": "dev (vite/rollup)"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.darwin-universal.node",
+        "bytes": 1374112,
+        "arch": "x86_64 arm64",
+        "closure": "dev (electron installer)"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.linux-arm64-musl.node",
+        "bytes": 725720,
+        "arch": "ELF aarch64",
+        "closure": "dev"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.linux-x64-musl.node",
+        "bytes": 762656,
+        "arch": "ELF x86-64",
+        "closure": "dev"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.win32-arm64-msvc.node",
+        "bytes": 640512,
+        "arch": "PE32+ Aarch64",
+        "closure": "dev"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.linux-arm-gnueabihf.node",
+        "bytes": 691300,
+        "arch": "ELF ARM EABI5",
+        "closure": "dev"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.win32-x64-msvc.node",
+        "bytes": 870400,
+        "arch": "PE32+ x86-64",
+        "closure": "dev"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.linux-arm64-gnu.node",
+        "bytes": 668408,
+        "arch": "ELF aarch64",
+        "closure": "dev"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.linux-ia32-gnu.node",
+        "bytes": 784884,
+        "arch": "ELF i386",
+        "closure": "dev"
+      },
+      {
+        "path": "node_modules/@electron-internal/extract-zip/index.linux-x64-gnu.node",
+        "bytes": 762832,
+        "arch": "ELF x86-64",
+        "closure": "dev"
+      }
+    ],
+    "desktop_prod_closure_native_count": 0,
+    "desktop_prod_closure_native_note": "DERIVED: none of the 12 .node files belongs to any of the 91 desktop prod closure packages. @electric-sql/pglite@0.2.17 is in the desktop closure (solution-packs > industry > persistence) and ships postgres.wasm (WASM, not native). electron-builder.yml:49 comment 'the desktop has NO native modules (0 *.node in the tree)' is DECLARED; measured: 0 in desktop prod closure, 12 in the monorepo tree.",
+    "node_rs_argon2": {
+      "version": "1.8.3",
+      "closure": "backend prod DIRECT (apps/backend/package.json dependencies '@node-rs/argon2': '^1.8.3')",
+      "optional_platform_packages_declared": 14,
+      "lockfile_platform_entries": 14,
+      "installed_on_this_host": 1,
+      "installed": "@node-rs/argon2-darwin-arm64@1.8.3 (os darwin, cpu arm64)",
+      "note": "Linux deploy targets get their platform binary from the lockfile's optional entries at npm ci time; cross-platform coverage in lockfile is intact (MEASURED: argon2 14, @esbuild 26, @rollup 25 entries)."
+    }
+  },
+  "4_duplicate_versions": {
+    "command": "npm ls --all --json (parsed)",
+    "tree_nodes": 2755,
+    "unique_names": 921,
+    "names_with_multiple_versions": 70,
+    "top_30": [
+      "fs-extra: 10.1.0, 11.3.1, 11.4.0, 7.0.1, 8.1.0, 9.1.0 (6)",
+      "brace-expansion: 1.1.16, 1.1.18, 2.1.4, 5.0.7 (4)",
+      "minimatch: 10.2.5, 3.1.5, 5.1.9, 9.0.9 (4)",
+      "semver: 5.7.2, 6.3.1, 7.7.4, 7.8.5 (4)",
+      "@esbuild/darwin-arm64: 0.21.5, 0.27.7, 0.28.1 (3)",
+      "@noble/hashes: 1.4.0, 1.8.0, 2.3.0 (3)",
+      "commander: 4.1.1, 5.1.0, 9.5.0 (3)",
+      "esbuild: 0.21.5, 0.27.7, 0.28.1 (3)",
+      "isexe: 2.0.0, 3.1.5, 4.0.0 (3)",
+      "lru-cache: 10.4.3, 5.1.1, 6.0.0 (3)",
+      "react-is: 16.13.1, 17.0.2, 18.3.1 (3)",
+      "universalify: 0.1.2, 0.2.0, 2.0.1 (3)",
+      "which: 2.0.2, 5.0.0, 6.0.1 (3)",
+      "yallist: 3.1.1, 4.0.0, 5.0.0 (3)",
+      "@electron/get: 3.1.0, 5.1.0 (2)",
+      "@electron/notarize: 2.5.0, 3.1.1 (2)",
+      "@testing-library/dom: 10.4.1, 9.3.4 (2)",
+      "@types/node: 20.19.43, 24.13.3 (2)",
+      "@types/send: 0.17.6, 1.2.1 (2)",
+      "agent-base: 6.0.2, 7.1.4 (2)",
+      "ajv: 6.15.0, 8.20.0 (2)",
+      "ansi-styles: 4.3.0, 5.2.0 (2)",
+      "aria-query: 5.1.3, 5.3.0 (2)",
+      "balanced-match: 1.0.2, 4.0.4 (2)",
+      "chokidar: 3.6.0, 4.0.3 (2)",
+      "ci-info: 4.3.1, 4.4.0 (2)",
+      "debug: 2.6.9, 4.4.3 (2)",
+      "doctrine: 2.1.0, 3.0.0 (2)",
+      "env-paths: 2.2.1, 3.0.0 (2)",
+      "eslint-visitor-keys: 3.4.3, 5.0.1 (2)"
+    ],
+    "desktop_prod_closure_duplicates": "react-is 16.13.1 (recharts>react-smooth>prop-types) and 18.3.1 (recharts) — the only duplicated name among the 91 closure entries (90 unique names). DERIVED.",
+    "nesting_note": "apps/desktop/node_modules contains recharts@2.15.4, victory-vendor@36.9.2, eventemitter3@4.0.7, react-is@18.3.1, @electron/notarize@3.1.1 (root has react-is@16.13.1 and @electron/notarize@2.5.0) — hoisting conflicts, not duplication defects. MEASURED (ls + package.json reads)."
+  },
+  "5_lockfile": {
+    "path": "package-lock.json",
+    "sha256": "4a29565e59b5fc93dbf635809104716ecbe8af4573c89f9803b2cdcc96b2b197",
+    "bytes": 548804,
+    "lines": 15745,
+    "lockfileVersion": 3,
+    "name": "neuropause-desktop",
+    "version": "1.0.0-rc.30",
+    "packages_entries_total": 1152,
+    "root_and_workspace_root_entries": 51,
+    "link_entries": 50,
+    "entries_with_resolved": 1051,
+    "registry_npmjs_resolved": 1050,
+    "non_registry_resolved": [
+      {
+        "key": "node_modules/@neuropause/cst",
+        "resolved": "file:apps/desktop/vendor/neuropause-cst-1.3.0.tgz",
+        "integrity": "present (sha512)",
+        "license": "UNLICENSED"
+      }
+    ],
+    "resolved_lacking_integrity": 0,
+    "node_modules_entries_lacking_resolved": 0,
+    "integrity_not_sha512": 0,
+    "git_http_resolved": 0,
+    "drift_from_certified_baseline_f0ba0e8": "1 commit (817f975 rc.30 bump); diff 3 insertions / 3 deletions — all three are version 1.0.0-rc.29 -> 1.0.0-rc.30. MEASURED (git diff/log). 5 commits total f0ba0e8..HEAD.",
+    "hidden_lockfile": "node_modules/.package-lock.json lockfileVersion 3, 1037 packages, mtime 22:23:17 (npm ci). MEASURED.",
+    "npm_ls_consistency": "npm ls --omit=dev --all -w @neuropause/desktop exit 0; npm ls --omit=dev --all -w @neuropause/backend exit 0; npm ls --all exit 0 (no ELSPROBLEMS/invalid). MEASURED.",
+    "cross_platform_optional_binaries_retained": {
+      "@node-rs/argon2-*": 14,
+      "@esbuild/*": 26,
+      "@rollup/rollup-*": 25,
+      "classification": "MEASURED"
+    },
+    "vendored_tarball": {
+      "path": "apps/desktop/vendor/neuropause-cst-1.3.0.tgz",
+      "bytes": 80748,
+      "sha256": "293d056047346631c72dd117b50733162b5ae08448f3c2bdedd73703cbceb431",
+      "sha512_ssri": "sha512-M2UhUdsVKoksDWCVt+gkWZpnaQn+LM8dDQQqtRbW6K+O6XsEnbCAMzqwT/LGYSuql0/0egtB1P6cmrbUEld2uA==",
+      "lockfile_integrity_match": "IDENTICAL to package-lock.json node_modules/@neuropause/cst .integrity — MEASURED (recomputed)",
+      "file_count_tar_tzf": 65,
+      "package_json": {
+        "name": "@neuropause/cst",
+        "version": "1.3.0",
+        "type": "module",
+        "main": "dist/index.js",
+        "types": "dist/index.d.ts",
+        "license": "UNLICENSED",
+        "dependencies": {},
+        "devDependencies": {
+          "@types/node": "^22.20.1"
+        },
+        "scripts_with_install_hooks": "none"
+      },
+      "contents_note": "Ships dist/src + dist/test + src/*.ts + test/*.ts + tsconfig.json + README.md (65 entries). electron-builder.yml:17 excludes '!**/*.test.ts' only.",
+      "git_provenance": "single commit fcb3a31 2026-08-16 01:42:05 +0530 'feat(desktop): govern data import through frozen CST kernel'; force-tracked via .gitignore:66 '!apps/desktop/vendor/neuropause-cst-1.3.0.tgz'",
+      "sha256_recorded_in": [
+        ".gitignore:63",
+        "certification/source-update/DATA-IMPORT-GOVERNED-TRANSITION-REFERENCE.md:24",
+        "certification/source-update/PHASE-E-APP-LEVEL-EVIDENCE.md:34",
+        "certification/source-update/PHASE-E-APP-LEVEL-EVIDENCE.md:119"
+      ],
+      "sha256_record_matches_measured": "YES — all four recorded values equal the measured sha256. MEASURED."
+    }
+  },
+  "6_desktop_production_closure": {
+    "command": "npm ls --omit=dev --all --json -w @neuropause/desktop",
+    "output_file": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/desktop-prod-closure.json",
+    "direct_count": 8,
+    "direct_dependencies": [
+      {
+        "name": "@neuropause/companion-protocol",
+        "version": "0.1.0",
+        "resolved": "file:../../packages/companion-protocol",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": true
+      },
+      {
+        "name": "@neuropause/cst",
+        "version": "1.3.0",
+        "resolved": "file:.../apps/desktop/vendor/neuropause-cst-1.3.0.tgz",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": false,
+        "vendored": true
+      },
+      {
+        "name": "@neuropause/shared",
+        "version": "0.1.0",
+        "resolved": "file:../../packages/shared",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": true
+      },
+      {
+        "name": "@neuropause/solution-packs",
+        "version": "0.1.0",
+        "resolved": "file:../../packages/solution-packs",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": true
+      },
+      {
+        "name": "electron-updater",
+        "version": "6.8.9",
+        "resolved": "https://registry.npmjs.org/electron-updater/-/electron-updater-6.8.9.tgz",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": false
+      },
+      {
+        "name": "qrcode.react",
+        "version": "4.2.0",
+        "resolved": "https://registry.npmjs.org/qrcode.react/-/qrcode.react-4.2.0.tgz",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": false
+      },
+      {
+        "name": "recharts",
+        "version": "2.15.4",
+        "resolved": "https://registry.npmjs.org/recharts/-/recharts-2.15.4.tgz",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": false
+      },
+      {
+        "name": "ws",
+        "version": "8.21.3",
+        "resolved": "https://registry.npmjs.org/ws/-/ws-8.21.3.tgz",
+        "kind": "DIRECT_RUNTIME",
+        "workspace": false
+      }
+    ],
+    "transitive_unique_name_version": 91,
+    "transitive_unique_names": 90,
+    "first_party_neuropause_in_closure": 22,
+    "first_party_list": [
+      "@neuropause/ai-runtime",
+      "@neuropause/automation",
+      "@neuropause/business",
+      "@neuropause/cloud-core",
+      "@neuropause/cloudops",
+      "@neuropause/companion-protocol",
+      "@neuropause/connectivity",
+      "@neuropause/connectors",
+      "@neuropause/cst",
+      "@neuropause/execution",
+      "@neuropause/federation",
+      "@neuropause/industry",
+      "@neuropause/integrations",
+      "@neuropause/intelligence",
+      "@neuropause/nems",
+      "@neuropause/persistence",
+      "@neuropause/runtime",
+      "@neuropause/security",
+      "@neuropause/shared",
+      "@neuropause/shared-cloud",
+      "@neuropause/solution-packs"
+    ],
+    "third_party_in_closure": 67,
+    "notable": [
+      "react@18.3.1 and react-dom@18.3.1 are devDependencies of apps/desktop (package.json:59-60) yet appear in the prod closure via qrcode.react>react and recharts>react-dom peers — MEASURED",
+      "@electric-sql/pglite@0.2.17 (WASM Postgres) reaches the desktop closure via solution-packs>industry>persistence — MEASURED",
+      "ws@8.21.3 peerOptional bufferutil / utf-8-validate NOT installed (node_modules/bufferutil, utf-8-validate absent) — MEASURED",
+      "js-yaml@4.3.0 present via electron-updater — the only HIGH advisory in this closure — MEASURED"
+    ],
+    "backend_prod_closure_for_comparison": {
+      "direct": 18,
+      "unique_name_version": 172,
+      "contains": [
+        "express 4.22.2",
+        "qs 6.15.3",
+        "body-parser 1.20.6",
+        "@node-rs/argon2 1.8.3"
+      ],
+      "absent": [
+        "js-yaml",
+        "fast-uri",
+        "nanoid",
+        "postcss",
+        "brace-expansion",
+        "browserslist",
+        "@xmldom/xmldom"
+      ]
+    }
+  },
+  "7_sbom_tooling": {
+    "script": "apps/desktop/scripts/generate-sbom.cjs (175 lines) + apps/desktop/scripts/verify-sbom.cjs (95 lines)",
+    "produces": "dist-sbom/sbom.cdx.json (CycloneDX 1.5) + dist-sbom/provenance.json; CLI flags --lockfile <path> --out <dir> (generate-sbom.cjs:22-24, 147-152). DECLARED (header) + MEASURED (code read).",
+    "method": "Pure fold over package-lock.json v3: skips root/workspace roots/link entries, dedupes name@version, scope = entry.dev ? 'optional' : 'required', npm:integrity as property, sorted by purl, no timestamp/serialNumber in SBOM (generate-sbom.cjs:53-90).",
+    "provenance": "attestationLevel 'SELF_ATTESTED_UNSIGNED', predicateType slsa provenance/v1, GITHUB_* fields null when local (generate-sbom.cjs:107-129). DECLARED.",
+    "in_memory_measurement_this_lockfile": {
+      "components": 988,
+      "required_prod": 234,
+      "optional_dev": 754,
+      "lacking_integrity": 0,
+      "digest": "sha256:9ec5ba4c4c827206687cd6ca58bdddf6e03a635bdab9d23f2e905723bf6d0017",
+      "neuropause_components": [
+        "@neuropause/cst@1.3.0"
+      ],
+      "classification": "MEASURED via require('./scripts/generate-sbom.cjs').buildSbom(lockfile) — no files written"
+    },
+    "scope_caveat": "The SBOM describes the WHOLE monorepo lockfile (988 components), not the 67-package desktop production closure; dev tooling is marked scope 'optional'. DERIVED.",
+    "verifier": "verify-sbom.cjs fails closed on empty/malformed/hostile names and on count/identity mismatch with the lockfile (lines 27-66). DECLARED+MEASURED (code read). Not executed in this audit.",
+    "ci_wiring": ".github/workflows/desktop-ci.yml:90-91 'npm run verify:sbom -w @neuropause/desktop'; :100-105 uploads apps/desktop/dist-sbom/ as artifact 'desktop-sbom'. DECLARED.",
+    "local_state": "apps/desktop/dist-sbom ABSENT on disk; not tracked (git ls-files). MEASURED.",
+    "unit_tests": "apps/desktop/src/main/release/sbom.test.ts exists (git ls-files). Not run."
+  },
+  "8_third_party_notices": {
+    "committed_file": "THIRD-PARTY-NOTICES.md (repo root; only tracked copy — apps/desktop/resources/THIRD-PARTY-NOTICES.md is gitignored at .gitignore:89)",
+    "sha256": "6f7b8933a7d38ae09513db76147b8eb2286f4a6aa51fb94ffce9f969f5141e3d",
+    "lines": 2009,
+    "bytes": 82641,
+    "packages_header": 67,
+    "package_section_headers": 67,
+    "last_regenerating_commit": "61b1503 feat(pilot): commit authority enforcement + exercise the enforcement gates",
+    "generator": "apps/desktop/scripts/generate-notices.cjs: runs 'npm ls --omit=dev --all --json' with cwd apps/desktop (lines 31-36), dedupes name@version, excludes @neuropause/* (line 86), writes repo-root + resources copies (lines 116-121).",
+    "expected_from_this_clean_install": 67,
+    "expected_method": "Replicated the generator's collect()/filter in-memory over 'npm ls --omit=dev --all --json' executed in apps/desktop (desktop-cwd-prod-ls.json) — no files written. MEASURED.",
+    "set_comparison": "IDENTICAL: committed 67 name@version == expected 67 (LC_ALL=C sorted diff empty). Raw diff lines were locale sort-order only. MEASURED.",
+    "handoff_trap_2_status": "CLOSED for this checkout: the 67 -> 868 inflation seen in the symlinked worktree (HANDOFF §5 trap 2) does not reproduce here; a regeneration would yield the same 67.",
+    "license_breakdown": {
+      "MIT": 47,
+      "ISC": 14,
+      "UNKNOWN": 2,
+      "Python-2.0": 1,
+      "MIT AND ISC": 1,
+      "BSD-3-Clause": 1,
+      "BlueOak-1.0.0": 1
+    },
+    "unknown_license_entries": [
+      "react-smooth@4.0.4 (line 1689)",
+      "react-transition-group@4.4.5 (line 1695)"
+    ],
+    "license_text_not_found_entries": [
+      "lazy-val@1.0.5 (line 1272)",
+      "react-smooth@4.0.4",
+      "react-transition-group@4.4.5",
+      "victory-vendor@36.9.2 (line 1952)"
+    ],
+    "packaging": "electron-builder.yml:23-33 bundles resources/THIRD-PARTY-NOTICES.md as THIRD-PARTY-NOTICES.md and docs/THIRD-PARTY-NOTICES.md via extraResources. DECLARED."
+  },
+  "architecture_invariant_observations": {
+    "ai_not_authorization_authority": "No AI component participates in dependency admission: Dependabot proposes PRs (.github/dependabot.yml), humans merge; npm audit is report-only. DERIVED.",
+    "network_does_not_imply_authorization": "The packaged desktop performs an unattended update CHECK 10 s after launch (appUpdater.ts:77) but autoDownload=false / autoInstallOnAppQuit=false (appUpdater.ts:87-88); download/install/channel mutations are separate IPC channels documented as mutations (runtimeAuthz.ts:1190-1195) and update:checkNow requires 'cloud:operate' (runtimeAuthz.ts:659). The unattended check is a network fetch + YAML parse only. MEASURED (code read).",
+    "client_not_final_authority": "Feed integrity is enforced build-side by verify-release-artifacts.cjs (sha512/size); electron-updater verifies sha512 of downloaded payload against the feed (DECLARED by electron-updater design; not measured here).",
+    "stale_authorization": "Not applicable to dependency admission; lockfile integrity is content-addressed (sha512) so a stale/tampered tarball fails npm ci. DERIVED."
+  },
+  "gates": [
+    {
+      "gate": "DEPENDENCY-INTEGRITY",
+      "status": "PASS",
+      "reason": "lockfileVersion 3; 1051/1051 resolved entries carry sha512 integrity; exactly 1 non-registry source (vendored @neuropause/cst tgz) whose recomputed sha512 equals the lockfile integrity and whose sha256 matches four committed records; zero git/http sources; lockfile drift since certified f0ba0e8 is the 3-line rc.30 version bump only; npm ls exits 0 for root, desktop and backend prod views; cross-platform optional binaries retained (14/26/25); committed THIRD-PARTY-NOTICES.md (67) equals the set regenerable from this clean install (67)."
+    },
+    {
+      "gate": "SUPPLY-CHAIN",
+      "status": "WAITING_FOR_HUMAN",
+      "reason": "Measured posture: prod audit = 1 high (js-yaml@4.3.0 via electron-updater, in the shipped desktop closure, parse reachable unattended 10 s after launch, availability-only, first-party HTTPS feed, patch 4.3.2 available in-range but NOT applied per rule) + 5 moderate (backend qs/body-parser/express — prior S132 memo left Option A unscheduled; apps/web react-router — not deployed by any workflow). Full audit adds 1 critical + 7 high, all dev/build tooling absent from both prod closures. Install-time scripts: 4, all dev. Native modules in desktop closure: 0. CI audit is report-only by explicit policy (desktop-ci.yml:109-125) and release workflows run no audit; SBOM is CycloneDX 1.5, deterministic, SELF_ATTESTED_UNSIGNED, monorepo-scoped, generated only in CI. The repo has recorded that a blocking severity threshold is an unmade release-policy decision; therefore this gate cannot be machine-closed — a human must accept the js-yaml high with mitigation (or block until a patch slice) and adopt a threshold."
+    },
+    {
+      "gate": "SUPPLY-CHAIN/install-scripts",
+      "status": "PASS",
+      "reason": "4 packages with install/postinstall (electron-winstaller, esbuild x3) — all dev; none in prod closures. Electron binary fetched lazily via index.js->install.js with bundled checksums.json (verification of the actual download not measured)."
+    },
+    {
+      "gate": "SUPPLY-CHAIN/native-modules",
+      "status": "PASS",
+      "reason": "12 .node files in tree; 0 in desktop prod closure; backend's @node-rs/argon2 has all 14 platform packages in lockfile (1 installed on this darwin-arm64 host)."
+    },
+    {
+      "gate": "SUPPLY-CHAIN/sbom",
+      "status": "MEASURABLE",
+      "reason": "Generator is deterministic and yields 988 components / digest sha256:9ec5ba4c… for this lockfile (computed in memory). dist-sbom not present locally and not tracked; verify-sbom not executed; provenance is self-attested and unsigned."
+    },
+    {
+      "gate": "SUPPLY-CHAIN/vuln-policy",
+      "status": "WAITING_FOR_HUMAN",
+      "reason": "No severity gating threshold adopted (desktop-ci.yml:109-116); stale tracked audit.json (2026-07-06) contradicts the live posture."
+    }
+  ],
+  "concurrent_repo_changes_observed": {
+    "note": "git status --porcelain was 0 at start (22:31) and 6 at end (22:46). None of these were made by this mapper; all commands run here were read-only. Attributed to sibling agents / background revalidation. MEASURED (git status + stat mtimes).",
+    "entries": [
+      " M package.json (22:37:18) — diff adds only a scripts entry 'neuropause:public-launch:verify'; NO dependencies/devDependencies/overrides/workspaces lines changed, so all closure/audit/lockfile measurements remain valid",
+      "?? apps/desktop/scripts/packaged-smoke.cjs (22:45:33)",
+      "?? apps/desktop/scripts/verify-mac-artifact.cjs (22:45:51)",
+      "?? apps/desktop/scripts/verify-mac-artifact.controls.cjs (22:44:49)",
+      "?? certification/public-launch/ (22:34:35)",
+      "?? scripts/public-launch-verify.cjs (22:37:16)"
+    ]
+  },
+  "gaps": [
+    "Did not build or inspect a packaged app.asar; asar content claims rest on verify-universal-and-deps.cjs (DECLARED) and the electron-builder.yml files list.",
+    "Did not execute verify-sbom.cjs or generate dist-sbom on disk (would write files under apps/desktop); SBOM digest is an in-memory computation.",
+    "Did not verify the Electron 42.8.1 dist download against checksums.json; dist was populated by another process at 22:30:07.",
+    "Advisory exploitability for qs (GHSA-4mjr-xmp4-gh2g / GHSA-x5fp-wj9c-mxmx) and js-yaml is taken from advisory metadata; no proof-of-concept was run.",
+    "Only the darwin-arm64 @node-rs/argon2 binary exists on this host; Linux/x64 binaries were not measured.",
+    "Dependabot PR queue / GitHub advisory dashboard not queried (no GitHub API calls made).",
+    "apps/web deployment status unknown beyond 'no workflow or deploy/ reference' (ABSENT); manual deployment not ruled out.",
+    "npm audit results depend on the registry advisory database as of 2026-09-12; counts differ from S131 (4 advisories) and S132 memos because the database moved.",
+    "electron-updater's own sha512 verification of downloaded payloads was not measured (DECLARED by library design)."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Remove or archive the stale tracked root audit.json (2026-07-06, 11 vulns, 1008 deps) so it cannot be mistaken for the current posture; if kept as evidence, move under certification/ with its date in the filename.",
+      "effort": "S",
+      "files": [
+        "audit.json"
+      ],
+      "risk": "low — file is not referenced by any script (git grep 'audit.json' hits only itself); confirm before deleting"
+    },
+    {
+      "action": "Add a workspace-scoped, still report-only audit line for the shipped closure: 'npm audit --omit=dev -w @neuropause/desktop --audit-level=high || true' next to desktop-ci.yml:125, and mirror the two report lines into macos-release.yml / windows-release.yml before 'npm run package:*'.",
+      "effort": "S",
+      "files": [
+        ".github/workflows/desktop-ci.yml",
+        ".github/workflows/macos-release.yml",
+        ".github/workflows/windows-release.yml"
+      ],
+      "risk": "low — report-only; does not gate"
+    },
+    {
+      "action": "Write DECISION-MEMO-S1xx-JS-YAML (mirror of S132) recording path, reachability (appUpdater.ts:77 unattended check), mitigations, and the in-range 4.3.2 patch option — content for human sign-off.",
+      "effort": "S",
+      "files": [
+        "certification/DECISION-MEMO-<slice>-JS-YAML-REMEDIATION.md"
+      ],
+      "risk": "none — documentation"
+    },
+    {
+      "action": "Correct the electron-builder.yml:49 comment '0 *.node in the tree' to '0 native modules in the desktop production closure (12 in the monorepo tree: fsevents, rollup, extract-zip, @node-rs/argon2 — none packaged)'.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/electron-builder.yml"
+      ],
+      "risk": "none — comment only"
+    },
+    {
+      "action": "Generate dist-sbom locally from this lockfile and attach sbom.cdx.json + provenance.json (digest sha256:9ec5ba4c…) to the launch evidence bundle; run verify-sbom.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/dist-sbom/sbom.cdx.json",
+        "apps/desktop/dist-sbom/provenance.json"
+      ],
+      "risk": "low — writes only an untracked output dir"
+    },
+    {
+      "action": "Prepare (do not apply) a js-yaml 4.3.2 patch-bump slice: lockfile-only change, run on a cross-platform-complete host to avoid stripping the 65 platform optional entries (S132 memo line 13).",
+      "effort": "S",
+      "files": [
+        "package-lock.json"
+      ],
+      "risk": "medium — any lockfile regen must be done on a host that retains all platform optional binaries; requires human go"
+    }
+  ],
+  "human_decisions_required": [
+    "Accept js-yaml@4.3.0 (GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh; high; unattended feed parse in packaged desktop; availability-only; first-party HTTPS feed) for the rc.30 public launch with documented mitigation, OR block the launch pending a patch bump to 4.3.2.",
+    "Adopt a vulnerability severity gating threshold and per-workspace scoping for CI (desktop-ci.yml:109-116 records this as an unmade release-policy decision).",
+    "Schedule S132 Option A (qs 6.16.0 override + cross-platform lockfile regeneration) or formally accept the backend moderate qs/body-parser/express advisories for launch.",
+    "Decide whether SELF_ATTESTED_UNSIGNED SBOM/provenance is sufficient for public launch or whether signed attestation is required.",
+    "Decide the disposition of the stale tracked audit.json (delete vs. archive) and whether apps/web (react-router 6.30.6, not deployed by any workflow) is in launch scope."
+  ]
+}

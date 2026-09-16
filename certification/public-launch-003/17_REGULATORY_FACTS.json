@@ -1,0 +1,323 @@
+{
+  "ARTIFACT": "17_REGULATORY_FACTS",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:51.847Z",
+  "branch_head": "6175f3633925b0e7088f85b877563b71d7a3bbc0",
+  "reviewer": {
+    "summary": "PART A: At 8331185/8a253b6 the medical-device pack, shared types, industry catalog, assistant, shell routing, first-run curation, apps/web, website, README and docs/legal are byte-identical to cec399f (git diff --stat empty); the only regulatory-relevant additions are the nine new docs/public-launch/*.md files and the machine-authored registers 33/34 (001) and 26/27 (002), all of which record GATE-INTENDED-USE = NOT_ESTABLISHED / REGULATORY_REVIEW = WAITING_FOR_HUMAN. The 667-hit census is dominated by software 'diagnostics'; after filtering, no diagnosis, treatment, physiological-monitoring, EEG, heart-rate, neurofeedback or neurostimulation claim exists in product code, UI, website, README or legal drafts (ABSENT). 'biometric' occurs only as Face ID/Touch ID unlock in the mobile companion. The pack stores a free-text UDI, a free-form regulatoryMetadata JSON, a boolean serialTracked flag (no serial-number field exists), a 9-state lot lifecycle including 'recalled', and an append-only trace graph; no patient field exists. AI: gateway is AI_PROPOSES_ONLY with assertNoAuthorityClaim; the governed loop's live registry is read_file/write_file with default DENIED_UNKNOWN_TOOL; the only code reading lot records for the assistant is a deterministic resolver that returns quantity/status text with 'No AI model ran' and no recommendation; no code path was found feeding md-lots/md-products to an LLM lane; industry-catalog aiSkills ('RegulatoryDocAssistant','ComplaintTriage','ClinicalSummary','CareGapFinder') are descriptors counted by industryProjection.ts and have no executor. Intended-use statement: ABSENT in code/UI/marketing; docs state none exists in any custody. Inconsistencies: (i) apps/web Legal.tsx and docs/validation/verticals/HEALTHCARE.md assert 'not a medical device' while REGULATORY-SCOPE.md and registers 33/34 say the determination is WAITING_FOR_HUMAN and the shipped desktop asar contains 0 occurrences of 'not a medical device'; (ii) REGULATORY-SCOPE.md:15 says 'lot/serial tracking' but no serial-number field exists (only a boolean flag); (iii) README's 13-family module list omits Medical Devices although the section ships in the default business sidebar; (iv) apps/web (which carries the disclaimer) is referenced by no workflow or deploy file; (v) 'Healthcare Suite' catalog descriptors ('clinical workflow', 'Clinical protocols', 'Care plan') and the medical-device catalog aiSkills are present in the shipped asar behind the preview/advanced Industry Center. CDSCO: the directive sentence is recorded verbatim as DECLARED_BY_DIRECTIVE; one HTTPS GET to https://cdsco.gov.in succeeded (HTTP 200, redirected to /opencms/opencms/en/Home/, 95,827 B) and the homepage shows a 'Guidance documents' link and the string 'Medical Devices Rules, 2017' but no 'Medical Device Software', 'SaMD' or 'July' string; the guidance page itself was not fetched and nothing is interpreted. PART B: js-yaml@4.3.0 is in the packaged desktop asar (TRANSITIVE_RUNTIME via electron-updater@6.8.9) and is called via js-yaml.load on the update feed fetched from https://neuropause033.com/updates 10 s after every packaged launch; fix 4.3.2 exists and is a semver patch within ^4.1.0; backend dist/index.js does not require js-yaml (0 requires). qs@6.15.3/body-parser@1.20.6/express@4.22.2 are backend-only: express is required 14x by dist/index.js and its default extended query parser calls qs.parse(allowPrototypes:true) on every request's query string before any rate limit; urlencoded bodies use extended:false (no qs); fixes: qs 6.16.0 is outside express 4.22.2's ~6.15.1 pin (no newer express 4.x exists; express 5.2.1 is semver-major), while body-parser 1.20.8 (qs ~6.16.0) now exists within express's ~1.20.5 range, refuting the 2026-09-06 S132 memo's 'no patched body-parser 1.x'. react-router(-dom)@6.30.6 is imported only by apps/web (5 files), absent from desktop and backend closures, has no SSR usage and only static navigation targets; fix 7.18.3 is semver-major. Recommended statuses (human decides): js-yaml OPEN (patch-level FIXED achievable); qs/express/body-parser OPEN (or ACCEPTED_RISK with recorded mitigation); react-router NOT_RUNTIME_RELEVANT for the launch artifacts and OPEN for apps/web if it is ever deployed.",
+    "facts": [
+      {
+        "fact": "Repository state: branch pilot/public-launch, HEAD 8a253b6 (evidence commit), source 8331185, diff base cec399f, version 1.0.0-rc.30; worktree of /Users/saurabhpatel/Desktop/neuropause-desktop",
+        "evidence": "git rev-parse --abbrev-ref HEAD; git log --oneline -5; .git gitdir line",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "git diff cec399f..8331185 touches 49 files; the only regulatory-relevant additions are 9 new docs/public-launch/*.md files; 8331185..8a253b6 adds/changes 149 files, all under certification/",
+        "evidence": "git diff --name-status cec399f 8331185; git diff --name-status 8331185 8a253b6",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "The medical-device pack (main + renderer), shared medicalDevice* types, packages/industry/src, apps/desktop/src/main/industry, assistant, shell sections.ts/AppShell.tsx, firstRun, ai/conversationMemory.ts, apps/web, docs/legal, website and README.md are byte-identical between cec399f and HEAD",
+        "evidence": "git diff --stat cec399f HEAD -- <those paths> -> empty",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Census grep returned 667 raw hits: apps/desktop/src 654 (renderer medicalDevices 11, main/medicalDevice 20), apps/web/src 1, website/*.html 0, docs/public-launch 7, docs/legal 0, README.md 0, packages/industry/src 5",
+        "evidence": "scratchpad/pl003/census-grep.txt; cut/uniq counts",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Nearly all 'diagnos'/'treat' hits are software diagnostics (platform/diagnostics.ts 20, ReleaseDiagnosticsPanel 15, DiagnosticsPanel 15, workforceDiagnostics 15, liveBrain proposal 'diagnosis' narrative field) or English 'treats X as Y' comments; 'Clinical' appears as a test workspace name in tenancy tests",
+        "evidence": "census-grep.txt filtered review; apps/desktop/src/main/liveBrain/proposal.ts:82,101,106",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Product master fields: productCode*, productName*, productFamily, category, anatomicalCategory, material, size, dimensions, sterileStatus, packaging, batchLotTracked, serialTracked, udi (free text, help 'Holding a UDI here records the identifier. It does not make anything UDI-compliant.'), regulatoryMetadata (free-form JSON), status",
+        "evidence": "apps/desktop/src/main/medicalDevice/deviceProductModule.ts:58-153 (udi :122-129)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Serial tracking is a boolean product flag only (`serialTracked`, requires batchLotTracked); no serialNumber/serial_number/serialNo field exists in the pack, shared types or panels",
+        "evidence": "deviceProductModule.ts:115-120,218-220; ProductsPanel.tsx:303,547-554; medicalDevice.ts:160-180; grep serialNumber|serial_number|serialNo -> 0",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "Lot lifecycle has 9 statuses including quarantined, blocked and recalled (terminal); 'recalled' is a single-actor transition under medicalDevice:lot.write; no recall workflow, notification or regulator-report function exists",
+        "evidence": "packages/shared/src/types/medicalDeviceLot.ts:36-57,99-123; medicalDevicesModel.ts:121; grep 'recall' in pack -> status/flag/help strings only",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "No patient/PHI/MRN field exists in product or lot models; 'patient' strings near AI are the conversation-memory privacy screen only",
+        "evidence": "deviceProductModule.ts:58-153; deviceLotModule.ts:68-101; conversationMemory.ts:226-227",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "Pack manifest notProvided: Quality Center (NCR, CAPA, inspection records); document control lifecycle; lot merge; 'Electronic signatures and records validation (21 CFR Part 11) — not implemented, not claimed.'; 'Any regulatory certification. This software is not validated software.'",
+        "evidence": "packages/shared/src/types/medicalDevice.ts:306-312",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Every lot detail renders 'Quality status: Not yet configured. The Quality Center (inspections, non-conformances, CAPA) is not part of this build…' and 'Documents: Not yet configured. Document control is not part of this build…'",
+        "evidence": "apps/desktop/src/main/medicalDevice/index.ts:89-100",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Section 'medical-devices' is routed unconditionally, listed in the default business sidebar (label 'Medical Devices', description 'Device catalogue and batch/lot traceability — forward and backward, from real records.'), hidden only for the Personal workspace type",
+        "evidence": "AppShell.tsx:428-429; sections.ts:213; firstRun/experienceModel.ts:46-49",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "AI Home renders a 'Batches in quarantine' attention tile from md:lot.list view=quarantined, skipped for personal workspaces",
+        "evidence": "firstRun/AiHomeView.tsx:78,101-106,162",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Packaged asar string counts: 'Medical Devices' 4, 'md:lot.create' 5, 'not validated software' 3, 'Medical Device Manufacturing' 22, 'No AI model ran' 10, 'Clinical Throughput' 1, 'Care plan' 1, 'Healthcare Suite' 1, 'RegulatoryDocAssistant' 2, 'ComplaintTriage' 2, 'not a medical device' 0",
+        "evidence": "LC_ALL=C grep -a -c on apps/desktop/dist/mac-universal/NeuroPause.app/Contents/Resources/app.asar (58,230,004 B, 13 Sep 09:20)",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "apps/desktop/dist/NeuroPause-1.0.0-rc.30-universal-mac.zip sha256 22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075 equals the scratchpad/artifacts/mac-final zip and the certification/public-launch/evidence/mac-SHA256SUMS.txt entry; the grepped asar is the unpacked .app in the same dist directory (not extracted from the zip)",
+        "evidence": "shasum -a 256 on both zips; mac-SHA256SUMS.txt [classification detail: MEASURED (zip identity) / INFERRED (asar-to-zip)]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "AI gateway is mounted at /ai behind requireAuth and rateLimit ai_chat 120/min; response envelope asserts policy AI_PROPOSES_ONLY, executes_tools:false, grants_authority:false; assertNoAuthorityClaim rejects top-level authority keys",
+        "evidence": "apps/backend/src/app.ts:117; apps/backend/src/ai/gateway.ts:60,151,190-199",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Governed agent loop denies unregistered tools (DENIED_UNKNOWN_TOOL) and does not admit a HUMAN_AUTHORITY tool on a HUMAN_CONFIRMATION decision",
+        "evidence": "apps/desktop/src/main/ai/gatewayAgentLoop.ts:35,71,212,219",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Live-run tool registry is read_file (READ_ONLY, authority NONE) and write_file (REVERSIBLE_WRITE, HUMAN_CONFIRMATION); no tool references md:* channels",
+        "evidence": "apps/desktop/scripts/live-agent-loop.ts:51-55; docs/public-launch/AI-ARCHITECTURE.md:26-33 [classification detail: MEASURED (script) / DECLARED (doc)]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Assistant LLM narrative reads 'answer'/'executiveSummary', a free-text 'recommendations' array and 'assumptions' from model output; reasoningSummary states the narrative is synthesized strictly over deterministic findings; no domain (medical) guard on recommendations",
+        "evidence": "apps/desktop/src/main/assistant/assistantService.ts:556-561; discovery/desktop-ai.json:317 [classification detail: MEASURED / ABSENT (guard)]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "The assistant's deterministic lot resolver answers 'how many units are left in lot X' from md-lots with quantity, consumed, split, remaining and status, reason text ending 'No AI model ran.'; it emits no recommendation",
+        "evidence": "apps/desktop/src/main/assistant/deterministicAnswers.ts:226-262",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Outside the pack, enterprise and dataPlane directories, the only main-process reader of 'md-lots'/'md-products'/DEVICE_*_MODULE_ID is deterministicAnswers.ts; enterprise-search sources are entity (unifiedStore.searchBackend), graph and memory — none references the pack",
+        "evidence": "grep -rnE over apps/desktop/src/main; assistant/index.ts:226,328; search/enterpriseSearch.ts:111-172",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "Conversation memory refuses to memorise text matching MEDICAL_RE (diagnosis, prescription, medical record, patient id/record/name, blood test/pressure, HbA1c, mg/dl, tested positive for …) under category 'medical-information'",
+        "evidence": "apps/desktop/src/main/ai/conversationMemory.ts:226-227,267-268",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Industry-catalog aiSkills ('RegulatoryDocAssistant', 'ComplaintTriage', 'ClinicalSummary', 'CareGapFinder', 'BatchRecordAssistant', 'DeviationAnalyzer') are descriptors whose only consumer is `aiSkills: solution.aiSkills.length`; no executor exists",
+        "evidence": "packages/industry/src/healthcareIndustries.ts:24,45,66; packages/solution-packs/src/industryProjection.ts:26,53; grep aiSkills apps/desktop/src/main/industry -> 0 [classification detail: MEASURED / ABSENT (executor)]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "'Healthcare Suite' catalog entry declares 'Hospital operations, clinical workflow and medical compliance over FHIR, HL7 and DICOM systems', dashboards 'Clinical Throughput', knowledge pack 'Clinical protocols — Care-pathway reference library', templates 'Care plan', 'Consent form'; importers are industry/index.ts, industryService.ts, digitalTwinPlatform/twinRegistry.ts",
+        "evidence": "apps/desktop/src/main/industry/industryModel.ts:115-148",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Industry Center section is preview:true, tier:'advanced'; docs/product/INDUSTRY-CATALOG.md:7 'Maturity: PREVIEW', :19 lists 'medical-device | Medical Device Manufacturing'",
+        "evidence": "sections.ts:183; docs/product/INDUSTRY-CATALOG.md:7,19 [classification detail: MEASURED / DECLARED]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "EEG, heart rate, neurofeedback, neurostimulation, physiolog*, vital sign, SpO2, ECG, wearable: 0 hits across apps/packages/website/docs/README (excl. node_modules/dist/out) except the negative statement in REGULATORY-SCOPE.md:16; 'biometric' occurs only as Face ID/Touch ID unlock in apps/mobile and a workplace capability descriptor",
+        "evidence": "grep -rniE with quoted --include globs; apps/mobile/src/lib/biometrics.ts:2-3; packages/workplace/src/experience.ts:14",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "'intended use' appears in code only at apps/desktop/src/main/connectors/index.ts:314 (unrelated comment); no intended-use statement exists in UI, code or marketing",
+        "evidence": "census-grep.txt",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "docs/public-launch/REGULATORY-SCOPE.md: 'The machine makes no regulatory determination…' (:3); 'GATE-INTENDED-USE = NOT_ESTABLISHED. No intended-use statement exists in any custody.' (:7); 'What it does | inventory-style records: products, lots, traceability panels (lot/serial tracking, recall-style lookups)' (:15); 'it performs no diagnosis, no treatment, no physiological monitoring, and does not control any device' (:16); observation 'NON-MEDICAL ADMINISTRATIVE FUNCTION…' with US FDA / EU MDR 2017/745 Art. 2 Rule 11 / India CDSCO MDR 2017 named as WAITING_FOR_QUALIFIED_REVIEW (:22)",
+        "evidence": "docs/public-launch/REGULATORY-SCOPE.md:3,7,15,16,22",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "34_INTENDED_USE_REGISTER status NOT_ESTABLISHED with all 13 fields 'AWAITING HUMAN AUTHORITY'; 33_REGULATORY_REVIEW_REGISTER status WAITING_FOR_HUMAN, jurisdictions US/EU/INDIA REQUIRES_HUMAN_DETERMINATION, machine_boundary may_prepare=true may_decide=false may_authorize=false, form sha256 6ab090d4…13f5e; 002/26 and 002/27 are pointers to these",
+        "evidence": "certification/public-launch/33_*.json, 34_*.json; certification/public-launch-002/26_*.json, 27_*.json",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "38_FINAL_LAUNCH_GATE: launch_status NOT_READY; regulatory_status 'WAITING_FOR_HUMAN (GATE-INTENDED-USE NOT_ESTABLISHED)'; GATE-03 DEPENDENCY-INTEGRITY WAITING_FOR_HUMAN; 001 RESULT item 9 'DEPENDENCY FINDINGS — REQUIRED DECISION: accept … or schedule upgrades for js-yaml (high), qs/express/body-parser (moderate), react-router (moderate)'; 002/32 DEPENDENCY gate reason notes production gateway not deployed (api host HTTP 530)",
+        "evidence": "38_FINAL_LAUNCH_GATE.json:15,21,25; 39_NP-GLOBAL-PUBLIC-LAUNCH-001-RESULT.md:53,98-99; public-launch-002/32_FINAL_GATE.json:44-56,120",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Website positions the product as 'The AI operating layer for how you actually work' / 'connects your AI tools, remembers your work, and briefs you every morning'; 0 hits for medical|clinical|health|wellness|focus|stress|brain|mind|cognitive; download page only describes installers",
+        "evidence": "website/index.html title/meta/hero; website/download.html",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "README.md:5 lists '104 certified business modules across 13 families (Finance 21, HR 15, Manufacturing 12, Maintenance 10, CRM 8, Warehouse 8, Sales 7, Procurement 7, Inventory 7, Projects 4, Executive 3, Helpdesk 1, Documents 1)' — Medical Devices is not named",
+        "evidence": "README.md:5",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "apps/web/src/pages/Legal.tsx renders 'DRAFT SURFACES — … placeholders pending legal review' and 'NeuroPause OS is experimental pilot software. It is not medical advice, not a medical device, and pilot observations are not scientific proof.'",
+        "evidence": "apps/web/src/pages/Legal.tsx:6-10 [classification detail: MEASURED (text) / DECLARED (draft status)]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "docs/validation/verticals/HEALTHCARE.md:9-11 states 'NeuroPause … is NOT a medical device, NOT an EHR, and it is NOT cleared, certified, or validated for clinical decision-making' (document dated rc.1, predating the pack commit)",
+        "evidence": "docs/validation/verticals/HEALTHCARE.md:9-14",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "docs/legal/EULA.md and PRIVACY.md are 'DRAFT for counsel review (Phase 8, 2026-08-07)'; docs/public-launch/PRIVACY.md:3 'This is an engineering inventory, not a privacy policy … (WAITING_FOR_HUMAN)'; none mentions the medical-device pack",
+        "evidence": "docs/legal/EULA.md:1-4; docs/legal/PRIVACY.md:1-3; docs/public-launch/PRIVACY.md:3 [classification detail: MEASURED / ABSENT]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "No workflow, Dockerfile, compose file, Caddyfile or deploy/ file references apps/web or @neuropause/web; release workflows scp only the DMG/EXE and feed files to /opt/neuropause-site/website; ARCHITECTURE.md:17 nevertheless lists apps/web as the 'registration / download / legal surface'",
+        "evidence": "grep over .github/workflows, deploy/, Caddyfile, docker-compose*.yml; macos-release.yml:216-258; windows-release.yml:214-256; docs/public-launch/ARCHITECTURE.md:17 [classification detail: ABSENT (deployment) / DECLARED (doc)]",
+        "classification": "ABSENT"
+      },
+      {
+        "fact": "DECLARED_BY_DIRECTIVE (verbatim): 'The directive states that the current CDSCO website lists a July 2026 Guidance document on Medical Device Software under MDR-2017'",
+        "evidence": "task directive text; not verified against the guidance page",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Single HTTPS GET to https://cdsco.gov.in at 2026-09-13T04:18:24Z: HTTP 200, redirected to https://cdsco.gov.in/opencms/opencms/en/Home/, 95,827 bytes in 0.85 s, sha256 8568dc88…5ef768, title 'home'; homepage contains a 'Guidance documents' link (/opencms/opencms/en/Acts-and-rules/Guidance-documents/), the string 'Medical Devices Rules, 2017', 10 occurrences of 'medical device', and 0 occurrences of 'Medical Device Software', 'SaMD', 'software as a medical device' or 'July'; the guidance page was not fetched; no interpretation made",
+        "evidence": "curl -w output; /usr/bin/grep on scratchpad/pl003/cdsco-index.html",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "js-yaml@4.3.0 dependency paths: packages/deploy devDependencies ^4.1.0 (direct at root, dev-only usage), apps/desktop > electron-updater@6.8.9 (dependencies.js-yaml ^4.1.0), electron-builder@26.15.3 (dev), eslint@8.57.1 (dev); prod-only tree shows the electron-updater path alone",
+        "evidence": "npm ls js-yaml --all; npm ls js-yaml --omit=dev; packages/deploy/package.json:35; node_modules/electron-updater/package.json",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Packaged desktop dependency_matrix lists js-yaml as TRANSITIVE_RUNTIME, resolved 4.3.0, PACKAGED true, ENTRY_PRESENT true, required_by electron-updater; express, body-parser, qs, react-router, react-router-dom and react are NOT in the 85-entry matrix",
+        "evidence": "certification/public-launch/evidence/mac-artifact-verification.json dependency_matrix (generated 2026-09-13T03:58:16Z, app_source dmg) [classification detail: MEASURED (file content) / DECLARED (verifier result)]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "electron-updater calls js-yaml load() on the update channel file fetched from the generic provider (Provider.js:97) and on the bundled app-update.yml (AppUpdater.js:486); packaged builds schedule checkNow() 10 s after launch with autoDownload false and allowDowngrade false; feed is https://neuropause033.com/updates channel beta",
+        "evidence": "node_modules/electron-updater/out/providers/Provider.js:97; out/AppUpdater.js:486; apps/desktop/src/main/services/appUpdater.ts:67-77,87-94; apps/desktop/electron-builder.yml:42-45",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "apps/backend/dist/index.js (398,271 B, built 13 Sep 09:19) contains 0 require('js-yaml') and 14 require('express'); 0 direct require of qs/body-parser (loaded transitively by express); no js-yaml import in apps/backend/src or the bundled @neuropause/{shared,cloud-core,shared-cloud,runtime} sources; tsup noExternal bundles only @neuropause/*",
+        "evidence": "grep -c on apps/backend/dist/index.js; apps/backend/tsup.config.ts; grep -rln js-yaml",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Backend runtime image copies /repo/node_modules after `npm prune --omit=dev` plus dist and package.json; because js-yaml remains in the root prod closure via desktop's electron-updater, the file is expected on disk in the image though never required by the backend bundle",
+        "evidence": "apps/backend/Dockerfile:43-44,74-76; npm ls js-yaml --omit=dev",
+        "classification": "INFERRED"
+      },
+      {
+        "fact": "js-yaml advisories: GHSA-5p4m-2wfm-xmqj (quadratic CPU in !!omap resolution, >=4.0.0 <4.3.1, CVSS 7.5 A:H, CWE-407) and GHSA-2883-xcg3-v3hh (merge-key CPU, >=4.0.0 <4.3.2, CVSS 7.5, CWE-400/407); npm audit fixAvailable true",
+        "evidence": "discovery/npm-audit-prod.json vulnerabilities.js-yaml",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "js-yaml fix version 4.3.2 exists (4.x line: …4.3.0, 4.3.1, 4.3.2; latest overall 5.4.2) and is a semver PATCH within both ^4.1.0 ranges",
+        "evidence": "npm view js-yaml@4 versions; npm view js-yaml version",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "qs@6.15.3, body-parser@1.20.6 and express@4.22.2 have a single path: @neuropause/backend > express > {qs, body-parser > qs}; express pins qs ~6.15.1 and body-parser ~1.20.5; body-parser 1.20.6 pins qs ~6.15.1; identical in --omit=dev",
+        "evidence": "npm ls express|body-parser|qs (--all, --omit=dev); node_modules/express/package.json; node_modules/body-parser/package.json",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "express's default 'query parser' is 'extended' -> qs.parse(str, { allowPrototypes: true }) on every request's query string; apps/backend/src never calls app.set('query parser'); req.query is read in auth, semantic health, sync, devices and store routers",
+        "evidence": "node_modules/express/lib/application.js:84,151; lib/utils.js:23,288-290; grep apps/backend/src",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "Backend body parsing: express.json limit 256kb, express.urlencoded extended:false limit 256kb (no qs for bodies), billing webhook express.raw limit 1mb; helmet enabled; rate limits are per-route only (ai_chat 120/min, password_reset 5/h, semantic_health 30/min) keyed bucket+IP with Redis and in-process fallback; no global rate limiter precedes query parsing",
+        "evidence": "apps/backend/src/app.ts:55,60,66-67,117,122,201; apps/backend/src/middleware/rateLimit.ts:17-73; grep app.use(rateLimit -> none [classification detail: MEASURED / ABSENT (global limiter)]",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "qs advisories: GHSA-x5fp-wj9c-mxmx (array-limit bypass via bracket-key comma parsing, >=6.14.2 <=6.15.3, CVSS 3.7 AC:H, CWE-770) and GHSA-4mjr-xmp4-gh2g (DoS via attacker-controlled isBuffer, >=2.2.5 <6.16.0, CVSS 5.3, CWE-248/703); body-parser and express are flagged only via qs",
+        "evidence": "discovery/npm-audit-prod.json vulnerabilities.qs/body-parser/express",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Fix availability: qs 6.16.0 is the only fixed release and lies outside express 4.22.2's ~6.15.1 pin; no express 4.x newer than 4.22.2 exists; express latest is 5.2.1 (semver-major); body-parser 1.20.8 exists with dependencies.qs ~6.16.0 and is inside express's ~1.20.5 range",
+        "evidence": "npm view qs versions; npm view express@4 version; npm view express version; npm view body-parser@1 version; npm view body-parser@1.20.8 dependencies.qs",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "DECISION-MEMO-S132 (2026-09-06) records: overrides {qs:6.16.0} produced an 'invalid' lockfile under npm 10.5.0; full lockfile regeneration changed 107 unrelated entries and stripped platform binaries; Options A (override + cross-platform regeneration, recommended), B (express 5), C (accept with mitigation); nothing applied. Its claim 'no patched … body-parser 1.x' is no longer true (1.20.8 exists); its express claim still holds",
+        "evidence": "certification/DECISION-MEMO-S132-DEPENDENCY-REMEDIATION.md:1-40; npm view results above [classification detail: DECLARED (memo) / MEASURED (refutation)]",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "react-router-dom@6.30.6 > react-router@6.30.6 is imported only by apps/web (App.tsx:1, main.tsx:3, pages/ResetPassword.tsx:2, SignIn.tsx:2, VerifyEmail.tsx:2); no import in apps/desktop, apps/backend, apps/mobile or apps/cloud",
+        "evidence": "grep -rn react-router apps/*/src; npm ls react-router --all",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "apps/web has no SSR (no hydrateRoot/renderToString/StaticRouter); all <Link to> targets are literals ('/', '/pilot', '/download', '/sign-in', '/dashboard', '/legal') and the only useNavigate call is nav('/dashboard'); useSearchParams is used for tokens",
+        "evidence": "apps/web/src/App.tsx:29-34; pages/SignIn.tsx:6,32; grep hydrateRoot|renderToString -> 0",
+        "classification": "MEASURED"
+      },
+      {
+        "fact": "react-router advisories GHSA-wrjc-x8rr-h8h6 (open redirect via backslash, >=6.0.0 <7.18.0) and GHSA-337j-9hxr-rhxg (SSR deserializeErrors constructor injection, CVSS 6.1); fix react-router-dom 7.18.3 is semver-major; the 6.x line ends at 6.30.6",
+        "evidence": "discovery/npm-audit-all.json vulnerabilities.react-router; npm view react-router-dom@6 version [classification detail: DECLARED (advisories) / MEASURED (versions)]",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "04_DEPENDENCY_INVENTORY.json records all six findings with EXPLOITABILITY/RUNTIME_REACHABILITY and DECISION 'HUMAN — release owner to accept or schedule upgrade'; MITIGATION 'not upgraded in this branch (NP-GLOBAL-PUBLIC-LAUNCH-001 §5)'; its qs mitigation wording 'request size limits and rate limits' is imprecise because size limits do not bound query-string parsing and rate limits are per-route and run after the query parser",
+        "evidence": "certification/public-launch/04_DEPENDENCY_INVENTORY.json:48-127; app.ts middleware order [classification detail: DECLARED (register) / DERIVED (nuance)]",
+        "classification": "DECLARED"
+      },
+      {
+        "fact": "Prior discovery map medical-devices-regulatory.json (head cec399f) is confirmed at HEAD for every spot-checked citation; additions found: Healthcare Suite catalog strings in industryModel.ts, the deterministic lot resolver in the assistant, the absence of any serial-number field, and asar counts for catalog strings; the asar it measured (58,227,956 B) differs from the current dist asar (58,230,004 B)",
+        "evidence": "re-reads listed above; git show --stat 8a253b6 includes discovery/medical-devices-regulatory.json",
+        "classification": "DERIVED"
+      },
+      {
+        "fact": "mac-artifact-verification gates: DEPENDENCIES WARN (non-blocking manifest hygiene: @neuropause/cst entry dist/index.js missing; victory-vendor/@types entries), NOTARIZATION FAIL, SIGNING/FEED/DMG/ZIP/CONFIG/SECRETS PASS",
+        "evidence": "mac-artifact-verification.json gates + checks [classification detail: DECLARED (verifier output)]",
+        "classification": "DECLARED"
+      }
+    ],
+    "findings": [
+      "F-1 js-yaml@4.3.0 is inside the shipped desktop asar and is exercised automatically (feed parse 10 s after launch); the fix is a semver patch (4.3.2) that was not applied; backend bundle does not require it.",
+      "F-2 qs@6.15.3 is exercised on every backend request's query string (express default extended parser, allowPrototypes:true) before authentication and before any per-route rate limit; there is no global rate limiter; a complete non-major fix does not exist because express 4.22.2 pins qs ~6.15.1, but body-parser 1.20.8 (qs ~6.16.0) now exists, refuting part of DECISION-MEMO-S132.",
+      "F-3 react-router advisories are not reachable in either launch artifact and apps/web is not deployed by any tracked mechanism; only literal navigation targets and no SSR exist.",
+      "F-4 No intended-use statement exists in code, UI, website, README or legal drafts; registers 33/34 and REGULATORY-SCOPE.md record NOT_ESTABLISHED / WAITING_FOR_HUMAN.",
+      "F-5 No affirmative diagnosis, treatment, physiological-monitoring, EEG, heart-rate, neurofeedback or neurostimulation claim exists in product surfaces; 'biometric' is only mobile device-unlock authentication.",
+      "F-6 The medical-device pack stores a free-text UDI, free-form regulatoryMetadata, a boolean serialTracked flag (no serial numbers), a 9-state lot lifecycle including 'recalled', and an append-only trace graph; no patient fields; no quality/document/e-signature functions; manifest declares 'not validated software'.",
+      "F-7 REGULATORY-SCOPE.md:15 overstates the module ('lot/serial tracking'); no serial-number field exists.",
+      "F-8 The 'not a medical device' wording exists only in apps/web (undeployed draft) and an rc.1-era HEALTHCARE.md; the desktop asar contains 0 occurrences; registers say the determination is pending — the claim set is inconsistent across surfaces.",
+      "F-9 Catalog descriptor strings with clinical/regulatory vocabulary ('clinical workflow', 'Clinical protocols', 'Care plan', 'ClinicalSummary', 'RegulatoryDocAssistant', 'ComplaintTriage', iso-13485/fda packs) ship in the asar behind the preview/advanced Industry Center; they have no executor.",
+      "F-10 AI cannot act on lot/product records: no md:* tool exists in any registry; the only assistant read path is a deterministic quantity resolver with 'No AI model ran'; the LLM 'recommendations' field has no domain guard.",
+      "F-11 README's 13-family module list omits Medical Devices although the section ships in the default business sidebar.",
+      "F-12 04_DEPENDENCY_INVENTORY's qs mitigation wording ('request size limits and rate limits') is imprecise: size limits do not bound query parsing and the per-route limiters run after it.",
+      "F-13 CDSCO homepage (single GET, HTTP 200) shows a 'Guidance documents' link and 'Medical Devices Rules, 2017' but no 'Medical Device Software' or 'July' string; the directive's statement remains DECLARED_BY_DIRECTIVE and unverified."
+    ]
+  },
+  "prior_module_observation": "apps/desktop/src/renderer/src/medicalDevices — inventory/lot traceability surface; no patient data model; no clinical claim strings found (001 mapper)",
+  "cdsco_note": {
+    "statement": "The directive states that the current CDSCO website lists a July 2026 Guidance document on Medical Device Software under MDR-2017.",
+    "classification": "DECLARED_BY_DIRECTIVE",
+    "interpretation": "NONE"
+  },
+  "fda_status": "NOT_INFERRED",
+  "regulatory_state": "HUMAN_REVIEW_REQUIRED",
+  "intended_use": "NOT_ESTABLISHED"
+}

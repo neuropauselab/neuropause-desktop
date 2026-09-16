@@ -22,6 +22,7 @@ import { AUDIT_CHAIN_ALGO, AuditChain, auditStep, type AuditChainSnapshot, type 
 /** The cohort key for rows with no resolvable owner. A real cohort, with a real chain. */
 const UNATTRIBUTED = '__unattributed__';
 import { createLogger } from '../../logger';
+import { readStoreFile } from '../../storage/storeEnvelope';
 import { DEFAULT_APPROVAL_CHAINS, DEFAULT_COMPLIANCE_RULES } from './enterpriseGovernance';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
 import { declareStoreScope } from '../../tenancy/storeScope';
@@ -225,15 +226,33 @@ export class GovernanceStore extends EventEmitter {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const raw = await fs.readFile(this.filePath, 'utf8');
-      const data = JSON.parse(raw) as Partial<GovFile>;
+    /**
+     * P13C ROUND 33 — QUARANTINE, NEVER RESEED OVER A CORRUPT FILE.
+     *
+     * The audit array in this file is the HASH-CHAINED, append-only record
+     * whose entire purpose is non-repudiation — and the old
+     * `catch { applySeed() }` deleted it on any parse failure and then
+     * re-persisted the empty array over the original bytes, after which the
+     * chain re-verified cleanly because it had been rebuilt from nothing. A
+     * truncated file defeated the tamper-evidence no tampering could.
+     * `readStoreFile` preserves the unreadable file beside itself
+     * (`.quarantined-<ts>`) so the evidence survives for recovery.
+     */
+    const read = await readStoreFile<Partial<GovFile>>(this.filePath);
+    if (read.state === 'loaded' && read.data !== null) {
+      const data = read.data;
       for (const c of data.approvalChains ?? []) if (c?.id) this.approvalChains.set(c.id, c);
       for (const r of data.complianceRules ?? []) if (r?.id) this.complianceRules.set(r.id, r);
       this.audit = Array.isArray(data.audit) ? data.audit : [];
       this.restoreChains(data);
       if (!data.seeded || this.complianceRules.size === 0) this.applySeed();
-    } catch {
+    } else {
+      if (read.state !== 'first-run') {
+        log.error('Governance store unreadable — original preserved (audit trail intact on disk), starting from seed', {
+          state: read.state,
+          quarantinedTo: read.quarantinedTo,
+        });
+      }
       this.applySeed();
     }
     this.loaded = true;
@@ -354,6 +373,9 @@ export class GovernanceStore extends EventEmitter {
         await this.persist();
       }
     } catch (err) {
+      // Re-mark dirty: the flag was cleared before the failed write, so
+      // without this the pending change would never retry (P13C round 33).
+      this.dirty = true;
       log.error('Governance persist failed', { error: String(err) });
     } finally {
       this.persisting = false;

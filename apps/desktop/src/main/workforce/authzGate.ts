@@ -21,6 +21,12 @@ import type { SecureHandlerDef } from '../ipc/secureBridge';
 /** Every invokable `workforce:*` channel → its required permission. */
 export const WORKFORCE_CHANNEL_PERMISSIONS: Partial<Record<string, EnterprisePermission>> = {
   // Reads.
+  // S115/S166 — read-only signed-audit-chain integrity status. `operations:read`, the
+  // established scope for read-only operations surfaces (see enterprise authzGate and the
+  // channel's own declareChannelResource/coverage-gate entries, which already stated it).
+  // S115 shipped the handler without this entry; the composition-time throw below then
+  // aborted initRuntimeCore in the packaged app (rc.27, proven on Windows in S165).
+  [IpcChannel.SecurityAuditIntegrityStatus]: 'operations:read',
   [IpcChannel.WorkforceWorkers]: 'workforce:read',
   [IpcChannel.WorkforceWorkerGet]: 'workforce:read',
   [IpcChannel.WorkforceIntelligence]: 'workforce:read',

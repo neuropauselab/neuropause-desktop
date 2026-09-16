@@ -228,6 +228,18 @@ export function createExpenseClaimModule(
         if (str(f.status) !== 'submitted') {
           return { ok: false, error: `Only submitted claims can be decided — this one is ${str(f.status)}.` };
         }
+        // S57 — segregation of duties on APPROVAL, using the repository's own declared
+        // principle (BILL_APPROVAL_POLICY sod 'creator_cannot_approve' — "the creator of a
+        // purchase cannot also wave through its payment"): the claim's creator may not
+        // approve their own claim. Enforcing a declared principle is not invented policy.
+        // REJECT stays open to the creator (rejecting your own claim is withdrawal, not
+        // self-dealing). Rows with no recorded creator are not compared (importer shape).
+        if (action === APPROVE_CLAIM_ACTION) {
+          const creator = str(record.createdBy ?? '');
+          if (creator !== '' && creator === actionCtx.actor()) {
+            return { ok: false, message: 'A claim cannot be approved by its own creator — segregation of duties (another operator must decide it).' };
+          }
+        }
         if (action === REJECT_CLAIM_ACTION) {
           store.update(record.id, {
             fields: { status: 'rejected', decidedBy: actionCtx.actor(), decidedAt: actionCtx.now() },

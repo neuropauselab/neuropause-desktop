@@ -1,0 +1,45 @@
+{
+  "ARTIFACT": "36_RELEASE_PROVENANCE",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "provenance_dir_note": "see 09_PROVENANCE_REGISTER.json; no attestation format claimed",
+  "builder": {
+    "identity": "COMPUTER_B (developer machine)",
+    "workflow": "local npm scripts (not CI)",
+    "node": "v20.20.2",
+    "npm": "10.8.2"
+  },
+  "materials": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "lockfile_sha256": "4a29565e59b5fc93dbf635809104716ecbe8af4573c89f9803b2cdcc96b2b197"
+  },
+  "products": {
+    "mac": {
+      "beta-mac.yml": "15b7f421a97f67a4aa7f2787a0d38c3db3ca1dde785f937b46398d9a39734f9d",
+      "build-info.json": "967a1c7c9d949bcb8efa5a336ad7070195bc58b5b23bf90466cd1e59a4421d8d",
+      "NeuroPause-1.0.0-rc.30-universal-mac.zip": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+      "NeuroPause-1.0.0-rc.30-universal-mac.zip.blockmap": "004a81c0c668950e298c78bd92f1e513f16465a848a32b4c52b648247b72af9b",
+      "NeuroPause-universal.dmg": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+      "NeuroPause-universal.dmg.blockmap": "aa7f4dc8f97eedda4b0b689369dc11a78e9a2ca0b5c5d31001ce2ec65cb828ac",
+      "notarization-status.json": "7ce2b6012f642d48c23638a610cc5a6fa5642649376fb32141e26398a9de8d95"
+    },
+    "win": {
+      "beta.yml": "da5fd196c195b9d88c30c7b07311ba965507b3e286776b4580ab1b4e920a6dca",
+      "build-info.json": "967a1c7c9d949bcb8efa5a336ad7070195bc58b5b23bf90466cd1e59a4421d8d",
+      "NeuroPause 1.0.0-rc.30.exe": "cb87c25e5aef75bf2533f2e34d491ae8f5f33a043bc4c87bf68886656495fdff",
+      "NeuroPause-1.0.0-rc.30-win.zip": "7c5da406fad2bcacf8b07352f75fbd3f55a25feb5c533b6c320c8a7f1c4b2182",
+      "NeuroPause-Setup.exe": "fc13c84d041ece69cae5737126a6e60cfada55491a7a12d759b8bb2e911bb4e4",
+      "NeuroPause-Setup.exe.blockmap": "d84843f67788ae0fac5693e584f4aa78df46e53f56dd1c2c04bb0efe052f45c4"
+    }
+  }
+}

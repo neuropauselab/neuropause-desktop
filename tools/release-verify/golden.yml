@@ -1,0 +1,615 @@
+# NeuroPause governed release — ONE path for the WHOLE monorepo (all workspaces, one candidate, one authority).
+#
+# Lineage: NP-R34.2-B.32 governed workflow v2 (golden) + B.34/B.37/B.38/B.39 findings:
+#   * authority input edge: after the gate, the environment-bound `authority-admission` job runs the FULL B.38
+#     predicate (scripts/authority-admission.cjs) once — a signed np-authority/1 record from an issuer who is not
+#     the subject must ADMIT this exact ref/commit/tree/digests, the actual approver of this run must be the
+#     reviewer named in it, and the environment must be the admin-verified protected one — or no build, no
+#     credential and no publication follows. No script here can create, sign, or repair that record.
+#   * every workspace is verified from the admitted commit (typecheck/lint/test across all workspaces + backend
+#     integration) BEFORE any platform build; desktop (win+mac), backend image, helm chart and web bundle are all
+#     built from that one commit and travel together through integrity → provenance/attestation → signing
+#     verification → staged publication → promotion → public verification → evidence receipt.
+#   * build→output custody: tracked-tree state is captured before and after each desktop build and compared
+#     (verify-post-build-integrity.cjs); THIRD-PARTY-NOTICES.md drift fails the build instead of dirtying it.
+#   * credentials are exposed ONLY inside the protected `production-release` environment (signing builds, staging,
+#     promotion); attestation runs with OIDC on a job that holds no credential and no publish verb.
+#   * actions SHA-pinned; tag-push only; no continue-on-error; no if:; no ${{ }} inside run:.
+# Verified locally by tools/release-verify (both analyzers PASS, every escape fixture non-PASS, workflow == golden).
+# PRODUCTION RUN STATUS: UNVERIFIED until a governed run at a pushed, admitted tag proves it.
+name: neuropause-release
+on:
+  push:
+    tags: ['v*']            # production path is tag-driven ONLY (no workflow_dispatch publish path)
+concurrency:
+  group: neuropause-production-release
+  cancel-in-progress: false
+permissions:
+  contents: read            # least privilege at workflow level; jobs widen only as needed
+jobs:
+  candidate-admission:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_sha: ${{ steps.admit.outputs.candidate_sha }}
+      candidate_tag: ${{ steps.admit.outputs.candidate_tag }}
+      candidate_version: ${{ steps.admit.outputs.candidate_version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - id: admit
+        name: Candidate admission (authoritative — invokes candidate-admission.cjs)
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+          RELEASE_CANDIDATE_TAG: ${{ vars.RELEASE_CANDIDATE_TAG }}
+          RELEASE_CANDIDATE_SHA: ${{ vars.RELEASE_CANDIDATE_SHA }}
+        run: |
+          set -euo pipefail
+          export PKG_VERSION="$(node -p "require('./package.json').version")"
+          export DESKTOP_VERSION="$(node -p "require('./apps/desktop/package.json').version")"
+          export GIT_DIRTY="$([ -z "$(git status --porcelain)" ] && echo false || echo true)"
+          node scripts/candidate-admission.cjs candidate.json
+          echo "candidate_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          echo "candidate_tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "candidate_version=$PKG_VERSION" >> "$GITHUB_OUTPUT"
+  authority-admission:
+    needs: [candidate-admission]
+    runs-on: ubuntu-latest
+    environment: production-release       # the reviewer approves THIS job; the job then proves the approver is the reviewer the authority names
+    permissions:
+      contents: read
+      actions: read           # read this run's deployment-review history (who approved, for which environment)
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: '${{ needs.candidate-admission.outputs.candidate_sha }}'
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Capture this run's deployment review from the GitHub API (machine evidence, never self-declared)
+        env:
+          GITHUB_TOKEN: '${{ github.token }}'
+        run: node scripts/capture-deployment-review.cjs --out "$RUNNER_TEMP/deployment-review.json"
+      - name: Admit the external release authority (np-authority/1; fail-closed on any mismatch, replay, expiry, reviewer or environment defect)
+        env:
+          NP_AUTHORITY_JSON: '${{ vars.RELEASE_AUTHORITY }}'
+          CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -n "$NP_AUTHORITY_JSON"
+          printf '%s' "$NP_AUTHORITY_JSON" > "$RUNNER_TEMP/authority.json"
+          node scripts/verify-production-environment-contract.cjs release-policy/env-contract.json
+          node scripts/authority-admission.cjs --authority "$RUNNER_TEMP/authority.json" --trust release-policy/authority-trust.json --environment release-policy/environment-capture.json --review "$RUNNER_TEMP/deployment-review.json" --out "$RUNNER_TEMP/authority-admission.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: authority-receipt
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            ${{ runner.temp }}/authority-admission.json
+            ${{ runner.temp }}/deployment-review.json
+  verify-monorepo:
+    needs: [candidate-admission, authority-admission]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with: { node-version-file: .nvmrc, cache: npm }
+      - name: Assert exact checkout of the admitted commit
+        env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain)"
+      - run: npm ci
+      - name: Prove the installed release path is the verified one (workflow == golden, analyzers PASS, no legacy publisher)
+        run: |
+          set -euo pipefail
+          bash verify-bundle.sh
+          node scripts/verify-workflow-permissions.cjs
+          bash scripts/check-workflows.sh
+          node --test scripts/authority-admission.test.cjs scripts/capture-deployment-review.test.cjs
+      - name: Typecheck every workspace
+        run: npm run typecheck --workspaces --if-present
+      - name: Lint the whole repository
+        run: npm run lint
+      - name: Test every workspace (unit + UI suites)
+        run: npm run test --workspaces --if-present
+      - name: Backend integration tests (real Postgres + Redis)
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/neuropause_test
+          REDIS_URL: redis://localhost:6379
+        run: npm run test:integration -w @neuropause/backend
+      - name: Documentation checks and non-desktop builds compile from this commit
+        run: |
+          set -euo pipefail
+          npm run docs:validate
+          npm run build -w @neuropause/backend
+          npm run build -w @neuropause/web
+  build-desktop-windows:
+    needs: [candidate-admission, authority-admission, verify-monorepo]
+    runs-on: windows-latest
+    environment: production-release       # signing credential is exposed only behind the protected environment
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with: { node-version-file: .nvmrc, cache: npm }
+      - name: Assert exact checkout of the admitted commit
+        shell: bash
+        env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain)"
+      - shell: bash
+        run: npm ci
+      - name: Third-party notices must already be committed for this lockfile (drift fails closed; never a dirty tree)
+        shell: bash
+        run: |
+          set -euo pipefail
+          node apps/desktop/scripts/generate-notices.cjs
+          git diff --exit-code -- THIRD-PARTY-NOTICES.md
+      - name: Capture tracked-tree state BEFORE the build
+        shell: bash
+        run: node scripts/tree-state.cjs "$RUNNER_TEMP/tree-pre.json"
+      - name: Package Windows (signed; fails closed when the signer is absent)
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          NEUROPAUSE_BACKEND_URL: ${{ vars.NEUROPAUSE_BACKEND_URL }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$NEUROPAUSE_BACKEND_URL"
+          test -n "$WIN_CSC_LINK"
+          test -n "$WIN_CSC_KEY_PASSWORD"
+          npm run package:win
+      - name: Capture tracked-tree state AFTER the build
+        shell: bash
+        run: node scripts/tree-state.cjs "$RUNNER_TEMP/tree-post.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-win
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tree-win
+          if-no-files-found: error
+          path: ${{ runner.temp }}/tree-*.json
+  build-desktop-macos:
+    needs: [candidate-admission, authority-admission, verify-monorepo]
+    runs-on: macos-15                     # PINNED: rc.29 died in the temporary-keychain step on macos-latest (macOS 26)
+    environment: production-release
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with: { node-version-file: .nvmrc, cache: npm }
+      - name: Assert exact checkout of the admitted commit
+        env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test -z "$(git status --porcelain)"
+      - run: npm ci
+      - name: Third-party notices must already be committed for this lockfile (drift fails closed; never a dirty tree)
+        run: |
+          set -euo pipefail
+          node apps/desktop/scripts/generate-notices.cjs
+          git diff --exit-code -- THIRD-PARTY-NOTICES.md
+      - name: Capture tracked-tree state BEFORE the build
+        run: node scripts/tree-state.cjs "$RUNNER_TEMP/tree-pre.json"
+      - name: Package macOS universal (signed + notarized; fails closed when signer or notarization identity is absent)
+        working-directory: apps/desktop
+        env:
+          NEUROPAUSE_BACKEND_URL: ${{ vars.NEUROPAUSE_BACKEND_URL }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CSC_LINK: ${{ secrets.APPLE_CSC_LINK }}
+          APPLE_CSC_KEY_PASSWORD: ${{ secrets.APPLE_CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$NEUROPAUSE_BACKEND_URL"
+          test -n "$APPLE_CSC_LINK"
+          test -n "$APPLE_CSC_KEY_PASSWORD"
+          test -n "$APPLE_ID"
+          test -n "$APPLE_APP_SPECIFIC_PASSWORD"
+          test -n "$APPLE_TEAM_ID"
+          export CSC_LINK="$APPLE_CSC_LINK"
+          export CSC_KEY_PASSWORD="$APPLE_CSC_KEY_PASSWORD"
+          npm run package:mac
+      - name: Capture tracked-tree state AFTER the build
+        run: node scripts/tree-state.cjs "$RUNNER_TEMP/tree-post.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: desktop-mac
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: tree-mac
+          if-no-files-found: error
+          path: ${{ runner.temp }}/tree-*.json
+  build-backend-image:
+    needs: [candidate-admission, authority-admission, verify-monorepo]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+      - name: Assert exact checkout of the admitted commit
+        env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
+      - name: Build backend image to a local archive (NO push — publication happens only behind the protected environment)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+        with:
+          context: .
+          file: apps/backend/Dockerfile
+          push: false
+          tags: neuropause-backend:${{ needs.candidate-admission.outputs.candidate_version }}
+          outputs: type=docker,dest=${{ runner.temp }}/backend-image.tar
+      - name: Record the content-addressed image id (survives archive → load → push unchanged)
+        env: { CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}' }
+        run: |
+          set -euo pipefail
+          docker load -i "$RUNNER_TEMP/backend-image.tar"
+          docker inspect --format '{{.Id}}' "neuropause-backend:${CANDIDATE_VERSION}" > "$RUNNER_TEMP/backend-image-id.txt"
+          cat "$RUNNER_TEMP/backend-image-id.txt"
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4
+      - name: Package the helm chart for this candidate (appVersion = candidate version)
+        env: { CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}' }
+        run: |
+          set -euo pipefail
+          helm lint deploy/helm/neuropause-backend
+          helm package deploy/helm/neuropause-backend --version "$CANDIDATE_VERSION" --app-version "$CANDIDATE_VERSION" --destination "$RUNNER_TEMP/chart"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: backend-image
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/backend-image.tar
+            ${{ runner.temp }}/backend-image-id.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: backend-chart
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ runner.temp }}/chart/*.tgz
+  build-web:
+    needs: [candidate-admission, authority-admission, verify-monorepo]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with: { node-version-file: .nvmrc, cache: npm }
+      - name: Assert exact checkout of the admitted commit
+        env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - run: npm ci
+      - name: Build the web bundle and archive it
+        env: { CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}' }
+        run: |
+          set -euo pipefail
+          npm run build -w @neuropause/web
+          test -d apps/web/dist
+          tar -czf "$RUNNER_TEMP/neuropause-web-${CANDIDATE_VERSION}.tar.gz" -C apps/web/dist .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: web
+          if-no-files-found: error
+          retention-days: 30
+          path: ${{ runner.temp }}/neuropause-web-*.tar.gz
+  post-build-integrity:
+    needs: [build-desktop-windows, build-desktop-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: tree-win, path: tree-win }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: tree-mac, path: tree-mac }
+      - name: The build may not have mutated the tracked tree (allowlist is empty by policy)
+        run: |
+          set -euo pipefail
+          node scripts/verify-post-build-integrity.cjs tree-win/tree-pre.json tree-win/tree-post.json release-policy/generated-paths.json
+          node scripts/verify-post-build-integrity.cjs tree-mac/tree-pre.json tree-mac/tree-post.json release-policy/generated-paths.json
+  provenance:
+    needs: [post-build-integrity, build-backend-image, build-web, candidate-admission]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write         # OIDC for Sigstore — this job holds no credential and no publish verb (analyzer v6.4)
+      attestations: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { pattern: 'desktop-*', path: dist, merge-multiple: true }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { pattern: 'backend-*', path: dist, merge-multiple: true }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: web, path: dist }
+      - name: Emit the immutable provenance object BEFORE any publication or pointer flip
+        env: { PKG_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}' }
+        run: |
+          set -euo pipefail
+          node scripts/emit-provenance.cjs dist > provenance.json
+          cp provenance.json dist/provenance.json
+      - name: Attest build provenance for every artifact (Sigstore; verifiable with the gh attestation verifier)
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
+        with:
+          subject-path: 'dist/*'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: provenance
+          if-no-files-found: error
+          retention-days: 90
+          path: provenance.json
+  verify-artifacts:
+    needs: [provenance, candidate-admission]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: desktop-win, path: dist-win }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: desktop-mac, path: dist-mac }
+      - name: Update feeds must describe exactly the built binaries (url + sha512 + size per entry)
+        env: { CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}' }
+        run: |
+          set -euo pipefail
+          node scripts/verify-feed.cjs dist-win/beta.yml dist-win "$CANDIDATE_VERSION"
+          node scripts/verify-feed.cjs dist-mac/beta-mac.yml dist-mac "$CANDIDATE_VERSION"
+  signing-verification-windows:
+    needs: [verify-artifacts]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: desktop-win, path: dist }
+      - name: Install Authenticode verifier
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osslsigncode
+      - name: Verify Authenticode signatures (fail-closed; signer CN pinned by variable)
+        env: { EXPECTED_WIN_SIGNER_CN: "${{ vars.EXPECTED_WIN_SIGNER_CN }}" }
+        run: node scripts/verify-signing.cjs dist --platform windows
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: { name: signing-receipt-windows, path: signing-receipt.json, if-no-files-found: error }
+  signing-verification-macos:
+    needs: [verify-artifacts]
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: desktop-mac, path: dist }
+      - name: Verify codesign + Gatekeeper + notarization staple (fail-closed; team id pinned by variable)
+        env: { EXPECTED_MAC_TEAM_ID: "${{ vars.EXPECTED_MAC_TEAM_ID }}" }
+        run: node scripts/verify-signing.cjs dist --platform macos
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: { name: signing-receipt-macos, path: signing-receipt.json, if-no-files-found: error }
+  stage-publication:
+    needs: [signing-verification-windows, signing-verification-macos, candidate-admission]
+    runs-on: ubuntu-latest
+    environment: production-release       # protected env (admin-configured) — gates credential exposure
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Preflight — production environment contract (fail-closed; admin-captured evidence, never self-declared)
+        run: node scripts/verify-production-environment-contract.cjs release-policy/env-contract.json
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { pattern: 'desktop-*', path: dist, merge-multiple: true }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: web, path: dist }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: backend-chart, path: dist }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: provenance, path: dist }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: backend-image, path: image }
+      - name: Stage desktop + web + chart + provenance to immutable staged/<tag>/ (R2, prefix-scoped installer credential)
+        env:
+          AWS_ACCESS_KEY_ID: '${{ secrets.R2_INSTALLER_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.R2_INSTALLER_SECRET }}'
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: '${{ vars.R2_ENDPOINT }}'
+          R2_BUCKET: '${{ vars.R2_BUCKET }}'
+          CANDIDATE_TAG: '${{ needs.candidate-admission.outputs.candidate_tag }}'
+          CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}'
+        run: |
+          set -euo pipefail
+          test -n "$R2_ENDPOINT" && test -n "$R2_BUCKET" && test -n "$CANDIDATE_TAG"
+          node scripts/verify-feed.cjs dist/beta.yml dist "$CANDIDATE_VERSION"
+          node scripts/verify-feed.cjs dist/beta-mac.yml dist "$CANDIDATE_VERSION"
+          if aws s3 ls "s3://$R2_BUCKET/staged/$CANDIDATE_TAG/" --endpoint-url "$R2_ENDPOINT" | grep -q .; then echo "staged/$CANDIDATE_TAG already exists — immutable, refusing"; exit 1; fi
+          aws s3 cp dist/ "s3://$R2_BUCKET/staged/$CANDIDATE_TAG/" --recursive --no-progress --endpoint-url "$R2_ENDPOINT"
+          aws s3 ls "s3://$R2_BUCKET/staged/$CANDIDATE_TAG/" --endpoint-url "$R2_ENDPOINT" | tee "$RUNNER_TEMP/staged-listing.txt"
+          test "$(wc -l < "$RUNNER_TEMP/staged-listing.txt")" -eq "$(find dist -type f | wc -l)"
+      - name: Push the backend image to the production registry under the immutable candidate tag (refuses an existing tag)
+        env:
+          DO_REGISTRY_TOKEN: '${{ secrets.DO_REGISTRY_TOKEN }}'
+          BACKEND_IMAGE: '${{ vars.BACKEND_IMAGE }}'
+          CANDIDATE_TAG: '${{ needs.candidate-admission.outputs.candidate_tag }}'
+          CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}'
+        run: |
+          set -euo pipefail
+          test -n "$BACKEND_IMAGE" && test -n "$DO_REGISTRY_TOKEN" && test -n "$CANDIDATE_TAG"
+          docker load -i image/backend-image.tar
+          BUILT_ID="$(cat image/backend-image-id.txt)"
+          LOADED_ID="$(docker inspect --format '{{.Id}}' "neuropause-backend:${CANDIDATE_VERSION}")"
+          test "$BUILT_ID" = "$LOADED_ID"
+          printf '%s' "$DO_REGISTRY_TOKEN" | docker login registry.digitalocean.com --username "$DO_REGISTRY_TOKEN" --password-stdin
+          if docker manifest inspect "${BACKEND_IMAGE}:${CANDIDATE_TAG}" >/dev/null 2>&1; then echo "${BACKEND_IMAGE}:${CANDIDATE_TAG} already exists — immutable, refusing"; exit 1; fi
+          docker tag "neuropause-backend:${CANDIDATE_VERSION}" "${BACKEND_IMAGE}:${CANDIDATE_TAG}"
+          docker push "${BACKEND_IMAGE}:${CANDIDATE_TAG}"
+          docker inspect --format '{{index .RepoDigests 0}}' "${BACKEND_IMAGE}:${CANDIDATE_TAG}" | tee "$RUNNER_TEMP/backend-digest.txt"
+          printf '%s\n' "$BUILT_ID" > "$RUNNER_TEMP/backend-image-id.txt"
+          docker logout registry.digitalocean.com
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: stage-receipt
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            ${{ runner.temp }}/staged-listing.txt
+            ${{ runner.temp }}/backend-digest.txt
+            ${{ runner.temp }}/backend-image-id.txt
+  promote-backend:
+    needs: [stage-publication, candidate-admission]
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: stage-receipt, path: receipt }
+      - name: Promote backend — schema migration Job pinned to the staged digest, then roll the Deployment to that exact digest
+        env:
+          KUBE_CONFIG_PRODUCTION: '${{ secrets.KUBE_CONFIG_PRODUCTION }}'
+          KUBE_NAMESPACE: '${{ vars.KUBE_NAMESPACE }}'
+          KUBE_DEPLOYMENT: '${{ vars.KUBE_DEPLOYMENT }}'
+          BACKEND_IMAGE: '${{ vars.BACKEND_IMAGE }}'
+        run: |
+          set -euo pipefail
+          test -n "$KUBE_CONFIG_PRODUCTION" && test -n "$KUBE_NAMESPACE" && test -n "$KUBE_DEPLOYMENT" && test -n "$BACKEND_IMAGE"
+          DIGEST_REF="$(cat receipt/backend-digest.txt)"
+          case "$DIGEST_REF" in "${BACKEND_IMAGE}@sha256:"*) ;; *) echo "staged digest ${DIGEST_REF} does not belong to ${BACKEND_IMAGE}"; exit 1;; esac
+          umask 077
+          printf '%s' "$KUBE_CONFIG_PRODUCTION" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+          export KUBECONFIG="$RUNNER_TEMP/kubeconfig"
+          kubectl -n "$KUBE_NAMESPACE" get deployment "$KUBE_DEPLOYMENT" -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}' | tee "$RUNNER_TEMP/previous-image.txt"
+          echo
+          grep -q "namespace: ${KUBE_NAMESPACE}" deploy/kubernetes/migrate-job-production.yaml
+          sed -E "s#image: registry\.digitalocean\.com/neuropause033/backend@sha256:[0-9a-f]{64}#image: ${DIGEST_REF}#" deploy/kubernetes/migrate-job-production.yaml > "$RUNNER_TEMP/migrate-job.yaml"
+          grep -q "image: ${DIGEST_REF}" "$RUNNER_TEMP/migrate-job.yaml"
+          kubectl -n "$KUBE_NAMESPACE" delete job nems-backend-migrate --ignore-not-found --wait=true
+          kubectl apply -f "$RUNNER_TEMP/migrate-job.yaml"
+          kubectl -n "$KUBE_NAMESPACE" wait --for=condition=complete job/nems-backend-migrate --timeout=600s
+          kubectl -n "$KUBE_NAMESPACE" set image "deployment/${KUBE_DEPLOYMENT}" "backend=${DIGEST_REF}"
+          kubectl -n "$KUBE_NAMESPACE" rollout status "deployment/${KUBE_DEPLOYMENT}" --timeout=600s
+          kubectl -n "$KUBE_NAMESPACE" get deployment "$KUBE_DEPLOYMENT" -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}' | grep -qx "$DIGEST_REF"
+          rm -f "$RUNNER_TEMP/kubeconfig"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: promote-backend-receipt
+          if-no-files-found: error
+          retention-days: 90
+          path: ${{ runner.temp }}/previous-image.txt
+  promote-publication:
+    needs: [promote-backend, candidate-admission]
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+      - name: Promote desktop — binaries first, feeds last, then channel aliases (server-side copies from the immutable staged set)
+        env:
+          AWS_ACCESS_KEY_ID: '${{ secrets.R2_FEED_KEY_ID }}'
+          AWS_SECRET_ACCESS_KEY: '${{ secrets.R2_FEED_SECRET }}'
+          AWS_DEFAULT_REGION: auto
+          R2_ENDPOINT: '${{ vars.R2_ENDPOINT }}'
+          R2_BUCKET: '${{ vars.R2_BUCKET }}'
+          CANDIDATE_TAG: '${{ needs.candidate-admission.outputs.candidate_tag }}'
+        run: |
+          set -euo pipefail
+          test -n "$R2_ENDPOINT" && test -n "$R2_BUCKET" && test -n "$CANDIDATE_TAG"
+          S="s3://$R2_BUCKET/staged/$CANDIDATE_TAG"; E=(--endpoint-url "$R2_ENDPOINT" --no-progress)
+          aws s3 ls "$S/" --endpoint-url "$R2_ENDPOINT" | awk '{print $4}' | grep . > names.txt
+          grep -E '\.(exe|dmg|zip|blockmap)$' names.txt > bins.txt || true; grep -E '\.yml$' names.txt > feeds.txt || true
+          test -s bins.txt && test -s feeds.txt
+          while read -r f; do aws s3 cp "$S/$f" "s3://$R2_BUCKET/updates/$f" "${E[@]}"; aws s3 cp "$S/$f" "s3://$R2_BUCKET/downloads/$f" "${E[@]}"; done < bins.txt
+          exe=$(grep -E 'Setup.*\.exe$' bins.txt | head -1 || true); dmg=$(grep -E '\.dmg$' bins.txt | head -1 || true)
+          test -n "$exe" && aws s3 cp "$S/$exe" "s3://$R2_BUCKET/downloads/NeuroPause-Setup.exe" "${E[@]}"
+          test -n "$dmg" && aws s3 cp "$S/$dmg" "s3://$R2_BUCKET/downloads/NeuroPause.dmg" "${E[@]}"
+          while read -r f; do aws s3 cp "$S/$f" "s3://$R2_BUCKET/updates/$f" "${E[@]}"; done < feeds.txt
+          for f in beta.yml beta-mac.yml; do grep -qx "$f" feeds.txt && aws s3 cp "$S/$f" "s3://$R2_BUCKET/updates/${f/beta/latest}" "${E[@]}"; done
+          aws s3 cp "$S/provenance.json" "s3://$R2_BUCKET/updates/provenance-${CANDIDATE_TAG}.json" "${E[@]}"
+      - name: Purge edge cache for the public host (fail-closed; installer objects are edge-cached)
+        env:
+          CF_ZONE_ID: '${{ vars.CF_ZONE_ID }}'
+          CF_PURGE_TOKEN: '${{ secrets.CF_PURGE_TOKEN }}'
+        run: |
+          set -euo pipefail
+          test -n "$CF_ZONE_ID" && test -n "$CF_PURGE_TOKEN"
+          curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/$CF_ZONE_ID/purge_cache" -H "Authorization: Bearer $CF_PURGE_TOKEN" -H 'Content-Type: application/json' --data '{"purge_everything":true}' | grep -q '"success":true'
+  public-verification:
+    needs: [promote-publication, candidate-admission]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: What the public sees must be exactly what was admitted (feeds, payload digests, stable download names, backend health)
+        env:
+          CANDIDATE_VERSION: "${{ needs.candidate-admission.outputs.candidate_version }}"
+          PUBLIC_UPDATES_BASE: "${{ vars.PUBLIC_UPDATES_BASE }}"
+          PUBLIC_DOWNLOADS_BASE: "${{ vars.PUBLIC_DOWNLOADS_BASE }}"
+          NEUROPAUSE_BACKEND_URL: "${{ vars.NEUROPAUSE_BACKEND_URL }}"
+        run: |
+          set -euo pipefail
+          test -n "$PUBLIC_UPDATES_BASE" && test -n "$PUBLIC_DOWNLOADS_BASE" && test -n "$NEUROPAUSE_BACKEND_URL"
+          node scripts/verify-public.cjs "$PUBLIC_UPDATES_BASE/beta.yml" "$CANDIDATE_VERSION"
+          node scripts/verify-public.cjs "$PUBLIC_UPDATES_BASE/latest.yml" "$CANDIDATE_VERSION"
+          node scripts/verify-public.cjs "$PUBLIC_UPDATES_BASE/beta-mac.yml" "$CANDIDATE_VERSION"
+          node scripts/verify-public.cjs "$PUBLIC_UPDATES_BASE/latest-mac.yml" "$CANDIDATE_VERSION"
+          curl -fsSI "$PUBLIC_DOWNLOADS_BASE/NeuroPause-Setup.exe" | head -n 1
+          curl -fsSI "$PUBLIC_DOWNLOADS_BASE/NeuroPause.dmg" | head -n 1
+          curl -fsS "$NEUROPAUSE_BACKEND_URL/health" | tee "$RUNNER_TEMP/backend-health.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: { name: public-verification-receipt, path: '${{ runner.temp }}/backend-health.json', if-no-files-found: error, retention-days: 90 }
+  independent-reconciliation:
+    needs: [public-verification, candidate-admission]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { pattern: '*-receipt*', path: receipts, merge-multiple: true }
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+        with: { name: provenance, path: receipts }
+      - name: Assemble the control receipt from machine evidence only and validate it (PASS without evidence is DENY)
+        env:
+          CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}'
+          CANDIDATE_TAG: '${{ needs.candidate-admission.outputs.candidate_tag }}'
+          CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}'
+        run: |
+          set -euo pipefail
+          node scripts/compose-release-receipt.cjs receipts control-receipt.json
+          node scripts/validate-release-evidence.cjs control-receipt.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with: { name: release-evidence, path: control-receipt.json, if-no-files-found: error, retention-days: 90 }

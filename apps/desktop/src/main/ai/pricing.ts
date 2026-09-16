@@ -20,6 +20,9 @@ export const MODEL_PRICING: Record<string, ModelPrice> = {
   'claude-opus-4-8': { input: 5 / PER_MTOK, output: 25 / PER_MTOK },
   'claude-sonnet-4-6': { input: 3 / PER_MTOK, output: 15 / PER_MTOK },
   'claude-haiku-4-5-20251001': { input: 1 / PER_MTOK, output: 5 / PER_MTOK },
+  // OpenAI (round 34) — standard Chat Completions rates.
+  'gpt-4o': { input: 2.5 / PER_MTOK, output: 10 / PER_MTOK },
+  'gpt-4o-mini': { input: 0.15 / PER_MTOK, output: 0.6 / PER_MTOK },
 };
 
 /** USD cost for a call. Unknown models cost 0 (and should be added above). */

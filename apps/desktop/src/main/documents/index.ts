@@ -77,6 +77,7 @@ import {
   validateInvoice,
 } from './documentUnderstanding';
 import { DocumentStore, MAX_DOCUMENT_BYTES, sha256Of, summarize } from './documentStore';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 const log = createLogger('documents');
 
@@ -146,6 +147,9 @@ export function initDocuments(deps: DocumentSubsystemDeps): DocumentSubsystem {
     join(deps.userDataDir, 'documents'),
     deps.now,
   ).bindScope(deps.scope);
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('document-store', () => store.flush());
 
   const CAPABILITIES: DocumentCapabilities = {
     readableFormats: [...SUPPORTED_FORMATS],

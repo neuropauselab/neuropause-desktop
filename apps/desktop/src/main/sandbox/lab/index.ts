@@ -12,6 +12,7 @@ import { BenchmarkStore } from './benchmarkStore';
 import { runLab, type LabRunConfig, type LabRunOutput } from './lab';
 import type { LabDeps, LabObservers } from './ports';
 import type { TenantScope } from '@neuropause/shared';
+import { registerShutdownFlush } from '../../shutdownFlush';
 
 const log = createLogger('sandbox-perf-security-lab');
 
@@ -51,6 +52,9 @@ export async function initPerfSecurityLab(deps: PerfSecurityLabDeps): Promise<Pe
   const executor = createQaExecutor(deps.executorBackend, { now, sleep });
   const benchmarks = new BenchmarkStore(deps.benchmarksPath, now).bindScope(deps.scope);
   await benchmarks.load();
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('sandbox-benchmarks', () => benchmarks.flush());
 
   let lastVerdict: string | null = null;
   let lastAt: string | null = null;

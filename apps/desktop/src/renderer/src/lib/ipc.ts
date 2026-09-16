@@ -8,12 +8,14 @@
 import { perfRecorder } from '@renderer/lib/perf/perfRecorder';
 import { createLogger } from '@renderer/lib/logger';
 // A7 — channel attribution for a rejected call. See `./ipcError.ts`.
-import { attributeIpcChannel, describeIpcFailure } from '@renderer/lib/ipcError';
+import { attributeDenialCode, attributeIpcChannel, describeIpcFailure } from '@renderer/lib/ipcError';
 import {
   IpcChannel,
   // A7 — the response half of the IPC contract. See `packages/shared/src/ipc/responses.ts`.
   type IpcResponseChannelName,
   type IpcResponseOf,
+  // Wave-2 Slice-12 — the data-only capability-propose response (dev-triggered feed; see `m365Propose` below).
+  type CapabilityProposeM365ActionResponse,
   // A7 — the push half. See `packages/shared/src/ipc/broadcasts.ts`.
   type IpcBroadcastChannelName,
   type IpcBroadcastOf,
@@ -30,6 +32,7 @@ import {
   type AuthStatus,
   type MenuCommandPayload,
   type TrayCommandPayload,
+  type RuntimeStateDto,
   type ThemeSource,
   type ShellSnapshotDto,
   type WorkspaceTemplateId,
@@ -133,6 +136,7 @@ import type {
   PlatformEventCategory,
   NotificationInboxEvent,
   NotificationsPrefsSetRequest,
+  PlatformCommandDispatchResponse,
 } from '@neuropause/shared';
 
 type OAuthProviderId = Exclude<AuthProviderId, 'email'>;
@@ -161,6 +165,70 @@ const log = createLogger('ipc');
 const loggedFailures = new Set<string>();
 
 const rawInvoke = window.neuropause.invoke;
+
+/**
+ * GATE 1 (round 48) — THE BOOT-WINDOW RETRY, AT THE ONE PLACE EVERY CALL PASSES.
+ *
+ * The window deliberately opens before `initRuntimeCore()` finishes (round 36
+ * kept that ordering), so for a moment the ~720 secure channels do not exist
+ * and any surface that invokes on mount fails with "No handler registered".
+ * Round 36/39 taught exactly TWO consumers (the AppShell profile load and the
+ * Assistant list) to retry on the ready broadcast; a live fresh-profile boot
+ * still showed ELEVEN other channels failing once at first paint
+ * (notifications:list, voice:status, xp:profile.get, livesync:status,
+ * intent:board/workspaces/governance, update:getStatus, onboarding:status,
+ * org:list, flags:get).
+ *
+ * The general fix lives here instead of in eleven components: a rejection that
+ * says "No handler registered" DURING the boot window means the handler never
+ * ran at all — retrying is safe for reads AND mutations alike, because nothing
+ * executed. The retry waits for the runtime-ready signal (the round-36
+ * broadcast, plus an immediate state query on the BASE router to close the
+ * missed-event race), retries ONCE, and gives up honestly when the runtime
+ * FAILED, when the wait times out, or when the retry fails again (a genuinely
+ * unregistered channel must still surface, not loop).
+ */
+const NO_HANDLER_RE = /No handler registered/;
+let bootRetryTimeoutMs = 20_000;
+let runtimeReadyWait: Promise<'ready' | 'failed' | 'timeout'> | null = null;
+
+/** Test seam: shorten the wait so a timeout path is testable. */
+export function __setBootRetryTimeoutForTests(ms: number): void {
+  bootRetryTimeoutMs = ms;
+  runtimeReadyWait = null;
+}
+
+function awaitRuntimeReady(): Promise<'ready' | 'failed' | 'timeout'> {
+  if (runtimeReadyWait) return runtimeReadyWait;
+  runtimeReadyWait = new Promise((resolve) => {
+    let done = false;
+    let off: () => void = () => undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (r: 'ready' | 'failed' | 'timeout'): void => {
+      if (done) return;
+      done = true;
+      off();
+      if (timer !== undefined) clearTimeout(timer);
+      resolve(r);
+    };
+    off = rawSubscribe(IpcChannel.RuntimeStateChanged, (p: unknown) => {
+      const s = p as RuntimeStateDto;
+      if (s?.state === 'ready') settle('ready');
+      else if (s?.state === 'failed') settle('failed');
+    });
+    if (!done) timer = setTimeout(() => settle('timeout'), bootRetryTimeoutMs);
+    // The missed-event race: ready may have happened BEFORE this subscription.
+    // `system:runtimeState` rides the base router, registered before the
+    // window, so it is safe in the exact window it describes.
+    void (rawInvoke(IpcChannel.RuntimeState) as Promise<RuntimeStateDto>)
+      .then((s) => {
+        if (s?.state === 'ready') settle('ready');
+        else if (s?.state === 'failed') settle('failed');
+      })
+      .catch(() => undefined);
+  });
+  return runtimeReadyWait;
+}
 /**
  * The IPC entrypoint every namespace below uses.
  *
@@ -199,8 +267,26 @@ function invoke<C extends IpcResponseChannelName>(
   // Attribution has to be a link in the returned chain, not another detached
   // branch: a detached handler would race the caller's own `.catch`, and the
   // whole point is that the caller sees the attributed error.
-  return promise.catch((err: unknown) => {
-    const attributed = attributeIpcChannel(err, String(channel));
+  return promise.catch(async (err: unknown) => {
+    // GATE 1 (round 48): a boot-window "No handler registered" means the
+    // handler NEVER RAN — retry once after the runtime comes up. If the
+    // runtime FAILED, the wait timed out, or the retry fails again (a channel
+    // that genuinely does not exist), the original failure surfaces honestly.
+    if (err instanceof Error && NO_HANDLER_RE.test(err.message)) {
+      const outcome = await awaitRuntimeReady();
+      if (outcome === 'ready') {
+        try {
+          return (await rawInvoke(channel, payload)) as IpcResponseOf<C>;
+        } catch {
+          // fall through to the original, attributed failure
+        }
+      }
+    }
+    // D-6: take the denial code off the wire and restore the clean message,
+    // BEFORE attribution and before anything is logged or displayed. The stamp
+    // is transport and must not survive past this frame.
+    const decoded = attributeDenialCode(err);
+    const attributed = attributeIpcChannel(decoded, String(channel));
     if (!loggedFailures.has(String(channel))) {
       loggedFailures.add(String(channel));
       log.warn(`IPC call failed — ${describeIpcFailure(attributed)}`);
@@ -401,6 +487,15 @@ export const ipc = {
 
   /* ── Runtime ── */
   runtime: {
+    /**
+     * Round 36 — Gate 1: runtime-core init state. `state()` is served by the
+     * BASE router (registered before the window opens), so it is safe to call
+     * in the exact boot window it describes; the broadcast fires once on the
+     * starting→ready / starting→failed transition.
+     */
+    state: () => invoke(IpcChannel.RuntimeState),
+    onStateChanged: (cb: (payload: RuntimeStateDto) => void) =>
+      subscribe(IpcChannel.RuntimeStateChanged, cb),
     launch: (slug: string) => invoke(IpcChannel.RuntimeLaunch, { slug }),
     stop: (instanceId: string) => invoke(IpcChannel.RuntimeStop, { instanceId }),
     /** Launch-at-login preference (V4.2). */
@@ -460,6 +555,367 @@ export const ipc = {
         resourceId: resource?.id,
         resourceName: resource?.name,
       }),
+    /**
+     * ERP Session 32 — the governed operational READ surface. A tenant-safe, bounded, sanitized read
+     * of platform command history + outbox/delivery status over the durable command journal + the S31
+     * delivered-event sink. Reuses the EXISTING `platform:command.dispatch` channel (already on the
+     * preload allowlist, FG-ERP-LIVE-IPC) with a READ operation the main handler answers WITHOUT the
+     * command bus and WITHOUT any durable write. Uses `rawInvoke` (the `m365Propose` precedent) because
+     * the channel has no `IpcResponseMap` entry and adding one would touch FROZEN `packages/shared`.
+     */
+    operationalHistory: (params: { limit?: number; outboxStatus?: string } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryOperationalHistory',
+        payload: params,
+        idempotencyKey: `oread-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * ERP Session 34 — governed platform health / readiness probe. Read-only over real runtime +
+     * persistence state (same governed channel + `rawInvoke` precedent; no frozen change).
+     */
+    health: (): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryPlatformHealth',
+        payload: {},
+        idempotencyKey: `health-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * ERP Session 35 — governed DELIVERY OPERATIONS drill-down. A tenant-safe, bounded, sanitized
+     * read of outbox/delivery FAILURES (pending / retrying / delivered) over the durable command
+     * journal's outbox state. Same governed channel + `rawInvoke` precedent as S32/S34; read-only,
+     * no frozen change, no new channel/command. `status` optionally narrows to one outbox status.
+     */
+    deliveryOperations: (params: { limit?: number; status?: string } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryDeliveryOperations',
+        payload: params,
+        idempotencyKey: `delivops-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * S139 — governed OPERATIONAL EXCEPTIONS read. A tenant-safe, bounded, read-only projection that
+     * UNIFIES the operational follow-up signals that already exist (RETRYABLE deliveries + held
+     * reconciliations) over the durable command journal into ONE "needs attention" queue, on the SAME
+     * governed `platform:command.dispatch` READ branch (`QueryOperationalExceptions`). Tenant is
+     * server-resolved; the renderer supplies NO tenant. No invented severity/SLA. `kind` optionally
+     * narrows to one exception kind. No new channel/command/store — a read-only view, never a mutation.
+     */
+    operationalExceptions: (params: { limit?: number; kind?: 'delivery_retrying' | 'held_reconciliation' } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryOperationalExceptions',
+        payload: params,
+        idempotencyKey: `opsexc-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * S121 — governed CONNECTOR INBOUND LINEAGE read (S119/S120). A tenant-safe, bounded, read-only
+     * projection of VERIFIED inbound-webhook events over the ONE EventBus ring, on the SAME governed
+     * `platform:command.dispatch` READ branch (`QueryInboundLineage`). Tenant is server-resolved; the
+     * renderer supplies NO tenant. No new channel/command/store.
+     */
+    inboundLineage: (params: { limit?: number } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryInboundLineage',
+        payload: params,
+        idempotencyKey: `lineage-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * S122 — governed OPERATIONAL RELIABILITY read. A tenant-safe, bounded, read-only projection of the
+     * platform's delivery-reliability posture (per-status + per-command-type counts, success/failure
+     * ratios, recurring outbox error signatures) over the SAME durable command journal, on the SAME
+     * governed `platform:command.dispatch` READ branch (`QueryReliabilitySummary`). Tenant is
+     * server-resolved; the renderer supplies NO tenant. An optional `objective` in [0,1] adds a
+     * request-based error budget (no verdict without one). No new channel/command/store.
+     */
+    reliabilitySummary: (params: { limit?: number; objective?: number } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryReliabilitySummary',
+        payload: params,
+        idempotencyKey: `reliab-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * S124 — governed cross-surface OPERATIONAL OVERVIEW read. A tenant-safe, read-only composition of
+     * the existing operational-read builders (health + delivery + reliability + reliability-trend +
+     * connector inbound + inbound-trend), on the SAME governed `platform:command.dispatch` READ branch
+     * (`QueryOperationalOverview`). Tenant is server-resolved; the renderer supplies NO tenant. No new
+     * channel/command/store — a composition layer, not a source of truth.
+     */
+    operationalOverview: (params: { limit?: number } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryOperationalOverview',
+        payload: params,
+        idempotencyKey: `ovw-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * S125 — governed operational EVIDENCE SEARCH read. A tenant-safe, bounded, read-only deterministic
+     * lexical/filter search over the SAME committed-command history + verified connector inbound lineage,
+     * on the SAME governed `platform:command.dispatch` READ branch (`QueryEvidenceSearch`). Tenant is
+     * server-resolved; the renderer supplies NO tenant. `query` filters (AND-token); `kind` optionally
+     * narrows to 'command' | 'inbound'. No new channel/command/store/index/engine.
+     */
+    evidenceSearch: (params: { query?: string; limit?: number; kind?: 'command' | 'inbound' } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryEvidenceSearch',
+        payload: params,
+        idempotencyKey: `evsrch-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * S126 — governed EVIDENCE TRACE (correlation timeline) read. Given an EXISTING `correlationId` (from
+     * an evidence-search hit), composes the SAME tenant-scoped committed-command + delivered-event records
+     * that genuinely carry it into ONE chronological trace, on the SAME governed `platform:command.dispatch`
+     * READ branch (`QueryEvidenceTrace`). Tenant is server-resolved; the renderer supplies NO tenant.
+     * Exact-match only; a blank/non-matching id returns an honest not-found trace. No new channel/store.
+     */
+    evidenceTrace: (params: { correlationId: string; limit?: number }): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryEvidenceTrace',
+        payload: params,
+        idempotencyKey: `evtrace-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * S128 — governed AI EVIDENCE GROUNDING read. Projects the SAME governed evidence (S125 search +
+     * optional S126/S127 correlation trace) into read-only `AiContextItem[]` grounding context with
+     * explicit per-item provenance, on the SAME `platform:command.dispatch` READ branch
+     * (`QueryEvidenceContext`). Tenant server-resolved; NO AI execution; credential-free; bounded.
+     */
+    evidenceContext: (params: { query?: string; correlationId?: string; limit?: number; relevanceQuery?: string; includePosture?: boolean; includeConnectorIntel?: boolean } = {}): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'QueryEvidenceContext',
+        payload: params,
+        idempotencyKey: `evctx-${Date.now().toString(36)}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED SALES ORDER CREATE (ERP Session 43) — the FIRST renderer WRITE through the governed
+     * command spine, closing the S42 exposure gap (the certified path was "correct but dark"). Reuses
+     * the EXISTING `platform:command.dispatch` channel + the `CreateSalesOrder` domain command (S21):
+     * the write flows renderer → secure preload → Application Boundary → command bus → `sales:manage`
+     * RBAC → durable intent/journal → Sales Order module persistence → domain event → outbox →
+     * governance audit, returning the client-safe `{ ok, data:{ id }, error:{ code, message } }`
+     * contract. NO new channel, command, journal, or engine.
+     *
+     * `idempotencyKey` is caller-supplied and STABLE across retries of the SAME submission, so a
+     * double-submit or a transport retry REPLAYS to exactly ONE durable order. Tenant + actor are
+     * resolved SERVER-SIDE from the authenticated session — never sent from the renderer (no
+     * renderer tenant authority). `status` is forced to `pending` by the command route; a client can
+     * never mint a shipped/fulfilled order by supplying `status` in `fields`.
+     */
+    createSalesOrder: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'CreateSalesOrder',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED O2C RECORD ACTIONS (ERP Session 45) — the remaining dark commands go live. Each
+     * helper dispatches an EXISTING bus command (S27–S29 + S45) over the EXISTING
+     * `platform:command.dispatch` channel against an EXISTING record (`target`), so the write
+     * flows through the same Application Boundary → per-command RBAC → durable intent/journal →
+     * domain event → outbox → governance audit spine as the S43 create. Tenant + actor are
+     * server-resolved; the record id is a TARGET, never authority — the command's own module
+     * status machine still guards the transition. `idempotencyKey` is stable per user gesture.
+     */
+    dispatchRecordCommand: (
+      operation:
+        | 'ShipSalesOrder'
+        | 'InvoiceSalesOrder'
+        | 'IssueCustomerInvoice'
+        | 'ConvertQuoteToSalesOrder'
+        // ERP Session 49 — the procurement lifecycle joins the same governed spine (all five
+        // commands existed since S17/S23/S25; S49 wires the production UI to them).
+        | 'SubmitPurchaseRequest'
+        | 'ApprovePurchaseRequest'
+        | 'RejectPurchaseRequest'
+        | 'ConvertPurchaseRequestToPO'
+        | 'PostGoodsReceipt'
+        | 'ApproveSupplierInvoice'
+        // ERP Session 57 — the reversal/settlement promotion set (existing action semantics
+        // wrapped verbatim; S57 wires the production UI to them).
+        | 'CancelCustomerInvoice'
+        | 'IssueCreditNote'
+        | 'CancelCreditNote'
+        | 'IssueDebitNote'
+        | 'CancelDebitNote'
+        | 'ClearCustomerPayment'
+        | 'ClearVendorPayment'
+        | 'ShipShipmentDocument',
+      recordId: string,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation,
+        target: recordId,
+        payload: {},
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED CUSTOMER RECEIPT (ERP Session 45) — a CLEARED receipt books real Dr Cash / Cr AR,
+     * so it is created through the governed `ReceiveCustomerPayment` command (which force-sets
+     * `status: 'cleared'` server-side), never the CRUD door. Pending/void records stay on the
+     * legacy create (no GL effect at creation) — recorded policy, not silently narrowed.
+     */
+    receiveCustomerPayment: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'ReceiveCustomerPayment',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED PAYMENT REVERSAL (ERP Session 142) — the two remaining dark finance commands
+     * (`ReverseCustomerPayment` / `ReverseVendorPayment`, live since S61) go live in the UI. A
+     * reversal is server-side a CREATE of an immutable `finance-payment-reversals` record through
+     * the SAME governed command spine as the S43/S45/S49 creates: Application Boundary → per-command
+     * RBAC (`operations:manage`) → durable intent/journal → domain event → outbox → governance audit.
+     * The ORIGINAL payment id is a `target` (never authority — the module's own guards refuse a
+     * non-cleared / bank-reconciled / foreign-tenant / already-reversed / nonexistent original), and
+     * `originalKind` is set from the COMMAND TYPE server-side (never the payload), so the caller can
+     * never forge it. `reason` is required. `idempotencyKey` is stable per user gesture.
+     */
+    reverseCustomerPayment: (
+      originalPaymentId: string,
+      reason: string,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'ReverseCustomerPayment',
+        target: originalPaymentId,
+        payload: { reason },
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    reverseVendorPayment: (
+      originalPaymentId: string,
+      reason: string,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'ReverseVendorPayment',
+        target: originalPaymentId,
+        payload: { reason },
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED PURCHASE REQUEST CREATE (ERP Session 49) — the buy-side twin of the S43 Sales
+     * Order create. `status` is forced to `draft` by the command route (a client can never mint
+     * a pre-approved request); tenant + actor are server-resolved.
+     */
+    createPurchaseRequest: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'CreatePurchaseRequest',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED REORDER EXECUTION (ERP Session 89) — from an S86 decision report row, create exactly
+     * ONE draft purchase request through the `CreatePurchaseRequestFromReorderRecommendation`
+     * command. The command re-reads the LIVE state and applies the S88 execution policy (fail closed
+     * if stale / not triggered / quantity changed / already drafted); the DETERMINISTIC PR number
+     * (S88) is the identity + idempotency, so a repeated confirmation never creates a second PR. The
+     * `idempotencyKey` is derived deterministically from (reportId, sku) so a double-click replays.
+     * Draft only — never a PO, never inventory, never GL, never a supplier award.
+     */
+    createReorderPurchaseRequest: (
+      reportId: string,
+      sku: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'CreatePurchaseRequestFromReorderRecommendation',
+        target: reportId,
+        payload: { sku },
+        idempotencyKey: `reorder-exec:${reportId}:${sku}`,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
+    /**
+     * GOVERNED SUPPLIER PAYMENT (ERP Session 49) — a CLEARED vendor payment books real
+     * Dr AP / Cr Cash, so it is created through the governed `PaySupplierInvoice` command
+     * (status force-set `cleared` server-side; overpayment/duplicate-ref refused by the
+     * vendor-payment engine). Pending/void records keep the CRUD path (no GL at creation).
+     */
+    paySupplierInvoice: (
+      fields: Record<string, unknown>,
+      idempotencyKey: string,
+    ): Promise<PlatformCommandDispatchResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.PlatformCommandDispatch));
+      const promise = rawInvoke(IpcChannel.PlatformCommandDispatch, {
+        operation: 'PaySupplierInvoice',
+        payload: fields,
+        idempotencyKey,
+      }) as Promise<PlatformCommandDispatchResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
   timeline: {
     query: (q?: TimelineQuery) => invoke(IpcChannel.TimelineQuery, q ?? {}),
@@ -468,6 +924,28 @@ export const ipc = {
   },
   diagnostics: {
     get: () => invoke(IpcChannel.DiagnosticsGet),
+  },
+
+  /* ── Security operations (S115 — read-only audit integrity) ── */
+  security: {
+    /**
+     * Read-only audit-integrity status for the governance audit chain. Returns ONLY
+     * {state, algorithm, keyId, keyVersion} — never key material, the chain head, or entries.
+     */
+    auditIntegrity: (): Promise<{
+      state: 'SIGNED' | 'UNSIGNED' | 'VERIFICATION_FAILED';
+      algorithm?: string;
+      keyId?: string;
+      keyVersion?: number;
+    }> =>
+      // rawInvoke (not the typed `invoke`): this read-only channel is intentionally NOT in the frozen
+      // IpcResponseMap, so we type the response at this accessor rather than touch packages/shared.
+      rawInvoke(IpcChannel.SecurityAuditIntegrityStatus) as Promise<{
+        state: 'SIGNED' | 'UNSIGNED' | 'VERIFICATION_FAILED';
+        algorithm?: string;
+        keyId?: string;
+        keyVersion?: number;
+      }>,
   },
 
   /* ── Connector Framework (NCF) ── */
@@ -521,8 +999,21 @@ export const ipc = {
       actionId: string,
       params: Record<string, unknown>,
       confirmed: boolean,
+      /** FG-14 — causal episode identity, evidence only. Omitted when unavailable; never substituted. */
+      correlationId?: string,
+      confirmedAt?: string,
     ) =>
-      invoke(IpcChannel.M365ActionExecute, { connectorId, accountId, actionId, params, confirmed }),
+      invoke(IpcChannel.M365ActionExecute, {
+        connectorId,
+        accountId,
+        actionId,
+        params,
+        confirmed,
+        // FG-14 — omitted entirely when unavailable, so "absent" reaches the contract as absent
+        // rather than as an empty string that a downstream reader could mistake for an identity.
+        ...(correlationId === undefined ? {} : { correlationId }),
+        ...(confirmedAt === undefined ? {} : { confirmedAt }),
+      }),
     m365Draft: (
       connectorId: string,
       accountId: string,
@@ -530,6 +1021,28 @@ export const ipc = {
       instruction: string,
       context?: string,
     ) => invoke(IpcChannel.M365Draft, { connectorId, accountId, kind, instruction, context }),
+    /**
+     * Wave-2 Slice-12 — the FIRST production feed of `capability:m365.propose`. AI-proposed params are re-validated
+     * by the main-side data-only handler (Slice 11), which returns a reviewable `{to,subject,body}` proposal or a
+     * typed refusal. This never sends: the human still confirms downstream through `m365Execute` (the certified path).
+     *
+     * It uses `rawInvoke` rather than the typed `invoke`: the channel is already on the preload allowlist (FG-1) but
+     * has no `IpcResponseMap` entry, and adding one would touch FROZEN `packages/shared`. The response type is
+     * imported (reading a type is not a frozen-surface change), so the single `as` below is the honest wire→contract
+     * conversion — the same shape `invoke` performs, minus the map constraint. Deferred to a future FG if this ever
+     * needs to ship beyond the dev trigger. (DECISIONS D-6.)
+     */
+    m365Propose: (req: {
+      capabilityId: string;
+      accountId?: string | null;
+      purpose?: string;
+      params: Record<string, unknown>;
+    }): Promise<CapabilityProposeM365ActionResponse> => {
+      const settle = perfRecorder.ipcStart(String(IpcChannel.CapabilityProposeM365Action));
+      const promise = rawInvoke(IpcChannel.CapabilityProposeM365Action, req) as Promise<CapabilityProposeM365ActionResponse>;
+      promise.then(settle, settle);
+      return promise;
+    },
   },
 
   /* ── Unified Knowledge Layer (UDM) ── */
@@ -730,6 +1243,11 @@ export const ipc = {
     forget: (ids: string[]) => invoke(IpcChannel.MemoryForget, { ids }),
     counts: () => invoke(IpcChannel.MemoryCounts),
     rebuild: () => invoke(IpcChannel.MemoryRebuild),
+    // S148 — embed this tenant's existing memories into its cloud vector namespace so semantic recall
+    // covers them (memory:backfill). RBAC operations:manage, org server-resolved (no renderer id), gated
+    // by the memoryMaySync egress predicate, idempotent per the existing backfill semantics. Typed via the
+    // frozen IpcResponseMap entry added under FG-S148-MEMORY-BACKFILL (no rawInvoke).
+    backfill: () => invoke(IpcChannel.MemoryBackfill),
     onChange: (cb: (counts: MemoryCounts) => void) =>
       subscribe(IpcChannel.MemoryEventBroadcast, cb),
   },
@@ -765,6 +1283,15 @@ export const ipc = {
     briefing: (period: BriefingPeriod, now?: string) =>
       invoke(IpcChannel.BriefingGenerate, { period, now }),
     executiveCenterSnapshot: () => invoke(IpcChannel.ExecutiveCenterSnapshot),
+    /**
+     * S145 — on-demand governed KPI capture (was dark). The channel (`kpi:capture`, RBAC `intelligence:read`)
+     * reads the ACTIVE tenant's inventory-products and writes the tenant-scoped kpi-snapshots + kpi-exceptions
+     * stores (idempotent + immutable per period). Tenant is resolved server-side via `activeTenantScope()`;
+     * the renderer supplies NO id (no arguments). Returns `{ ok, captured }` — `captured:false` when the
+     * period's snapshot already exists (a truthful no-op, not an error). Not in the frozen IpcResponseMap →
+     * untyped `rawInvoke`, narrowed at the call site.
+     */
+    kpiCapture: (): Promise<unknown> => rawInvoke(IpcChannel.KpiCapture, {}),
     voiceTurn: (transcript: string, displayName?: string) =>
       invoke(IpcChannel.VoiceTurn, { transcript, displayName }),
   },
@@ -1179,6 +1706,13 @@ export const ipc = {
         expiresAt,
       }),
     revokeKey: (id: string) => invoke(IpcChannel.EcosystemKeysRevoke, { id }),
+    // S146 — rotate a key: mint a fresh secret (same name/scopes/expiry) and revoke the old id
+    // atomically, so a leaked secret is cut over without downtime. RBAC developer:manage, audited,
+    // tenant/owner resolved server-side (renderer sends only the id). Uses rawInvoke because
+    // `ecosystem:keys.rotate` is intentionally absent from the frozen IpcResponseMap (the S144
+    // precedent — a typed entry would require a frozen packages/shared change / FG token). Returns
+    // ApiKeyWithSecret (the new secret, shown once) or a { error } refusal for an unknown/revoked key.
+    rotateKey: (id: string): Promise<unknown> => rawInvoke(IpcChannel.EcosystemKeysRotate, { id }),
     oauthApps: () => invoke(IpcChannel.EcosystemOAuthList),
     createOAuthApp: (input: {
       name: string;
@@ -1629,6 +2163,20 @@ export const ipc = {
     approvals: () => invoke(IpcChannel.FedApprovals),
     resolveApproval: (id: string, approve: boolean) =>
       invoke(IpcChannel.FedResolveApproval, { id, approve }),
+    /**
+     * S144 — the P13C-Round-5 legacy-policy MIGRATION/QUARANTINE surface goes live. These four channels
+     * were fully governed + tested in main (`main/federation/index.ts`) but had no renderer path. The
+     * STATUS channel is `federation:read` and returns only a COUNT (a quarantined row may name another
+     * org's action, so its contents are never disclosed here); the other three are `federation:manage`
+     * and audited. Tenant/org identity is server-resolved (`globalGovStore.callerOrg()`), never a
+     * renderer claim: claim/discard only affect the caller's own governance and refuse with no active org.
+     */
+    // These four channels are not in the frozen IpcResponseMap, so they use the untyped `rawInvoke` (the
+    // same escape the platform:command.dispatch helpers use); the provider narrows the shapes at the call site.
+    policyMigrationStatus: (): Promise<unknown> => rawInvoke(IpcChannel.FedPolicyMigrationStatus, {}),
+    quarantinedPolicies: (): Promise<unknown> => rawInvoke(IpcChannel.FedQuarantinedPolicies, {}),
+    claimPolicy: (id: string): Promise<unknown> => rawInvoke(IpcChannel.FedClaimPolicy, { id }),
+    discardPolicy: (id: string): Promise<unknown> => rawInvoke(IpcChannel.FedDiscardPolicy, { id }),
     audit: () => invoke(IpcChannel.FedAuditTrail),
     compliance: () => invoke(IpcChannel.FedCompliance),
     recordAction: (input: {
@@ -1765,11 +2313,15 @@ export const ipc = {
     get: () => invoke(IpcChannel.AiConfigGet),
     health: () => invoke(IpcChannel.AiConfigHealth),
     detectOllama: () => invoke(IpcChannel.AiConfigDetectOllama),
+    /** Round 34: pull a local model through Ollama (explicit user action only). */
+    pullModel: (model: string) => invoke(IpcChannel.AiConfigPullModel, { model }),
     setProvider: (provider: AiProviderId) => invoke(IpcChannel.AiConfigSetProvider, { provider }),
     setModel: (model: string) => invoke(IpcChannel.AiConfigSetModel, { model }),
-    setCredential: (secret: string) =>
-      invoke(IpcChannel.AiConfigSetCredential, { provider: 'claude', secret }),
-    clearCredential: () => invoke(IpcChannel.AiConfigClearCredential, { provider: 'claude' }),
+    /** Round 34: credentials are per cloud provider ('claude' | 'openai'). */
+    setCredential: (provider: 'claude' | 'openai', secret: string) =>
+      invoke(IpcChannel.AiConfigSetCredential, { provider, secret }),
+    clearCredential: (provider: 'claude' | 'openai') =>
+      invoke(IpcChannel.AiConfigClearCredential, { provider }),
     test: (provider: AiProviderId, secret?: string) =>
       invoke(IpcChannel.AiConfigTest, { provider, secret }),
     migrationStatus: () => invoke(IpcChannel.AiConfigMigrationStatus),
@@ -1905,6 +2457,10 @@ export const ipc = {
     queueState: (workspaceId?: string) => invoke(IpcChannel.SandboxQueueState, { workspaceId }),
     artifacts: (executionId: string, kind?: ArtifactKind) =>
       invoke(IpcChannel.SandboxArtifactList, { executionId, kind }),
+    // S150 — fetch one artifact (metadata + inline content) by id. Reads gate on sandbox:read; the
+    // renderer sends ONLY the id (workspace/execution tenant boundary is server-resolved). Typed via the
+    // FG-S149 IpcResponseMap entry (no rawInvoke). Missing/denied → null → honest empty state.
+    artifact: (id: string) => invoke(IpcChannel.SandboxArtifactGet, { id }),
     result: (executionId: string) => invoke(IpcChannel.SandboxResultGet, { executionId }),
     report: (executionId: string) => invoke(IpcChannel.SandboxReportGet, { executionId }),
     datasets: (workspaceId?: string) => invoke(IpcChannel.SandboxDatasetList, { workspaceId }),

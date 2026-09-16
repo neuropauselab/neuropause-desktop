@@ -84,6 +84,8 @@ import { governanceStore } from './governance/governanceInstance';
 import { OWNER_USER_ID, ROLE_TO_UNIT_ID } from './org/seed';
 import { provisionOrganization } from './org/provisionOrganization';
 import { announceWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
+import { announceTenantRecovery } from '../tenancy/tenantRecoveryHub';
+import { registerShutdownFlush } from '../shutdownFlush';
 import { bindOrgIntelligenceScope } from './orgIntelligence';
 import {
   firstEnterableWorkspace,
@@ -96,15 +98,22 @@ import {
   UNRESOLVED_TENANT,
   createAuthorize,
   createPermissionProbe,
-  decideOwnerClaim,
   guardBuiltInRolePatch,
   guardOwnerUserPatch,
   withEnterpriseAuthz,
 } from './authzGate';
 import { createTenantContextResolver } from '../tenancy/tenantContext';
+import { decideRefusalLog, type RefusalLogState } from '../tenancy/refusalLogThrottle';
 import { buildMigrationInventory, summarizeInventory } from '../tenancy/migrationInventory';
 import type { MemoryViewer, TenantResolution, TenantScope } from '@neuropause/shared';
-import { currentPrincipal, principalScope, resolveTenantScope } from '../tenancy/backgroundPrincipal';
+import {
+  currentPrincipal,
+  principalScope,
+  resolveTenantScope,
+  runAsPrincipal,
+  tenantPrincipal,
+  type BackgroundPrincipal,
+} from '../tenancy/backgroundPrincipal';
 import {
   forEachTenant,
   tenantRuns,
@@ -127,12 +136,14 @@ import { taxReportModule } from './modules/finance/taxReportModuleInstance';
 import { arAgingModule } from './modules/finance/arAgingModuleInstance';
 import { bankStatementModule } from './modules/finance/bankStatementModuleInstance';
 import { budgetModule } from './modules/finance/budgetModuleInstance';
+import { budgetVarianceModule } from './modules/finance/budgetVarianceModuleInstance';
 import { vendorBillModule } from './modules/finance/vendorBillModuleInstance';
 import { apAgingModule } from './modules/finance/apAgingModuleInstance';
 import { fixedAssetModule } from './modules/finance/fixedAssetModuleInstance';
 import { creditNoteModule } from './modules/finance/creditNoteModuleInstance';
 import { debitNoteModule } from './modules/finance/debitNoteModuleInstance';
 import { vendorPaymentModule } from './modules/finance/vendorPaymentModuleInstance';
+import { paymentReversalModule } from './modules/finance/paymentReversalModuleInstance';
 import { exchangeRateModule } from './modules/finance/exchangeRateModuleInstance';
 import { financialRatiosModule } from './modules/finance/financialRatiosModuleInstance';
 import { cashFlowModule } from './modules/finance/cashFlowModuleInstance';
@@ -147,15 +158,18 @@ import { activityModule } from './modules/crm/activityModuleInstance';
 import { customerHealthModule } from './modules/crm/customerHealthModuleInstance';
 import { customerTimelineModule } from './modules/crm/customerTimelineModuleInstance';
 import { quoteModule } from './modules/sales/quoteModuleInstance';
-import { orderModule } from './modules/sales/orderModuleInstance';
+import { orderModule, multiLineDispatchModule } from './modules/sales/orderModuleInstance';
 import { contractModule } from './modules/sales/contractModuleInstance';
 import { pricingRuleModule } from './modules/sales/pricingRuleModuleInstance';
 import { commissionPlanModule } from './modules/sales/commissionPlanModuleInstance';
 import { commissionStatementModule } from './modules/sales/commissionStatementModuleInstance';
 import { revenueForecastModule } from './modules/sales/revenueForecastModuleInstance';
+import { demandTrendModule } from './modules/sales/demandTrendModuleInstance';
 import { productModule } from './modules/inventory/productModuleInstance';
 import { warehouseModule } from './modules/inventory/warehouseModuleInstance';
 import { stockMovementModule } from './modules/inventory/stockMovementModuleInstance';
+import { recoverAllMultiLineTransactions } from './modules/inventory/multiLineRecovery';
+import { ensureCanonicalChart } from './modules/finance/controlChart';
 import { lotModule } from './modules/inventory/lotModuleInstance';
 // ── Medical Device Manufacturing Pack (Industry Pack layer) ──
 import {
@@ -205,6 +219,10 @@ import {
 import { reservationModule } from './modules/inventory/reservationModuleInstance';
 import { inventoryValuationModule } from './modules/inventory/inventoryValuationModuleInstance';
 import { serialModule } from './modules/inventory/serialModuleInstance';
+import { inventoryAgingModule } from './modules/inventory/inventoryAgingModuleInstance';
+import { atpModule } from './modules/inventory/atpModuleInstance';
+import { reorderRecommendationModule } from './modules/inventory/demandReorderModuleInstance';
+import { reorderDecisionModule } from './modules/inventory/reorderDecisionModuleInstance';
 import {
   supplierModule,
   vendorContractModule,
@@ -213,7 +231,9 @@ import {
   goodsReceiptModule,
   rfqModule,
   supplierPerformanceModule,
+  multiLineReceiptModule,
 } from './modules/procurement/procurementInstances';
+import { spendAnalyticsModule, supplierRiskModule } from './modules/procurement/procurementIntelligenceInstances';
 import {
   zoneModule,
   binModule,
@@ -275,7 +295,14 @@ import { notificationScheduler } from '../services/notificationScheduler';
 import { buildOrgGraph, orgGraphNeighbors } from './graph/orgGraph';
 import { evaluateCompliance, type ComplianceInput } from './governance/enterpriseGovernance';
 import { computeExecutiveSnapshot } from './dashboard/executiveDashboard';
+import { workspaceDomainSnapshot, toWorkspaceDomainField, type ScopedCountStore } from './workspaceFoundation/domainSources';
+
+// FG-8 — the L1 Workspace Foundation domain rollup reads governed module stores.
+// The registry is init-local (inside initEnterprise); `buildHandlers` (module scope)
+// reaches it through this accessor, which initEnterprise populates. READ-only.
+let moduleStoreForWorkspaceDomain: (moduleId: string) => ScopedCountStore | null = () => null;
 import { authService } from '../auth/authService';
+import { sessionEmailFor, principalDisplayName } from '../auth/localIdentity';
 import { workerRegistry } from '../workforce/registry/registryInstance';
 import { jobStore } from '../workforce/runtime/jobInstance';
 import { auditLog } from '../workforce/governance/auditInstance';
@@ -291,6 +318,9 @@ import { TenantDedupe } from '../tenancy/tenantDedupe';
 
 const log = createLogger('enterprise');
 
+
+/** P13C Round 24 — O-9. The identity every parked-reference retry pass carries. */
+const REFERENCE_RETRY_JOB_ID = 'enterprise:reference-retry';
 
 export interface EnterpriseDeps {
   broadcast: IpcBroadcaster;
@@ -354,11 +384,29 @@ export interface EnterpriseSubsystem {
  * before the stores load because `isLoaded()` is the first thing it checks — an
  * unread store refuses rather than answering from empty maps.
  */
+/**
+ * P13C ROUND 31 — W-10. HOW OFTEN THE REFUSAL DIAGNOSTIC IS ALLOWED TO SPEAK.
+ *
+ * `resolveFull()` is on the read path of every scoped store, so an install that
+ * cannot resolve its tenant refuses hundreds of times a minute. Logging each one
+ * would bury the line that matters under its own repetitions and turn a support
+ * bundle into a 200 MB file nobody opens.
+ *
+ * The policy: the TRANSITION always prints, because that is the measurement —
+ * the moment resolution stopped working and how long it had been working. After
+ * that, one line per reason per minute, each carrying how many it stands for, so
+ * the log says "still refusing, 4 100 times since the last line" rather than
+ * saying it 4 100 times. Recovery always prints, because it closes the bracket.
+ */
+// GATE 3 (round 52) — the W-10 emission policy is now a pure, unit-tested
+// decision (see tenancy/refusalLogThrottle.ts). This callback stays the thin
+// Electron-side wiring: decide, then log.
+const refusalLogState = new Map<string, RefusalLogState>();
+
 const tenantContext = createTenantContextResolver({
-  sessionEmail: () => {
-    const st = authService.getStatus();
-    return st.state === 'authenticated' ? st.session.user.email : null;
-  },
+  // S17/FG-6: authenticated → account email; local → synthetic non-routable
+  // `local-<id>@device.invalid`; else null → `not_signed_in`. See localIdentity.ts.
+  sessionEmail: () => sessionEmailFor(authService.getStatus()),
   isLoaded: () => workspaceStore.isLoaded(),
   activeWorkspaceId: () => workspaceStore.activeWorkspaceIdOrNull(),
   workspace: (id) => workspaceStore.get(id),
@@ -366,6 +414,38 @@ const tenantContext = createTenantContextResolver({
   usersFor: (orgId) => orgStore.usersFor(orgId),
   rolesFor: (orgId) => orgStore.rolesFor(orgId),
   ownerMember: () => orgStore.user(OWNER_USER_ID),
+  /**
+   * WHY THIS MOVED HERE FROM THE AUTHORIZATION GATE.
+   *
+   * Round 28 wired the same diagnostic into `createAuthorize`, and on the
+   * machine it was written for it printed nothing at all while five screens
+   * were showing the refusal. `livesync:status` takes the refusal from
+   * `resolveFull()` and throws it; it never reaches the gate. Neither does any
+   * caller that reads `scope()`, sees null, and gives up. Instrumenting a
+   * caller measures that caller — and there are many callers and one resolver.
+   *
+   * The payload is redacted inside the resolver, so no address can reach this
+   * function to be logged by accident.
+   */
+  onRefusal: (d) => {
+    const decision = decideRefusalLog(refusalLogState, d.reason, d.firstRefusalAfterSuccess, Date.now());
+    if (!decision.emit) return;
+    log.warn(decision.label, { ...d, suppressedSinceLastLine: decision.suppressedSinceLastLine });
+  },
+  /**
+   * The other end of the interval. Today a restart is what produces this; when
+   * the root cause is fixed it will stop appearing, which is the regression
+   * signal.
+   */
+  onRecovered: (r) => {
+    refusalLogState.clear();
+    log.warn('Tenant resolution RECOVERED', r);
+    // Round 39 (Gate 26): subsystems that built tenant-derived plans during
+    // the refused window (the AI engine's boot-time router above all) rebuild
+    // now that resolution is real. Announced here because this resolver is the
+    // one place a recovery is decided — same ownership rule as the switch hub.
+    announceTenantRecovery();
+  },
 });
 
 /**
@@ -383,6 +463,7 @@ const tenantContext = createTenantContextResolver({
  * subsystems can register a cache flush without importing a module that reaches
  * `app.getPath` and drags Electron into their pure-model tests.
  */
+import { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 export { onWorkspaceSwitch } from '../tenancy/workspaceSwitchHub';
 
 /**
@@ -518,21 +599,47 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   tenantAiPreferenceStore.bindScope(activeTenantScope);
   await governanceStore.load();
 
+  /**
+   * P13C ROUND 37 — GATE 16. The enterprise crown jewels join the shutdown
+   * flush barrier: each uses the coalesced background writer, so a quit that
+   * raced `schedulePersist` lost the last edit — an org-chart change, a
+   * governance toggle, the tenant AI preference — silently. The module-record
+   * stores register once via the registry below (after it exists).
+   */
+  registerShutdownFlush('org-store', () => orgStore.flush());
+  registerShutdownFlush('workspace-store', () => workspaceStore.flush());
+  registerShutdownFlush('governance-store', () => governanceStore.flush());
+  // (tenantAiPreferenceStore is write-through — setMine awaits persist — so it
+  // has nothing pending at quit and registers no flush.)
+  // GATE 16 (round 46) — the adjacent stores this file already composes: each
+  // coalesces writes, none was on the barrier.
+  registerShutdownFlush('enterprise-adjacent-stores', async () => {
+    await Promise.allSettled([
+      personalizationStore.flush(),
+      approvalStore.flush(),
+      traceEdgeStore.flush(),
+      opportunityDecisionStore.flush(),
+      outcomeRevisionStore.flush(),
+    ]);
+  });
+
 
   // First-claim-wins ownership: the seeded owner ships unclaimed (email:null).
   // The first account to sign in claims it; the SAME account later only refreshes
-  // a changed display name; a DIFFERENT account never rebinds it (it resolves to
-  // no actor and fails closed). Ownership handoff is an explicit admin action.
-  // Runs at boot (restored session) and on every later sign-in.
+  // a changed display name; a DIFFERENT account never rebinds it. P13C ROUND 32
+  // (O-12): the decision now lives INSIDE `claimOwnerIdentity`, under its own
+  // narrow authority, so the claim no longer depends on the caller's resolved
+  // tenant — it runs at boot, on every later sign-in, and (critically) while
+  // tenant resolution is refusing, which is when the self-heal is needed.
   const bindOwner = (status: AuthStatus): void => {
-    if (status.state !== 'authenticated') return;
-    const u = status.session.user;
-    const owner = orgStore.user(OWNER_USER_ID);
-    const claim = decideOwnerClaim(
-      owner ? { name: owner.name, email: owner.email } : null,
-      { name: u.displayName ?? u.email, email: u.email },
-    );
-    if (claim) orgStore.setOwnerIdentity(claim.name, claim.email);
+    // S17/FG-6: a device-local principal claims the unclaimed owner too, via the
+    // SAME synthetic email the membership check then matches. `null` (no active
+    // principal) → no claim. First-claim-wins still never rebinds a claimed row.
+    const email = sessionEmailFor(status);
+    if (email === null) return;
+    const name = principalDisplayName(status) ?? email;
+    const claimed = orgStore.claimOwnerIdentity({ name, email });
+    if (claimed) log.info('Owner bound to the active principal', { local: status.state === 'local' });
   };
   bindOwner(authService.getStatus());
   authService.on('statusChanged', bindOwner);
@@ -604,10 +711,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
 
   // RBAC: resolve the signed-in session to an org member and enforce the
   // per-channel permissions declared in authzGate on every enterprise call.
-  const sessionEmail = (): string | null => {
-    const st = authService.getStatus();
-    return st.state === 'authenticated' ? st.session.user.email : null;
-  };
+  // S17/FG-6: authenticated OR device-local principal resolves to a membership
+  // email (the local synthetic address matches the owner it claimed via bindOwner).
+  const sessionEmail = (): string | null => sessionEmailFor(authService.getStatus());
   /**
    * The organization RBAC is evaluated against. STRICT.
    *
@@ -714,6 +820,50 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
         holdId: hold.id,
       });
     },
+    /**
+     * P13C ROUND 25 — W-1. The hold above needs an owner, so on an install with
+     * no resolvable tenant it throws. That exception used to escape in place of
+     * the authorization error and tell the user the app could not record a hold,
+     * which is true and useless — the fact they needed was that no organization
+     * member is bound to their account.
+     *
+     * Swallowed at the gate, surfaced HERE, at warn: the refusal still reaches
+     * the renderer intact, and the fact that governance recording is degraded is
+     * in the log where an engineer reading a support bundle will find it.
+     */
+    onRefusalRecordFailed: ({ permission, error }) => {
+      log.warn('Permission refusal could not be recorded as a hold', {
+        permission,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    },
+    /**
+     * P13C ROUND 26 — W-5. The gate reports WHICH refusal, not a generic one.
+     *
+     * `resolveFull()` already decided this and its answer was being discarded,
+     * so eight distinct conditions reached the renderer as one sentence.
+     * Consulted only on the refusal path, so the extra store read costs nothing
+     * on a request that succeeds.
+     */
+    tenantRefusal: () => {
+      /**
+       * P13C ROUND 31 — W-10. The Round 28 diagnostic that used to live here is
+       * gone, and its removal is the point rather than a tidy-up.
+       *
+       * It re-read `authService.getStatus()`, the org store and the workspace
+       * store AFTER `resolveFull()` had already returned — a second sample of
+       * four mutable singletons. If any of them changed in between, the log
+       * described a state that had not produced the refusal it claimed to
+       * explain, and there would have been no way to tell from the output. It
+       * also only fired for callers that came through this gate, which the
+       * failing caller did not.
+       *
+       * The resolver now reports from the values it actually used, on every
+       * path. This function is back to one job: pass the refusal through.
+       */
+      const resolved = tenantContext.resolveFull();
+      return resolved.ok ? null : resolved.refusal;
+    },
     activeOrgId: authorizationOrgId,
     usersFor: (orgId) => orgStore.usersFor(orgId),
     rolesFor: (orgId) => orgStore.rolesFor(orgId),
@@ -818,6 +968,8 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   // Enterprise Module Framework: the reusable ERP foundation. Every module
   // registered into this registry inherits RBAC, audit, timeline events,
   // renderer broadcasts, and the generic CRUD IPC surface — nothing per-module.
+  // Round 37 — Gate 16: one barrier entry drains all ~106 module stores.
+  // (Registered right after construction below via modules.registry.)
   const modules = initEnterpriseModules({
     authorize,
     documents,
@@ -1064,6 +1216,9 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * checks for a seam cannot check what the seam is attached to.
    */
   modules.registry.bindScope(activeTenantScope);
+  // FG-8 — expose the scoped module stores to the module-scope dashboard handler (READ-only).
+  moduleStoreForWorkspaceDomain = (id) => modules.registry.get(id)?.store ?? null;
+  registerShutdownFlush('enterprise-module-stores', () => modules.registry.flushAll());
 
   const registerModule = (m: EnterpriseModule): void => {
     modules.registry.register(documentIntegration.attach(m));
@@ -1117,6 +1272,7 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   registerModule(commissionPlanModule); // Sales → Commission Plans (the commission rule book)
   registerModule(commissionStatementModule); // Sales → Commission Statements (immutable per-period payouts)
   registerModule(revenueForecastModule); // Sales → Revenue Forecast (immutable pipeline snapshots)
+  registerModule(demandTrendModule); // Sales → Demand Trend (immutable historical demand-by-month register from shipped/delivered shipments; analytical only, mutates nothing, posts no GL)
   registerModule(paymentModule); // Finance → Payments
   registerModule(ledgerAccountModule); // Finance → Chart of Accounts (GL)
   registerModule(journalEntryModule); // Finance → Journal (GL double-entry)
@@ -1125,12 +1281,14 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   registerModule(arAgingModule); // Finance → Receivables Aging (open AR bucketed by days past due)
   registerModule(bankStatementModule); // Finance → Bank Statements (deterministic reconciliation)
   registerModule(budgetModule); // Finance → Budgets (measured against posted books only)
+  registerModule(budgetVarianceModule); // Finance → Budget Variance (immutable point-in-time portfolio variance register; reads budgets + posted journals, mutates nothing, posts no GL)
   registerModule(vendorBillModule); // Finance → Vendor Bills (payable mirror; books AP via GL seam)
   registerModule(apAgingModule); // Finance → Payables Aging (open AP bucketed by days past due)
   registerModule(fixedAssetModule); // Finance → Fixed Assets (capitalization, depreciation, disposal)
   registerModule(creditNoteModule); // Finance → Credit Notes (invoice adjustments, revenue/tax reversal)
   registerModule(debitNoteModule); // Finance → Debit Notes (bill adjustments, AP/input-credit reversal)
   registerModule(vendorPaymentModule); // Finance → Vendor Payments (partial-capable AP settlement)
+  registerModule(paymentReversalModule); // Finance → Payment Reversals (S61: governed reversal of a cleared payment)
   registerModule(exchangeRateModule); // Finance → Exchange Rates (effective-dated FX rate table)
   registerModule(financialRatiosModule); // Finance → Financial Ratios (GL-derived ratio registers)
   registerModule(cashFlowModule); // Finance → Cash Flow Statement (direct-method over posted GL entries)
@@ -1144,13 +1302,21 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
   registerModule(reservationModule); // Inventory → Reservations (holds posting ledger movements)
   registerModule(inventoryValuationModule); // Inventory → Valuation (standard-cost registers)
   registerModule(serialModule); // Inventory → Serial Units (per-unit serialized tracking)
+  registerModule(inventoryAgingModule); // Inventory → Aging (immutable point-in-time on-hand-by-age snapshots; reads the ledger, mutates nothing)
+  registerModule(atpModule); // Inventory → ATP (on-hand/reserved/available/incoming/ATP per SKU+warehouse; reads ledger + open POs, mutates nothing)
+  registerModule(reorderRecommendationModule); // Inventory → Reorder Recommendations (advisory reorder-attention register from the canonical reorder engine + demand trend; drafts no PR, moves no stock, posts no GL)
+  registerModule(reorderDecisionModule); // Inventory → Reorder Decision Readiness (decision intelligence over the canonical reorder recommendation + spend policy; drafts no PR, moves no stock, posts no GL, executes nothing automatically)
   registerModule(supplierModule); // Procurement → Suppliers
   registerModule(vendorContractModule); // Procurement → Vendor Contracts (FW-7: dated agreements gate PO approval — 101st registered module)
   registerModule(purchaseRequestModule); // Procurement → Purchase Requests
   registerModule(purchaseOrderModule); // Procurement → Purchase Orders
   registerModule(goodsReceiptModule); // Procurement → Goods Receipts
+  registerModule(multiLineReceiptModule); // Procurement → Multi-Line Goods Receipts (Session 7-Fix)
+  registerModule(multiLineDispatchModule); // Sales → Multi-Line Dispatches (Session 7-Fix)
   registerModule(rfqModule); // Procurement → RFQs (quotation cycle → PO award)
   registerModule(supplierPerformanceModule); // Procurement → Supplier Performance (scorecard registers)
+  registerModule(spendAnalyticsModule); // Procurement → Spend Analytics (immutable per-supplier spend registers; reads POs + receipts + bills + payments, mutates nothing)
+  registerModule(supplierRiskModule); // Procurement → Supplier Risk (existing calculateVendorRisk over real delivery evidence, >=60 cutoff; reads sources, mutates nothing)
   registerModule(zoneModule); // Warehouse → Zones
   registerModule(binModule); // Warehouse → Bins
   registerModule(transferOrderModule); // Warehouse → Transfer Orders
@@ -1238,6 +1404,47 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
       log.warn('Could not build the tenant migration inventory', {
         err: err instanceof Error ? err.message : String(err),
       });
+    });
+
+  // ERP Session 13/14 — ensure the canonical control chart (finance CONTROL
+  // accounts + inventory/production STOCK accounts) for EVERY operable tenant at
+  // boot, each under its own principal-pinned scope via forEachTenantBackground,
+  // so a multi-tenant host seeds all tenants — not only the one active at boot.
+  // Control seeding stays empty-only (customized-chart policy preserved); a
+  // seeding failure is captured per tenant and never blocks boot.
+  void forEachTenantBackground('ensure-canonical-chart', () => ensureCanonicalChart(modules.actionContext))
+    .then((outcomes) => {
+      const seeded = outcomes.filter((o) => o.ok).length;
+      log.info('Canonical control chart ensured per tenant', { seeded, tenants: outcomes.length });
+    })
+    .catch((err: unknown) => {
+      log.warn('Canonical control-chart initialization skipped', { err: err instanceof Error ? err.message : String(err) });
+    });
+
+  // ERP Session 14 — a tenant activated/switched to AFTER boot is initialized on
+  // activation: seed its canonical chart in the newly-active scope. Best-effort
+  // (the switch hub is fire-and-forget by contract). The stock-posting seam
+  // (inventoryGlBridge → ensureCanonicalChart, control-first) remains the
+  // DETERMINISTIC backstop, so this activation seed is a proactive optimization,
+  // not the guarantee — and it changes no accounting policy (control seeding is
+  // empty-only).
+  onWorkspaceSwitch(() => {
+    void ensureCanonicalChart(modules.actionContext).catch((err: unknown) => {
+      log.warn('Per-tenant chart initialization on activation skipped', { err: err instanceof Error ? err.message : String(err) });
+    });
+  });
+
+  // ERP Session 8 — best-effort startup recovery of any multi-line transaction
+  // interrupted by a crash (bounded scan of the small document/order stores, not
+  // the ledger). Runs in the active tenant scope and is safely re-invocable
+  // per-tenant. Contained: a recovery failure never blocks boot.
+  void recoverAllMultiLineTransactions(modules.actionContext)
+    .then((results) => {
+      const changed = results.filter((r) => r.changed).length;
+      if (changed > 0) log.info('Recovered interrupted multi-line transactions', { changed, scanned: results.length });
+    })
+    .catch((err: unknown) => {
+      log.warn('Multi-line transaction recovery failed', { err: err instanceof Error ? err.message : String(err) });
     });
 
   await Promise.all([
@@ -1400,7 +1607,46 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
    * dozens of changes in a tick, and re-running the whole pending queue for
    * each of them would be quadratic.
    */
+  /**
+   * P13C ROUND 24 — O-9. THE CALL SITE ROUND 10 MISSED.
+   *
+   * This was ONE shared `retryTimer`, cleared and re-armed on every save on the
+   * install, with `engine.retryPending(null)` inside the callback. Both halves
+   * of that are the NEW-M10 defect `graph/index.ts` and `memory/index.ts` were
+   * fixed for, in a file that was never re-read against them:
+   *
+   *   1. WHOSE QUEUE RUNS WAS DECIDED AT FIRE TIME. `retryPending` reaches
+   *      `RelationshipStore.retryable()`, which filters through `onlyMine` —
+   *      i.e. through `activeTenantScope()` as it reads 400 ms LATER. A save by
+   *      A followed by a workspace switch ran A's retry pass over B's parked
+   *      references, and A's own parked references were never retried at all.
+   *      Nothing crosses: the store is owner-scoped on both the read and the
+   *      write, so this is the quiet failure — work that silently does not
+   *      happen — and not a disclosure.
+   *
+   *   2. ONE TENANT'S SAVE CANCELLED ANOTHER'S PENDING RETRY. `clearTimeout`
+   *      then re-arm means a second save always destroys the first save's
+   *      scheduled pass. Under sustained activity — a bulk conversion, an
+   *      import, two people working — the 400 ms window never elapses and the
+   *      parking queue is not drained by this path at all.
+   *
+   * The fix is the shape Round 10 established and is deliberately not a new
+   * one: capture the principal at ENQUEUE, key the pending set by owner so a
+   * debounce coalesces WITHIN a tenant and never ACROSS one, and never re-arm
+   * an armed timer. An unresolvable tenant is dropped rather than run as
+   * whoever is on screen.
+   */
+  const pendingReferenceRetries = new Map<string, BackgroundPrincipal>();
   let retryTimer: NodeJS.Timeout | null = null;
+  const drainReferenceRetries = (): void => {
+    const engine = relationshipEngineRef();
+    const owners = [...pendingReferenceRetries.values()];
+    pendingReferenceRetries.clear();
+    if (!engine) return;
+    for (const principal of owners) {
+      void runAsPrincipal(principal, () => engine.retryPending(null)).catch(() => undefined);
+    }
+  };
   const resolveReferencesFor = async (
     moduleId: string,
     record: EnterpriseEntity,
@@ -1412,10 +1658,16 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
     } catch {
       // A failed resolution must never fail the save that produced it.
     }
-    if (retryTimer) clearTimeout(retryTimer);
+    // Resolved HERE, in the saving caller's own context, which is the only
+    // moment at which the answer is knowable.
+    const principal = tenantPrincipal({ jobId: REFERENCE_RETRY_JOB_ID, scope: activeTenantScope() });
+    if (principal === null) return;
+    const key = `${principal.tenantId}::${principal.workspaceId ?? ''}`;
+    if (!pendingReferenceRetries.has(key)) pendingReferenceRetries.set(key, principal);
+    if (retryTimer) return; // armed already — re-arming is how a busy tenant starves everyone
     retryTimer = setTimeout(() => {
       retryTimer = null;
-      void engine.retryPending(null).catch(() => undefined);
+      drainReferenceRetries();
     }, 400);
   };
 
@@ -1886,8 +2138,12 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TUpdateUser;
-        // Root of trust: the seeded owner's roles/status are immutable.
-        const patch = guardOwnerUserPatch(r.id, OWNER_USER_ID, {
+        // Root of trust: the owner's roles/status/email are immutable — in
+        // EVERY tenant. Round 40: the guard is keyed on the TARGET's own
+        // organization's recorded owner (seeded literal for org-default,
+        // `Organization.ownerUserId` for provisioned tenants), closing the
+        // Manager-takes-over-a-provisioned-org hole.
+        const patch = guardOwnerUserPatch(r.id, orgStore.protectedOwnerIdForTarget(r.id), {
           name: r.name,
           email: r.email,
           title: r.title,
@@ -1906,8 +2162,9 @@ function buildHandlers(): SecureHandlerDef[] {
       audit: true,
       handler: (p) => {
         const r = p as TDeleteUser;
-        // Root of trust: the seeded owner can never be removed.
-        const ok = canDeleteMember(r.id, OWNER_USER_ID) && orgStore.deleteUser(r.id);
+        // Root of trust: the owner can never be removed — in EVERY tenant
+        // (round 40, same per-org keying as the patch guard above).
+        const ok = canDeleteMember(r.id, orgStore.protectedOwnerIdForTarget(r.id)) && orgStore.deleteUser(r.id);
         if (ok) audit('user.delete', r.id, 'Removed member');
         return orgBundle();
       },
@@ -2112,6 +2369,20 @@ function buildHandlers(): SecureHandlerDef[] {
             createRole: (input) => orgStore.createRole(input),
             createUser: (input) => orgStore.createUser(input),
             createWorkspace: (name, organizationId) => workspaceStore.create(name, organizationId),
+            recordOwner: (orgId, userId) => orgStore.assignProvisionedOwner(orgId, userId),
+            // GATE 23 — undo a partial provision (org committed, a later step
+            // failed) so no un-enterable, un-cleanable tenant is left behind.
+            rollback: (orgId) => {
+              try {
+                orgStore.removeProvisionedOrganization(orgId);
+                log.warn('Rolled back a failed organization provision', { organizationId: orgId });
+              } catch (err) {
+                log.error('Failed to roll back a partial organization provision', {
+                  organizationId: orgId,
+                  message: err instanceof Error ? err.message : String(err),
+                });
+              }
+            },
           },
           {
             name: r.name,
@@ -2254,7 +2525,15 @@ function buildHandlers(): SecureHandlerDef[] {
     {
       channel: IpcChannel.EnterpriseDashboard,
       schema: EmptyRequest,
-      handler: () => buildSnapshot(),
+      // FG-8 — attach the L1 Workspace Foundation domain rollup (READ/aggregate-only,
+      // over the governed module stores under the active tenant scope; states + counts
+      // verbatim, a domain with no store → 'unavailable', never a fabricated 0).
+      handler: () => ({
+        ...buildSnapshot(),
+        workspaceDomain: toWorkspaceDomainField(
+          workspaceDomainSnapshot({ moduleStore: moduleStoreForWorkspaceDomain, scope: activeTenantScope }),
+        ),
+      }),
     },
 
     // Process Explorer — read-only projections of the mined processes. No mining, no writes: both

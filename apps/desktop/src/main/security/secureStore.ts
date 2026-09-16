@@ -14,6 +14,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, safeStorage } from 'electron';
 import { createLogger } from '../logger';
+import { quarantineFile } from '../storage/storeEnvelope';
 
 const log = createLogger('secureStore');
 
@@ -35,7 +36,18 @@ async function readVault(): Promise<VaultFile> {
     return JSON.parse(raw) as VaultFile;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
-    log.warn('Failed to read vault; treating as empty', err);
+    /**
+     * P13C GATE 11 — QUARANTINE, DO NOT RESET. Identical hazard to the connector
+     * vault: a corrupt/unreadable `vault.bin` returned `{}`, and the next
+     * `writeVault` (any token refresh) overwrote it — destroying the stored
+     * refresh token silently and logging the user out with no recovery path.
+     * Preserve the bytes to `<file>.quarantined-<ts>` before starting empty.
+     */
+    const quarantinedTo = await quarantineFile(vaultPath());
+    log.error('Secure vault unreadable — QUARANTINED, not reset', {
+      quarantinedTo,
+      error: String(err),
+    });
     return {};
   }
 }

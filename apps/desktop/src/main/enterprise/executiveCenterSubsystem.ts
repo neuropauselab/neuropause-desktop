@@ -8,9 +8,11 @@
 import { EmptyRequest, IpcChannel, type ExecutiveCenterSnapshot } from '@neuropause/shared';
 import { createLogger } from '../logger';
 import type { SecureHandlerDef } from '../ipc/secureBridge';
+import { declareChannelResource } from '../ipc/channelResource';
 import { buildFounderProactiveItems } from '../ai/founderProactive';
 import { buildOrgIntelligenceItems, collectOrgHealthInputs } from './orgIntelligence';
 import { composeExecutiveSnapshot, type TimelineEntryLite } from './executiveCenter';
+import { readKpiIntelligenceForActiveTenant, captureForActiveTenant } from '../analyticsPlatform/kpiIntelligenceInstance';
 import { getEnterpriseTimeline } from '../timeline';
 import { healthHistoryStore } from './healthHistoryInstance';
 import { decisionStore } from './decisionInstance';
@@ -151,6 +153,22 @@ import { getProcessAssessment } from './processMiningProvider';
 import { computeOrgHealth, type MonthlyTrend } from '@neuropause/shared';
 
 const log = createLogger('executive-center');
+
+// FG-S80b — what the governed on-demand KPI capture ACTUALLY reaches (verified from code): it READS the
+// active tenant's inventory-products (via productModule.store) to compute the safety-stock observation, and
+// WRITES the tenant-scoped kpi-snapshots + kpi-exceptions stores. Declared `mutate` — its dominant effect —
+// with both written stores named in the reason. Tenant is resolved in main (activeTenantScope), never from
+// the renderer. (The sibling ExecutiveCenterSnapshot is a read and remains undeclared, consistent with the
+// registry's current coverage.)
+declareChannelResource({
+  channel: IpcChannel.KpiCapture,
+  store: 'kpi-snapshots',
+  effect: 'mutate',
+  reason:
+    "Reads the active tenant's inventory-products to compute the safety-stock KPI, then writes the " +
+    'tenant-scoped kpi-snapshots and kpi-exceptions stores (idempotent, immutable per period). Tenant is ' +
+    'resolved server-side via activeTenantScope(); the renderer supplies no id. Deny-by-default on no tenant.',
+});
 
 export interface ExecutiveCenterSubsystem {
   handlers: SecureHandlerDef[];
@@ -538,6 +556,10 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
     void healthHistoryStore
       .record(snap.orgHealth.overall, snap.orgHealth.engineering, nowMs)
       .catch((err) => log.warn('health-history record failed', { err: String(err) }));
+    // S80 — surface the governed KPI intelligence (persisted snapshots + active exceptions) for the
+    // active tenant only. Read-only; tenant resolved in main via `activeTenantScope()` — the SAME
+    // resolver the on-demand capture writes under (writer key = reader key); null when unresolved.
+    snap.kpiIntelligence = readKpiIntelligenceForActiveTenant();
     return snap;
   };
 
@@ -546,6 +568,16 @@ export function initExecutiveCenter(): ExecutiveCenterSubsystem {
       channel: IpcChannel.ExecutiveCenterSnapshot,
       schema: EmptyRequest,
       handler: () => snapshot(),
+    },
+    {
+      // FG-S80b — governed on-demand KPI capture for the ACTIVE tenant (renderer sends nothing;
+      // tenant resolved in main via activeTenantScope()). Fixes the F-P45 writer/reader-key finding:
+      // capture now writes under the SAME resolver this subsystem's snapshot read filters by.
+      // requireAuth + intelligence:read are stamped by the runtimeCore global authz pass from
+      // RUNTIME_CHANNEL_PERMISSIONS (mirrors the ExecutiveCenterSnapshot sibling) — not restated here.
+      channel: IpcChannel.KpiCapture,
+      schema: EmptyRequest,
+      handler: () => captureForActiveTenant(),
     },
   ];
 

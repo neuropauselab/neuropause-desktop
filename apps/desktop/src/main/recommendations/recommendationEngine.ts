@@ -18,6 +18,7 @@ import type {
   UnifiedEntity,
 } from '@neuropause/shared';
 import { classifyStatus, clamp01, daysBetween, eventTime, isOpenTask } from '../intelligence/classify';
+import { assessRecommendationTrust } from '../intelligence/recommendationTrust';
 
 export interface RecommendationInput {
   entities: UnifiedEntity[];
@@ -264,5 +265,11 @@ export function generateRecommendations(
   }
   out.sort((a, b) => b.score - a.score);
   const limit = query.limit ?? 50;
-  return out.slice(0, limit);
+  // S108/FG-S108-TRUST: attach the ADVISORY evidence-trust assessment (display-only; never
+  // authority). Ranking/order/score/confidence are already finalized above and are NOT touched —
+  // trust is derived read-only from each recommendation's own evidence and never re-sorts or gates.
+  return out.slice(0, limit).map((r) => {
+    const a = assessRecommendationTrust({ evidence: r.evidence, ...(r.confidence !== undefined ? { confidence: r.confidence } : {}) });
+    return { ...r, trust: { score: a.score, band: a.band, caveats: a.caveats } };
+  });
 }

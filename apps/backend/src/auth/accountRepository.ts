@@ -28,6 +28,9 @@ export function createPgAuthAccountRepo(): AuthAccountRepo {
     async setEmailVerified(userId) {
       await query('UPDATE users SET email_verified = TRUE WHERE id = $1', [userId]);
     },
+    async revokeAllSessions(userId) {
+      await query(`UPDATE auth_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, [userId]);
+    },
     async updatePasswordHash(userId, passwordHash) {
       await query('UPDATE users SET password_hash = $2 WHERE id = $1', [userId, passwordHash]);
     },

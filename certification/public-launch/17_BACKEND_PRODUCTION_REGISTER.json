@@ -1,0 +1,52 @@
+{
+  "ARTIFACT": "17_BACKEND_PRODUCTION_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "services": [
+    {
+      "SERVICE": "api.neuropause033.com",
+      "PURPOSE": "NeuroPause backend",
+      "HOST": "Cloudflare edge → origin (unknown; tunnel down)",
+      "ENVIRONMENT": "production",
+      "VERSION": "UNKNOWN",
+      "HEALTH_ENDPOINT": "/health → HTTP 530 (2026-09-12)",
+      "AUTHENTICATION": "JWT bearer",
+      "FAILURE_MODE": "edge 530; desktop stays local (fix in this branch)",
+      "BACKUP": "NOT_MEASURED",
+      "RECOVERY": "NOT_MEASURED"
+    },
+    {
+      "SERVICE": "local prod-compose backend",
+      "HOST": "127.0.0.1:4000 (COMPUTER_B docker)",
+      "VERSION": "image built ~4 weeks earlier (commit unknown)",
+      "HEALTH_ENDPOINT": "/health 200"
+    },
+    {
+      "SERVICE": "local source backend",
+      "HOST": "127.0.0.1:4010",
+      "VERSION": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+      "HEALTH_ENDPOINT": "/health 200",
+      "notes": "used for all live measurements; AI_GATEWAY_PROVIDER=ollama"
+    }
+  ],
+  "env_schema_additions": [
+    "AI_GATEWAY_PROVIDER",
+    "AI_GATEWAY_MODEL",
+    "AI_GATEWAY_BASE_URL",
+    "AI_GATEWAY_TIMEOUT_MS",
+    "AI_GATEWAY_MAX_*",
+    "AI_GATEWAY_USER_RPM",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY"
+  ]
+}

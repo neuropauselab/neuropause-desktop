@@ -256,6 +256,14 @@ describe('runtime IPC surface completeness (fail-closed startup safety net)', ()
     IpcChannel.CatalogRecommendations,
     IpcChannel.CatalogCheckUpdate,
     /**
+     * FG-ERP-LIVE-IPC (ERP Session 22) — the live governed command-bus entry. Authenticated at the
+     * channel (requireAuth), with the FINE per-command RBAC enforced inside the command bus
+     * (PERMISSION_FOR_COMMAND → the same `enterprise.allows` gate the module handlers use), exactly like
+     * EnterpriseModuleAction/Create/SetStatus. A single static channel permission cannot express a
+     * dispatcher that carries commands governed by different permissions (procurement:manage, sales:manage, …).
+     */
+    IpcChannel.PlatformCommandDispatch,
+    /**
      * P13C ROUND 10 — R10-B3A-F1. The four `nps:*` package-lifecycle channels
      * were HERE, on sender-trust alone, while reaching `registry.remove(slug)`
      * and the upserts beside it — install-wide rows on a store declared

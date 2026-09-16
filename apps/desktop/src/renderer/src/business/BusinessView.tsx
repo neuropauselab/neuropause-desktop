@@ -17,11 +17,15 @@ import { SkeletonLines } from '@renderer/components/ui/Skeleton';
 import { useShell } from '@renderer/state/ShellProvider';
 import { groupModulesByFamily, findFamilyForModule, totalBusinessRecords } from './businessModel';
 import { BusinessFamilySection } from './BusinessFamilySection';
+import { isDeniedError } from '@renderer/lib/ipcError';
 
 export function BusinessView(): JSX.Element {
   const { businessTab, clearBusinessTab } = useShell();
   const [modules, setModules] = useState<EnterpriseModuleSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // D-6: classified from the ERROR OBJECT at the catch, where the code is still
+  // readable — not re-derived from the message after the type is gone.
+  const [denied, setDenied] = useState(false);
   const [activeGroup, setActiveGroup] = useState<string | null>(null);
   const [pendingModuleId, setPendingModuleId] = useState<string | null>(null);
 
@@ -45,6 +49,7 @@ export function BusinessView(): JSX.Element {
     } catch (err) {
       if (mounted.current) {
         setError(err instanceof Error ? err.message : 'Failed to load the business modules');
+        setDenied(isDeniedError(err));
       }
     }
   }, []);
@@ -72,7 +77,7 @@ export function BusinessView(): JSX.Element {
   }, [businessTab, families, clearBusinessTab]);
 
   if (error && modules === null) {
-    return <BusinessError message={error} onRetry={() => void reload()} />;
+    return <BusinessError message={error} denied={denied} onRetry={() => void reload()} />;
   }
 
   if (modules === null) {
@@ -165,11 +170,15 @@ function BusinessEmpty(): JSX.Element {
 function BusinessError({
   message,
   onRetry,
+  denied: deniedFromCaller,
 }: {
   message: string;
   onRetry: () => void;
+  denied?: boolean;
 }): JSX.Element {
-  const denied = /not authorized|permission|forbidden|denied/i.test(message);
+  // D-6: the caller passes the machine-classified answer when it has the error
+  // object. The string test remains only for a caller that has just a message.
+  const denied = deniedFromCaller ?? isDeniedError(message);
   return (
     <div className="p-6">
       <Card variant="hairline" className="mx-auto max-w-xl">

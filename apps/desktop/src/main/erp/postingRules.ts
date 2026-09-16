@@ -22,11 +22,19 @@ import { round2 } from './documentLines';
 /**
  * Chart extension for stock and production accounting.
  *
- * The existing engine already uses 1000 (cash), 1100 (receivable), 2100
- * (payable), 4000 (revenue), 5330/2260 (expense claims) and 7810/7811 (FX), and
- * already auto-ensures accounts it needs (payroll creates nine). These follow
- * the same block convention. They are constants rather than literals so an
- * operator can remap them to an existing chart without touching the rules.
+ * The FINANCE chart (frozen `packages/shared`) is authoritative and canonical:
+ * 1000 cash, 1100 receivable, 1200 GST input, **2000 accounts payable**,
+ * **2100 TAX PAYABLE**, 4000 revenue, **5000 operating expenses**, 5100/5200
+ * depreciation/loss, 7810/7811 FX. These stock accounts extend it and MUST NOT
+ * collide with it.
+ *
+ * ERP Session 10 alignment (operator-ruled): a prior comment here wrongly read
+ * 2100 as "payable" — 2100 is Tax Payable and AP is 2000 — which is why this
+ * engine had shipped AP=2100 (colliding with Tax Payable) and COGS=5000
+ * (colliding with Operating Expenses). Corrected: AP → 2000 (matches finance),
+ * COGS → its own 5050 (clear of Operating Expenses 5000), and a dedicated
+ * Purchase Price Variance 5920 in the variance block. Constants, not literals,
+ * so an operator can still remap to an existing chart without touching the rules.
  */
 export const STOCK_ACCOUNTS = {
   /** Asset — stock on hand. */
@@ -37,16 +45,18 @@ export const STOCK_ACCOUNTS = {
   finishedGoods: '1360',
   /** Liability — goods received, not yet invoiced. */
   grni: '2150',
-  /** Liability — accounts payable. */
-  accountsPayable: '2100',
-  /** Expense — cost of goods sold. */
-  cogs: '5000',
+  /** Liability — accounts payable. Matches the finance chart (2000); 2100 is Tax Payable. */
+  accountsPayable: '2000',
+  /** Expense — cost of goods sold. Own code, clear of Operating Expenses (5000). */
+  cogs: '5050',
   /** Expense — inventory adjustments / write-offs. */
   inventoryAdjustment: '5010',
   /** Expense — material usage variance. */
   materialVariance: '5900',
   /** Expense — production variance. */
   productionVariance: '5910',
+  /** Expense — purchase price variance (actual bill price vs standard-cost receipt). */
+  purchasePriceVariance: '5920',
 } as const;
 
 export type StockAccountKey = keyof typeof STOCK_ACCOUNTS;
@@ -153,6 +163,63 @@ export function deriveSupplierBillPosting(input: SupplierBillPosting): PostingDe
   }
   lines.push({ account: STOCK_ACCOUNTS.accountsPayable, debit: 0, credit: billed, memo: 'Supplier payable' });
   return finish(reference, `Supplier bill ${input.billId}`, lines);
+}
+
+export interface GoodsBillPosting {
+  billId: string;
+  /** GRNI actually accrued for the matched receipts (standard-cost basis, functional). */
+  receivedValue: number;
+  /** Billed subtotal, ex-tax, in functional currency. */
+  billedExTax: number;
+  /** Billed tax, functional currency (0 when none). */
+  taxAmount: number;
+  /** The input-tax account for the tax leg (finance chart, e.g. GST Input Credit 1200). */
+  taxAccount: string;
+}
+
+/**
+ * ERP Session 11 — a MATCHED goods vendor bill relieves GRNI and recognizes the
+ * standard-vs-actual purchase price variance, on the live finance path:
+ *
+ *   Dr GRNI 2150                 (relieve the accrued receipt liability, at standard)
+ *   Dr Input Tax                 (recoverable tax, if any)
+ *   Dr/Cr Purchase Price Variance 5920   (billed − received; Dr when unfavourable)
+ *   Cr Accounts Payable 2000     (total owed the supplier)
+ *
+ * GRNI is relieved at exactly the accrued (standard-cost) value, so a full
+ * receipt→bill cycle nets GRNI to zero. The price difference is PPV — the costing
+ * BASIS never changes (standard cost stays standard cost). PPV direction follows
+ * the existing production-variance convention: paying MORE than standard is an
+ * unfavourable Dr; less is a favourable Cr. A bill with no accrued receipt value
+ * refuses (goods must have been received before their GRNI can be relieved).
+ */
+export function deriveGoodsBillPosting(input: GoodsBillPosting): PostingDerivation {
+  const reference = `GBILL-${input.billId}`;
+  const received = round2(input.receivedValue);
+  const billed = round2(input.billedExTax);
+  const tax = round2(input.taxAmount);
+  if (received <= 0) {
+    return refuse(reference, 'No accrued goods-received value to relieve — a goods bill cannot post before its receipt.');
+  }
+  if (billed <= 0) return refuse(reference, 'Bill has no value.');
+
+  const lines: GlJournalLine[] = [
+    { account: STOCK_ACCOUNTS.grni, debit: received, credit: 0, memo: 'Clear goods-received-not-invoiced' },
+  ];
+  if (tax > 0) {
+    lines.push({ account: input.taxAccount, debit: tax, credit: 0, memo: 'Recoverable input tax' });
+  }
+  // Purchase price variance = billed (actual) − received (standard). Unfavourable
+  // (paid more than standard) is a debit; favourable is a credit. The standard-cost
+  // basis is unchanged — this line only records the difference.
+  const variance = round2(billed - received);
+  if (variance > 0) {
+    lines.push({ account: STOCK_ACCOUNTS.purchasePriceVariance, debit: variance, credit: 0, memo: 'Unfavourable purchase price variance' });
+  } else if (variance < 0) {
+    lines.push({ account: STOCK_ACCOUNTS.purchasePriceVariance, debit: 0, credit: Math.abs(variance), memo: 'Favourable purchase price variance' });
+  }
+  lines.push({ account: STOCK_ACCOUNTS.accountsPayable, debit: 0, credit: round2(billed + tax), memo: 'Supplier payable' });
+  return finish(reference, `Goods bill ${input.billId} (GRNI relief${variance !== 0 ? ' + PPV' : ''})`, lines);
 }
 
 // ---------------------------------------------------------------------------

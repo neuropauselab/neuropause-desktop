@@ -4,6 +4,7 @@
  * parser, trackers and audit can be exercised end-to-end offline.
  */
 import type { ModelClient, ModelRequest, ModelResult } from './modelClient';
+import { estimateTokens } from './proposalValidation';
 
 export interface MockClientOptions {
   /** Fixed text to return; if omitted, echoes a short deterministic reply. */
@@ -37,9 +38,4 @@ export class MockModelClient implements ModelClient {
 function defaultReply(req: ModelRequest): string {
   const last = req.messages[req.messages.length - 1]?.content ?? '';
   return `MOCK: ${last.slice(0, 80)}`;
-}
-
-/** Rough token estimate (~4 chars/token) for offline accounting. */
-function estimateTokens(text: string): number {
-  return Math.max(1, Math.ceil(text.length / 4));
 }

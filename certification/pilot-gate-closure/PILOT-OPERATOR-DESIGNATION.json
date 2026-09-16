@@ -1,0 +1,60 @@
+{
+  "ARTIFACT": "PILOT_OPERATOR_DESIGNATION",
+  "SCHEMA": "np.pilot.authority-decision/v1",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "RECORDED_AT": "2026-09-12",
+
+  "RECORD_CLASS": "HUMAN_DECISION_RECORDED_BY_MACHINE",
+  "CRITICAL_DISTINCTION": "The machine RECORDED this decision. The machine did not MAKE it. PILOT_OPERATOR carries MACHINE_ACTION_ALLOWED: false in NP-GLOBAL-PILOT-READINESS-20260907-001; a machine-authored designation would be void. This record exists because a human authority stated the designation in session on 2026-09-12.",
+
+  "DECISION_ID": "PILOT_OPERATOR",
+  "PURPOSE": "designate who runs the pilot",
+  "SOURCE_AUTHORITY": "NP-GLOBAL-PILOT-READINESS-20260907-001-RESULT.json -> AUTHORITY_DEPENDENCIES[4]",
+  "PRIOR_STATUS": "IDENTIFIED_NOT_REQUESTED_NOT_RECEIVED",
+  "PILOT_IMPACT_AS_RECORDED": "BLOCKING",
+
+  "DESIGNATION": {
+    "OPERATOR_NAME": "Dishant Dobariya",
+    "ORGANIZATION": "neuropauselab",
+    "DESIGNATED_BY": "the human operator of this session",
+    "DESIGNATED_AT_UTC": "2026-09-12",
+    "VERBATIM_INSTRUCTION": "pilot operator is dishant dobariya neuropauselab",
+    "EVIDENCE_MODE": "DECLARED"
+  },
+
+  "FIELDS_NOT_SUPPLIED": {
+    "OPERATOR_ROLE": "NOT_SUPPLIED",
+    "OPERATOR_CONTACT": "NOT_SUPPLIED",
+    "AUTHORITY_BASIS": "NOT_SUPPLIED — the basis on which this person is competent to operate the pilot was not stated",
+    "RELATIONSHIP_TO_DECISION_AUTHORITY": "NOT_SUPPLIED — whether the operator and the signing authority are the same person is not established",
+    "SIGNATURE": "ABSENT — this designation was made in a working session, not on a signed instrument",
+    "NOTE": "These are recorded as absent rather than inferred. Form section 1 (Decision authority) asks for name, role, organization and authority basis; only name and organization are supplied here."
+  },
+
+  "WHAT_THIS_CLOSES": "PILOT_OPERATOR only.",
+
+  "WHAT_REMAINS_OPEN": {
+    "HD-19-CLASS": "NOT_RECEIVED — execution authorization against a frozen target",
+    "BASELINE_AUTHORITY": "NOT_RECEIVED — MG-02; the TR-GPR-01 snapshot remains DESIGNATED: false",
+    "PILOT_CLAIM_SET_ADOPTION": "NOT_RECEIVED — PC-01..PC-04 remain NEITHER_ADOPTED_NOR_EXCLUDED",
+    "VERIFIER_DESIGNATION": "NOT_DESIGNATED",
+    "GATE-INTENDED-USE": "NOT_ESTABLISHED — 23 human fields blank, including 4 requiring a qualified regulatory reviewer"
+  },
+
+  "EXPLICIT_NON_CLAIMS": [
+    "Designating an operator does not authorize the pilot.",
+    "Designating an operator does not close GATE-INTENDED-USE.",
+    "Designating an operator does not designate a baseline.",
+    "Designating an operator does not adopt any pilot claim.",
+    "This record creates no authorization of any kind."
+  ],
+
+  "STANDING_STATUS_UNCHANGED": {
+    "global_pilot_gate": "BLOCKED",
+    "first_blocking_gate": "GATE-INTENDED-USE",
+    "AUTHORIZATION_ISSUED": false,
+    "CUSTODY_STATUS": "NOT_ESTABLISHED",
+    "PROVENANCE_STATUS": "OPEN"
+  }
+}

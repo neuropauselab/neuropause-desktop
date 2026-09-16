@@ -21,6 +21,16 @@ import type {
 import { ipc } from '@renderer/lib/ipc';
 import { Icon } from '@renderer/components/ui/Icon';
 import { OpsPanel, StatusBadge } from '@renderer/operations/primitives';
+import { OperationalOverviewPanel } from './OperationalOverviewPanel';
+import { EvidenceSearchPanel } from './EvidenceSearchPanel';
+import { GroundingTransparencyPanel } from './GroundingTransparencyPanel';
+import { OperationalHistoryPanel } from './OperationalHistoryPanel';
+import { DeliveryOperationsPanel } from './DeliveryOperationsPanel';
+import { OperationalExceptionsPanel } from './OperationalExceptionsPanel';
+import { AuditIntegrityPanel } from './AuditIntegrityPanel';
+import { ConnectorLineagePanel } from './ConnectorLineagePanel';
+import { OperationalReliabilityPanel } from './OperationalReliabilityPanel';
+import { PlatformHealthPanel } from './PlatformHealthPanel';
 import { EmptyState, Grid, LoadingBlock } from '@renderer/operationsCenter/primitives';
 import {
   continuityRows,
@@ -55,7 +65,7 @@ async function settled<T>(p: Promise<T>, fallback: T): Promise<T> {
   }
 }
 
-export function EopsPlatformTab(): JSX.Element {
+export function EopsPlatformTab({ onNavigate }: { onNavigate?: (section: string) => void } = {}): JSX.Element {
   const [ready, setReady] = useState(false);
   const [d, setD] = useState<EopsData>(EMPTY);
 
@@ -326,6 +336,17 @@ export function EopsPlatformTab(): JSX.Element {
           </ul>
         </OpsPanel>
       )}
+
+      <OperationalOverviewPanel />
+      <PlatformHealthPanel />
+      <OperationalExceptionsPanel onNavigate={onNavigate} />
+      <DeliveryOperationsPanel />
+      <OperationalReliabilityPanel />
+      <ConnectorLineagePanel />
+      <EvidenceSearchPanel />
+      <GroundingTransparencyPanel />
+      <AuditIntegrityPanel />
+      <OperationalHistoryPanel />
     </>
   );
 }

@@ -85,21 +85,36 @@ const EMPTY: Data = {
   licensing: null, metering: null, diag: null,
 };
 
-async function settled<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    return fallback;
-  }
-}
-
 export function AdministrationView(): JSX.Element {
   const { setSection, openEnterprise } = useShell();
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [d, setD] = useState<Data>(EMPTY);
+  /**
+   * P13C ROUND 36 — GATE 5. THE ADMIN CENTER GETS AN ERROR STATE.
+   *
+   * Every load below used to pass through a `settled()` that swallowed the
+   * failure into its fallback, `setReady(true)` fired unconditionally, and
+   * this 600-line control centre had NO error state and NO retry — a total
+   * backend outage rendered "No cloud members / No audit entries yet" as if
+   * verified. The per-panel names of what failed are collected here, a
+   * banner says so with a Retry, and the audit trail — the single most
+   * misleading cell (a denied `governance:read` presented as a CLEAN audit
+   * trail) — renders an explicit error instead of its empty state.
+   */
+  const [loadFailures, setLoadFailures] = useState<string[]>([]);
 
   const refresh = useCallback(async () => {
+    // Round 36: each load names itself; a failure is recorded, never erased.
+    const failures: string[] = [];
+    const settled = async <T,>(label: string, p: Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await p;
+      } catch {
+        failures.push(label);
+        return fallback;
+      }
+    };
     /**
      * Resolve the cloud org id first (devices are org-scoped).
      *
@@ -121,8 +136,8 @@ export function AdministrationView(): JSX.Element {
      * organization's data.
      */
     const [orgs, localOrgs] = await Promise.all([
-      settled(ipc.org.list(), []),
-      settled(ipc.enterprise.organizations(), [] as OrganizationSummary[]),
+      settled('Cloud organizations', ipc.org.list(), []),
+      settled('Local organizations', ipc.enterprise.organizations(), [] as OrganizationSummary[]),
     ]);
     const activeLocalName = localOrgs.find((o) => o.active)?.name ?? null;
     const matches =
@@ -133,25 +148,26 @@ export function AdministrationView(): JSX.Element {
       org, governance, compliance, audit, members, identity, mfa, frameworks, regions, devices,
       apiKeys, workers, connectors, connectorList, licensing, metering, diag,
     ] = await Promise.all([
-      settled(ipc.enterprise.org(), null),
-      settled(ipc.enterprise.governanceConfig(), null),
-      settled(ipc.enterprise.compliance(), [] as ComplianceFinding[]),
-      settled(ipc.enterprise.audit(50), [] as EnterpriseAuditEntry[]),
-      orgId ? settled(ipc.org.members(orgId), [] as CloudMembership[]) : Promise.resolve([] as CloudMembership[]),
-      settled(ipc.cloud.identitySummary(), null),
-      settled(ipc.cloud.mfa(), null),
-      settled(ipc.cloud.adminCompliance(), null),
-      settled(ipc.cloud.regions(), [] as CloudRegion[]),
-      orgId ? settled(ipc.devices.list(orgId), [] as Device[]) : Promise.resolve([] as Device[]),
-      settled(ipc.ecosystem.keys(), [] as ApiKey[]),
-      settled(ipc.workforce.workers(), [] as WorkerSummary[]),
-      settled(ipc.connectors.stats(), null),
-      settled(ipc.connectors.list(), [] as ConnectorDto[]),
-      settled(ipc.commercial.licensing(), null),
-      settled(ipc.commercial.metering(), null),
-      settled(ipc.releaseOps.diagnostics(), null),
+      settled('Organization', ipc.enterprise.org(), null),
+      settled('Governance', ipc.enterprise.governanceConfig(), null),
+      settled('Compliance', ipc.enterprise.compliance(), [] as ComplianceFinding[]),
+      settled('Audit trail', ipc.enterprise.audit(50), [] as EnterpriseAuditEntry[]),
+      orgId ? settled('Cloud members', ipc.org.members(orgId), [] as CloudMembership[]) : Promise.resolve([] as CloudMembership[]),
+      settled('Identity', ipc.cloud.identitySummary(), null),
+      settled('MFA', ipc.cloud.mfa(), null),
+      settled('Compliance frameworks', ipc.cloud.adminCompliance(), null),
+      settled('Regions', ipc.cloud.regions(), [] as CloudRegion[]),
+      orgId ? settled('Devices', ipc.devices.list(orgId), [] as Device[]) : Promise.resolve([] as Device[]),
+      settled('API keys', ipc.ecosystem.keys(), [] as ApiKey[]),
+      settled('AI workers', ipc.workforce.workers(), [] as WorkerSummary[]),
+      settled('Connector stats', ipc.connectors.stats(), null),
+      settled('Connectors', ipc.connectors.list(), [] as ConnectorDto[]),
+      settled('Licensing', ipc.commercial.licensing(), null),
+      settled('Metering', ipc.commercial.metering(), null),
+      settled('Release diagnostics', ipc.releaseOps.diagnostics(), null),
     ]);
     setD({ org, governance, compliance, audit, members, identity, mfa, frameworks, regions, devices, apiKeys, workers, connectors, connectorList, licensing, metering, diag });
+    setLoadFailures(failures);
     setReady(true);
   }, []);
 
@@ -212,6 +228,24 @@ export function AdministrationView(): JSX.Element {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-8 py-7">
+        {ready && loadFailures.length > 0 && (
+          <div
+            role="alert"
+            className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-danger/40 bg-danger/10 px-4 py-2.5 text-xs leading-relaxed text-danger"
+          >
+            <span className="min-w-0 flex-1">
+              <strong>{loadFailures.length} of the administration panels could not load:</strong>{' '}
+              {loadFailures.join(', ')}. What they show below is a fallback, not verified state.
+            </span>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              className="rounded-lg border border-danger/40 px-3 py-1 text-xs font-semibold text-danger hover:bg-danger/10"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {!ready ? (
           <LoadingBlock label="Loading enterprise administration…" />
         ) : (
@@ -221,7 +255,7 @@ export function AdministrationView(): JSX.Element {
             {tab === 'identity' && <IdentityTab d={d} go={go} />}
             {tab === 'roles' && <RolesTab d={d} go={go} />}
             {tab === 'security' && <SecurityTab d={d} go={go} />}
-            {tab === 'compliance' && <ComplianceTab d={d} go={go} />}
+            {tab === 'compliance' && <ComplianceTab d={d} go={go} auditFailed={loadFailures.includes('Audit trail')} />}
             {tab === 'ai' && <AiTab d={d} go={go} />}
             {tab === 'connectors' && <ConnectorsTab d={d} go={go} />}
             {tab === 'licensing' && <LicensingTab d={d} go={go} />}
@@ -474,7 +508,7 @@ function SecurityTab({ d, go }: { d: Data; go: Go }): JSX.Element {
 
 /* ── Compliance & Audit ──────────────────────────────────────────────────── */
 
-function ComplianceTab({ d, go }: { d: Data; go: Go }): JSX.Element {
+function ComplianceTab({ d, go, auditFailed }: { d: Data; go: Go; auditFailed: boolean }): JSX.Element {
   const compliance = summarizeCompliance(d.compliance);
   return (
     <>
@@ -507,7 +541,15 @@ function ComplianceTab({ d, go }: { d: Data; go: Go }): JSX.Element {
       </OpsPanel>
 
       <OpsPanel title={`Audit trail (${d.audit.length} recent)`} subtitle="Append-only governance audit (newest first)">
-        {d.audit.length === 0 ? (
+        {auditFailed ? (
+          /* Round 36 — Gate 5: a failed/denied audit read must NEVER present
+             as a clean audit trail. This is the one cell where that lie is a
+             compliance problem, not just a UX one. */
+          <p role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs leading-relaxed text-danger">
+            The audit trail could not be loaded — what would appear here is unknown, not empty. Retry
+            from the banner above; if this persists you may lack <code>governance:read</code>.
+          </p>
+        ) : d.audit.length === 0 ? (
           <EmptyState icon="clipboard" title="No audit entries yet" />
         ) : (
           <div className="surface-raised divide-y divide-[var(--hairline)] rounded-2xl px-4 shadow-card">

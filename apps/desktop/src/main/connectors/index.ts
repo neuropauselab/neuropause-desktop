@@ -50,8 +50,29 @@ import { InboundWebhookRouter } from './inbound/router';
 import { SlackSocketMode, type SocketLike } from './inbound/slackSocketMode';
 import { syncStateStore } from '../unified/sync/syncStateInstance';
 import { RateLimiter } from '../unified/sync/rateLimiter';
-import { createM365Executor, type M365Executor } from './m365';
+import { HttpClient } from '../unified/sync/http';
+import { createM365Executor, ALL_M365_ACTIONS, type M365Executor } from './m365';
+import { governedSend, createGovernedSendPorts, type GovernedSendResult } from '../cst/sendTransition';
+import { l6ExecutionGate } from '../liveBrain/executionGate';
+import { actionRecord } from './actionRecord';
+import {
+  governedAction,
+  createGovernedActionPorts,
+  GOVERNED_ACTION_COHORT1,
+  GOVERNED_ACTION_COHORT2A,
+  GOVERNED_ACTION_COHORT2B_I,
+  GOVERNED_ACTION_COHORT2B_II,
+  type GovernedActionResult,
+} from '../cst/governedAction';
+import { DurableIdempotencyStore } from '../cst/durableIdempotencyStore';
+import { app } from 'electron';
+import { join } from 'node:path';
+import type { ConnectorWriteResult } from '@neuropause/shared';
 import { m365Draft } from './m365/aiDrafts';
+
+// Wave-2 Slice-15 (FG-4) — build-time constant (electron.vite.config.ts define); false in every release build, so the
+// first-real-send guard hook below is dead-code-eliminated and its chunk is never emitted.
+declare const __NP_E2E__: boolean;
 
 const log = createLogger('connectors');
 
@@ -68,7 +89,37 @@ export interface ConnectorSubsystemDeps {
    * must not be able to spend a credential.
    */
   workspaceId: () => string;
+  /**
+   * P13C Phase H — the authoritative actor identity for a governed consequential
+   * transition (the `mail.send` CST boundary). Identity plumbing ONLY: it supplies
+   * WHO initiated the request, wired from the application's existing identity
+   * authority. It must NOT be derived from the workspace/tenant, the connector
+   * account, an email in a payload, or Graph credentials, and must NOT authorize,
+   * resolve permissions, or default to a fallback identity. `null` ⇒ no known actor
+   * ⇒ the transition follows the missing-identity governance path (DENY; no send).
+   * The actor is distinct from `workspaceId()` (tenant ≠ actor).
+   */
+  actor: () => string | null;
 }
+
+/**
+ * Wave-1 Increment-2A — a narrow, late-bound sink that turns an AUTHORITATIVE M365 IPC OUTCOME_UNKNOWN into a
+ * durable hold via the existing decisions HoldStore. Injected AFTER construction (the hold raiser is composed
+ * later than the connector subsystem in the runtime root), so the connector layer stays decoupled from the
+ * decisions module. It records governance EVIDENCE only — it never executes an M365 effect, never authorizes,
+ * and never alters the certified CST decision/admission. `tenantId`/`actor` are the SAME authoritative values the
+ * governed transition used (main-process identity/tenant); the renderer supplies none of them.
+ */
+export type M365UnknownHoldRaiser = (input: {
+  readonly tenantId: string;
+  readonly actor: string | null;
+  readonly connectorId: string;
+  readonly accountId: string;
+  readonly actionId: string;
+  /** Reconstructable identity of the consequential transition (the CST transitionId) — the dedupe key. */
+  readonly subject: string;
+  readonly label: string;
+}) => void;
 
 export interface ConnectorSubsystem {
   handlers: SecureHandlerDef[];
@@ -78,7 +129,99 @@ export interface ConnectorSubsystem {
   inboundWebhooks: InboundWebhookRouter;
   /** P8.3 — the confirmation-gated M365 write executor, for approved worker actions. */
   m365Executor: M365Executor;
+  /**
+   * Wave-1 Increment-2A — late-bind the sink that raises a durable hold on an AUTHORITATIVE M365 UNKNOWN outcome.
+   * Called once by the runtime root after both the connector subsystem and the hold raiser exist. Absent binding
+   * (e.g. in tests that never wire it) simply means no hold is raised — the certified outcome is unaffected.
+   */
+  setUnknownHoldRaiser: (raiser: M365UnknownHoldRaiser) => void;
   dispose: () => void;
+}
+
+/**
+ * P13C Phase H — map the governed send outcome onto the existing ConnectorWriteResult
+ * WITHOUT letting a 202 masquerade as a verified success. `ok:true` here means the
+ * provider ACKNOWLEDGED the request (accepted for delivery), NEVER "verified". The
+ * structured outcome is carried in `data.outcome`, so downstream code reads the
+ * outcome class directly and never reconstructs semantics from the message string.
+ */
+function mapSendOutcome(g: GovernedSendResult, confirmed: boolean): ConnectorWriteResult {
+  const data: Record<string, string | number | boolean | null> = { outcome: g.semanticOutcome };
+  switch (g.semanticOutcome) {
+    case 'ACKNOWLEDGED':
+      return {
+        ok: true, // provider acceptance — ACKNOWLEDGED, NOT verified business success
+        message: g.summary
+          ? `${g.summary} — accepted by Microsoft Graph (queued; delivery not independently verified).`
+          : 'Accepted by Microsoft Graph (queued; delivery not independently verified).',
+        data,
+      };
+    case 'UNKNOWN':
+      return {
+        ok: false,
+        message:
+          'Outcome UNKNOWN — the request was transmitted but no response was received; it was NOT retried. Reconcile before any resend.',
+        data,
+      };
+    case 'EXECUTION_FAILED':
+      return { ok: false, message: g.summary ?? 'Send failed — the provider rejected the request.', data };
+    case 'HOLD':
+      return {
+        ok: false,
+        requiresConfirmation: !confirmed,
+        message: !confirmed
+          ? 'This send modifies data and needs explicit confirmation.'
+          : 'Held for reconciliation — a prior identical send is unconfirmed and was not re-sent.',
+        data,
+      };
+    case 'ESCALATE':
+      return { ok: false, message: 'Escalated for human review.', data };
+    case 'DENIED':
+    default:
+      return { ok: false, message: 'Not authorized — reconnect this account or check its permissions.', data };
+  }
+}
+
+/**
+ * P13C H-FINDING-4 — map a governed-action outcome onto ConnectorWriteResult, mirroring
+ * mapSendOutcome: an ACKNOWLEDGED provider acceptance is NEVER a verified business success, an
+ * UNKNOWN was transmitted-but-unconfirmed (never retried), and every governance refusal is `ok:false`.
+ */
+function mapActionOutcome(g: GovernedActionResult, confirmed: boolean): ConnectorWriteResult {
+  const data: Record<string, string | number | boolean | null> = { outcome: g.semanticOutcome };
+  switch (g.semanticOutcome) {
+    case 'ACKNOWLEDGED':
+      return {
+        ok: true, // provider acceptance — ACKNOWLEDGED, NOT verified business success
+        message: g.summary
+          ? `${g.summary} — accepted by Microsoft Graph (not independently verified).`
+          : 'Accepted by Microsoft Graph (not independently verified).',
+        data,
+      };
+    case 'UNKNOWN':
+      return {
+        ok: false,
+        message:
+          'Outcome UNKNOWN — the request was transmitted but no response was received; it was NOT retried. Reconcile before any retry.',
+        data,
+      };
+    case 'EXECUTION_FAILED':
+      return { ok: false, message: g.summary ?? 'Action failed — the provider rejected the request.', data };
+    case 'HOLD':
+      return {
+        ok: false,
+        requiresConfirmation: !confirmed,
+        message: !confirmed
+          ? 'This action modifies data and needs explicit confirmation.'
+          : 'Held for reconciliation — a prior identical action is unconfirmed and was not repeated.',
+        data,
+      };
+    case 'ESCALATE':
+      return { ok: false, message: 'Escalated for human review.', data };
+    case 'DENIED':
+    default:
+      return { ok: false, message: 'Not authorized — reconnect this account or check its permissions.', data };
+  }
 }
 
 /** Maps a connector event to a Platform Event, or null to keep it off the bus. */
@@ -244,18 +387,69 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
   );
 
   // P2.4 — Microsoft 365 write executor: audited, confirmation-gated Graph writes on the same account/token.
+  // The identity/scope/token/transport seams are named ONCE so the P13C Phase-H CST
+  // send adapter (mail.send) reuses the SAME authorities as the executor — one
+  // authority feeding one kernel verdict, never a second, disagreeing gate.
+  const m365Rate = new RateLimiter(200);
+  const m365GetToken = (c: string, a: string): Promise<string | null> =>
+    connectorService.getValidAccessToken(c, a);
+  const m365GrantedScopes = (c: string, a: string): string[] => connectorStore.get(c, a)?.grantedScopes ?? [];
+  // P13C Round 6 — the same workspace-scoped resolve, used as an authorization
+  // decision rather than as a scope lookup that happens to return nothing.
+  const m365OwnsAccount = (c: string, a: string): boolean => connectorStore.get(c, a) !== null;
   const m365 = createM365Executor({
-    getToken: (c, a) => connectorService.getValidAccessToken(c, a),
+    getToken: m365GetToken,
     publish: deps.publish,
-    rate: new RateLimiter(200),
+    rate: m365Rate,
     recordActivity: (c, a, level, message) => connectorService.recordWrite(c, a, level, message),
     health: syncStateStore,
     manifestName: (c) => MANIFEST_BY_ID[c]?.name ?? c,
-    grantedScopes: (c, a) => connectorStore.get(c, a)?.grantedScopes ?? [],
-    // P13C Round 6 — the same workspace-scoped resolve, used as an authorization
-    // decision rather than as a scope lookup that happens to return nothing.
-    ownsAccount: (c, a) => connectorStore.get(c, a) !== null,
+    grantedScopes: m365GrantedScopes,
+    ownsAccount: m365OwnsAccount,
   });
+  // P13C Phase H — the ONE CST boundary for the `mail.send` consequential action.
+  // Process-lifetime governance stores (claim + idempotency): NeuroPause-boundary
+  // duplicate suppression only — NOT provider idempotency, NOT crash-durable
+  // (in-memory; declared Node-20 limit).
+  const m365SendPorts = createGovernedSendPorts();
+  // P13C H-FINDING-4 (Cohort 1, Option C) — the governed-action idempotency intent is DURABLE
+  // (single-process restart durability) via a Node-20-safe atomic-rename store under userData;
+  // the claim store stays in-memory (atomic single-winner is a within-process property). NOT
+  // fsync/power-loss durable, NOT cross-process. A corrupt store fails closed on construction.
+  const m365ActionPorts = createGovernedActionPorts(
+    new DurableIdempotencyStore(join(app.getPath('userData'), 'm365-governed-actions.json')),
+  );
+  const mailSendAction = ALL_M365_ACTIONS.find((a) => a.id === 'mail.send') ?? null;
+
+  // Wave-1 Increment-2A — the late-bound UNKNOWN→hold sink (see ConnectorSubsystem.setUnknownHoldRaiser). Null
+  // until the runtime root wires it; a null sink means no hold is raised and the certified outcome is unchanged.
+  let unknownHoldRaiser: M365UnknownHoldRaiser | null = null;
+  /**
+   * Raise a durable hold for an AUTHORITATIVE M365 OUTCOME_UNKNOWN. Runs AFTER the governed transition returned,
+   * so it is strictly post-outcome: it never touches `action.run`, the effect, `effectCalls`, or the CST verdict.
+   * `subject` is the CST transitionId (canonical-identity-derived) so a repeated identical UNKNOWN dedupes to one
+   * hold. Authoritative tenant/actor come from the same main-process seams the governed transition used.
+   */
+  const raiseM365UnknownHold = (
+    connectorId: string,
+    accountId: string,
+    actionId: string,
+    outcome: { readonly transitionId: unknown } | null,
+    label: string,
+  ): void => {
+    const raise = unknownHoldRaiser;
+    if (!raise) return;
+    const subject = outcome ? String(outcome.transitionId) : `m365:${connectorId}/${accountId}/${actionId}`;
+    raise({
+      tenantId: deps.workspaceId(),
+      actor: deps.actor(),
+      connectorId,
+      accountId,
+      actionId,
+      subject,
+      label,
+    });
+  };
 
   // P5 — inbound webhook / realtime runtime. Verified deliveries (relay/tunnel) via handle() and
   // pre-authenticated Socket Mode events via triggerSync() both funnel a targeted incremental sync
@@ -271,6 +465,10 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
       connectorStore.byConnector(connectorId).filter((a) => a.status === 'connected').map((a) => a.id),
     requestSync: (c, a) => connectorService.sync(c, a),
     now: () => Date.now(),
+    // S114 FG-S113-WEBHOOK-EVENT — a verified inbound webhook emits ONE minimal, read-only platform
+    // event onto the EXISTING event bus (deps.publish); tenant = the connector's owning workspace.
+    emitPlatformEvent: (i) => deps.publish(i),
+    resolveTenantId: () => deps.workspaceId(),
   });
 
   const slackAppToken = process.env.NEUROPAUSE_SLACK_APP_TOKEN?.trim();
@@ -396,8 +594,96 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
       schema: M365ActionExecuteRequest,
       audit: true,
       timeoutMs: SYNC_TIMEOUT_MS,
-      handler: (p) => {
+      handler: async (p) => {
         const r = p as TM365ActionExecuteRequest;
+        // P13C Phase H — the `mail.send` consequential action is GOVERNED through the
+        // single CST boundary; there is NO direct executor bypass for it from this
+        // call site. Every other write action keeps the existing executor path
+        // unchanged (scope: exactly one governed transition). H9-refined: the effect
+        // is the pure Graph send, so typed transport errors survive to the adapter
+        // (NetworkError → UNKNOWN, HttpError/AuthError → EXECUTION_FAILED, 202 →
+        // ACKNOWLEDGED). A 202 is ACKNOWLEDGED, never a verified business outcome.
+        if (r.actionId === 'mail.send' && mailSendAction) {
+          // FG-10 (S5.4 Phase 0) — L6 execution-time gate: for a Brain-proposal-driven send, re-derive
+          // admissibility (deny-by-default) BEFORE the FG-4 guard so a refused proposal never touches the latch.
+          // Non-L6 (no stashed proposal) → ok (skip): the existing assistant/deterministic path is unchanged.
+          const l6 = l6ExecutionGate(deps, r);
+          if (!l6.ok) return l6.refusal;
+          // Wave-2 Slice-15 (FG-4) — the first-real-send safety guard, enforced BEFORE the executor. Compile-stripped
+          // from release (__NP_E2E__ false); dynamically imported so its chunk is dropped; inert unless
+          // NEUROPAUSE_FIRST_REAL_SEND=1. It NEVER weakens the certified path — it only REFUSES (allowlist + latch).
+          if (__NP_E2E__) {
+            const { firstRealSendGuard } = await import('./firstRealSendGuard');
+            const guard = firstRealSendGuard(r.params);
+            if (!guard.ok) return guard.refusal;
+          }
+          const g = await governedSend({
+            connectorId: r.connectorId,
+            accountId: r.accountId,
+            action: mailSendAction,
+            params: r.params,
+            confirmed: r.confirmed,
+            tenantId: deps.workspaceId(),
+            actorId: deps.actor() ?? '', // authoritative identity; null ⇒ DENY (no send)
+            policyVersion: 'm365-send-policy-1',
+            ownsAccount: m365OwnsAccount(r.connectorId, r.accountId),
+            grantedScopes: m365GrantedScopes(r.connectorId, r.accountId),
+            getToken: () => m365GetToken(r.connectorId, r.accountId),
+            makeHttp: (key, getToken, rate) => new HttpClient(key, getToken, rate),
+            rate: m365Rate,
+            now: () => new Date().toISOString(),
+            ports: m365SendPorts,
+          });
+          // Wave-1 Increment-2A — an authoritative UNKNOWN (transmitted, response lost) becomes a durable hold
+          // for reconciliation. Strictly post-outcome; it does not retry and does not alter the CST result.
+          if (g.semanticOutcome === 'UNKNOWN') {
+            raiseM365UnknownHold(r.connectorId, r.accountId, r.actionId, g.outcome, 'Send email (Microsoft 365)');
+          }
+          // S34a (FG-5) — best-effort action-record OBSERVER: assemble the queryable evidence chain for THIS
+          // send. It is an observer, NEVER a gate — fire-and-forget + self-catching, so it can never block,
+          // delay, or alter the governed send or its response; a failed emit logs an evidence gap.
+          void actionRecord.observe(r, g, { actor: deps.actor() ?? '', tenantId: deps.workspaceId() }).catch(() => {});
+          return mapSendOutcome(g, r.confirmed);
+        }
+        // P13C H-FINDING-4 (Cohort 1 + 2A + 2B-i + 2B-ii) — non-mail.send write actions are governed
+        // through the SAME CST kernel via the parameterized governedAction adapter and the SAME durable
+        // m365ActionPorts (authoritative identity/tenant, canonical action identity, atomic +
+        // single-process-restart-durable admission, denial-before-effect). Cohort 2A is high-consequence
+        // (conservative IRREVERSIBLE); Cohort 2B-i is reversible internal mutations (REVERSIBLE); Cohort
+        // 2B-ii (drive.upload/restoreVersion, contacts.update) is overwrite/partially-reversible, governed
+        // at the conservative IRREVERSIBLE / DIFFICULT_TO_REVERSE tier. Every OTHER action keeps the
+        // existing executor path unchanged.
+        if (
+          GOVERNED_ACTION_COHORT1.has(r.actionId) ||
+          GOVERNED_ACTION_COHORT2A.has(r.actionId) ||
+          GOVERNED_ACTION_COHORT2B_I.has(r.actionId) ||
+          GOVERNED_ACTION_COHORT2B_II.has(r.actionId)
+        ) {
+          const cohortAction = ALL_M365_ACTIONS.find((a) => a.id === r.actionId);
+          if (cohortAction) {
+            const g = await governedAction({
+              action: cohortAction,
+              connectorId: r.connectorId,
+              accountId: r.accountId,
+              params: r.params,
+              confirmed: r.confirmed,
+              tenantId: deps.workspaceId(),
+              actorId: deps.actor() ?? '', // authoritative identity; null ⇒ DENY (no effect)
+              ownsAccount: m365OwnsAccount(r.connectorId, r.accountId),
+              grantedScopes: m365GrantedScopes(r.connectorId, r.accountId),
+              getToken: () => m365GetToken(r.connectorId, r.accountId),
+              makeHttp: (key, getToken, rate) => new HttpClient(key, getToken, rate),
+              rate: m365Rate,
+              now: () => new Date().toISOString(),
+              ports: m365ActionPorts,
+            });
+            // Wave-1 Increment-2A — same UNKNOWN→durable-hold rule for the non-mail.send governed actions.
+            if (g.semanticOutcome === 'UNKNOWN') {
+              raiseM365UnknownHold(r.connectorId, r.accountId, r.actionId, g.outcome, `Microsoft 365: ${r.actionId}`);
+            }
+            return mapActionOutcome(g, r.confirmed);
+          }
+        }
         return m365.execute(r.connectorId, r.accountId, r.actionId, r.params, r.confirmed);
       },
     },
@@ -420,6 +706,10 @@ export async function initConnectors(deps: ConnectorSubsystemDeps): Promise<Conn
     inboundWebhooks,
     // P8.3 — the confirmation-gated M365 write executor, so approved worker actions can run it.
     m365Executor: m365,
+    // Wave-1 Increment-2A — late-bind the authoritative UNKNOWN→hold sink (see raiseM365UnknownHold).
+    setUnknownHoldRaiser: (raiser) => {
+      unknownHoldRaiser = raiser;
+    },
     dispose: () => {
       slackSocket?.stop();
       supervisor.dispose();

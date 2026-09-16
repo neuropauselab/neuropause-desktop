@@ -19,6 +19,7 @@ import {
   validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta, rootMetaIfUnset } from '../../framework';
 import { postManufacturingEvent } from './manufacturingEventLog';
 
 export const DISPATCH_ACTION = 'dispatchExecution';
@@ -88,6 +89,8 @@ export async function dispatchOrderToExecution(
     const rec = executionModule.store.create({
       title: deriveRecordTitle(executionModule.descriptor, validation.values),
       fields: validation.values,
+      // Transaction-graph spine: every execution is caused by the production order.
+      metadata: childCorrelationMeta(orderRecord, PRODUCTION_ORDERS_MODULE_ID),
       actor: ctx.actor(),
       now: ctx.now(),
     });
@@ -106,6 +109,8 @@ export async function dispatchOrderToExecution(
 
   const updated = ordersModule.store.update(orderRecord.id, {
     fields: { executionDispatched: createdIds.join(',') },
+    // Root the transaction at the production order when it is a genuine origin.
+    metadata: rootMetaIfUnset(orderRecord, PRODUCTION_ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });

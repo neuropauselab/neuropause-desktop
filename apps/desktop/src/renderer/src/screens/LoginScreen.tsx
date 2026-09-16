@@ -32,7 +32,12 @@ const PROVIDER_CATALOGUE: { id: OAuthProviderId; label: string; Icon: typeof Goo
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function LoginScreen(): JSX.Element {
+/**
+ * @param onDismiss — S17 local-first: when reached FROM local mode (the "connect
+ * an account" affordance), a way back to working locally. Absent = the classic
+ * first-run screen with no account yet.
+ */
+export function LoginScreen({ onDismiss }: { onDismiss?: () => void } = {}): JSX.Element {
   const { status, loginOAuth, loginEmail, registerEmail } = useAuth();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -66,9 +71,26 @@ export function LoginScreen(): JSX.Element {
   const authenticating = status.state === 'authenticating';
   const busy = authenticating || submitting || pendingProvider !== null;
 
+  /**
+   * P13C — O-4. ONE failure is stated ONCE.
+   *
+   * The login screen used to render two banners for a single outage: the F-7
+   * reachability notice ("The service address could not be found on this
+   * network") and, immediately below it, the auth error ("Could not reach the
+   * NeuroPause backend. Is it running?"). Both were true. Together they read as
+   * two problems, and the second asks the reader to check something a founder
+   * who ran an installer has no way to check — the exact copy rule the notice
+   * was written to enforce, violated by the component underneath it.
+   *
+   * `cause === 'unreachable'` is suppressed here because the notice above owns
+   * that story and tells it with the failure class (dns / timeout / refused /
+   * http_error) rather than a generic sentence. Everything else — wrong
+   * password, a refusal from the service, local validation — still shows,
+   * because the notice says nothing about those.
+   */
   const banner = useMemo(() => {
     if (formError) return formError;
-    if (status.state === 'error') return status.message;
+    if (status.state === 'error' && status.cause !== 'unreachable') return status.message;
     return null;
   }, [formError, status]);
 
@@ -221,6 +243,20 @@ export function LoginScreen(): JSX.Element {
           {authenticating && status.provider !== 'email' ? (
             <p className="mt-4 text-center text-[12px] text-muted">
               Complete sign-in in your browser, then return here.
+            </p>
+          ) : null}
+
+          {/* S17 local-first: a way back to working locally (only when reached from local mode). */}
+          {onDismiss ? (
+            <p className="mt-4 text-center text-[12.5px] text-muted">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onDismiss}
+                className="app-no-drag font-medium text-accent transition hover:text-accent-hover disabled:opacity-50"
+              >
+                Keep working locally
+              </button>
             </p>
           ) : null}
         </motion.div>

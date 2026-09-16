@@ -1,0 +1,293 @@
+{
+  "ARTIFACT": "39_INDEX",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "written": [
+    {
+      "file": "certification/public-launch/01_MASTER_GATE_REGISTER.json",
+      "sha256": "328b413ad954a37c94e401ca0e7ec7de9623c698f4b87dac97394337943cd049"
+    },
+    {
+      "file": "certification/public-launch/02_SOURCE_INTEGRITY.json",
+      "sha256": "e58905e935c03c376c47f08c07f9e63c3d1eb78021c7a846dea918d21e06ef8f"
+    },
+    {
+      "file": "certification/public-launch/03_VERSION_RELEASE_IDENTITY.json",
+      "sha256": "c53f57e1a01b6273c6d9677170621fd25f4fe9222930a34a4db263192494a0a4"
+    },
+    {
+      "file": "certification/public-launch/04_DEPENDENCY_INVENTORY.json",
+      "sha256": "63d07402dbff025bf524d5d345d1640777213ea192b20f53d8251974f9d04bf8"
+    },
+    {
+      "file": "certification/public-launch/05_SECURITY_SCAN.json",
+      "sha256": "d110929138b9f95affdb1ed2b6a0290b7da4376124e005bb675c5ddc8b6d276f"
+    },
+    {
+      "file": "certification/public-launch/06_TEST_EXECUTION_REGISTER.json",
+      "sha256": "20642c83d53a09bad4d291332a4dacd9290cb16879db4ebd364fa1925410013d"
+    },
+    {
+      "file": "certification/public-launch/07_BUILD_REGISTER.json",
+      "sha256": "5247ed431a8d7490cca6465672a134bc1b0dfb6fda7a4babf2d9b844b6c3e91b"
+    },
+    {
+      "file": "certification/public-launch/08_ARTIFACT_REGISTER.json",
+      "sha256": "b3db093a3e8b3acbae7d8b9160ab21f47ab7a493d4f44944a64b4cd528042881"
+    },
+    {
+      "file": "certification/public-launch/09_PROVENANCE_REGISTER.json",
+      "sha256": "d8078321d58a0828cfb8ebd13cf5929927c92a2718cd49e2cc1f7b614c0a6890"
+    },
+    {
+      "file": "certification/public-launch/10_SIGNING_REGISTER.json",
+      "sha256": "c4b3946c09fce7c261d41c2fee71e45c9cf5f3ed6a663309888bc47855c00747"
+    },
+    {
+      "file": "certification/public-launch/11_MACOS_DISTRIBUTION.json",
+      "sha256": "1cb15c910680ce79ab8822fed9e1731770c44de1d2b2fdf87564073398af7bd2"
+    },
+    {
+      "file": "certification/public-launch/12_WINDOWS_DISTRIBUTION.json",
+      "sha256": "17caaed7d53d502ad38d28a5dc03491fa27f4f52ee0765661a13adc5830318c0"
+    },
+    {
+      "file": "certification/public-launch/13_INSTALLATION_TESTS.json",
+      "sha256": "5aee20bca8b5b9416b6f5d57bedc007de4cb4c5fb714044f7bc16b58f69c4d52"
+    },
+    {
+      "file": "certification/public-launch/14_FIRST_RUN_TESTS.json",
+      "sha256": "2a2bb58fae4bf309300b1197238f694fac11d05b2d9e161bfd63fd26024cfbc6"
+    },
+    {
+      "file": "certification/public-launch/15_AUTHENTICATION_REGISTER.json",
+      "sha256": "51848f2c2a749e4184d2f701d01c75e139e6ba2690b1e4ebdc7df76ee51f0962"
+    },
+    {
+      "file": "certification/public-launch/16_DEVICE_IDENTITY_REGISTER.json",
+      "sha256": "56c40dcf75c5e8889afc0f51461438160e5b2e0f82cef9d1fcb42f692694217e"
+    },
+    {
+      "file": "certification/public-launch/17_BACKEND_PRODUCTION_REGISTER.json",
+      "sha256": "779fe87034e08a988b06885660bd62b40a22f3c65583167f4f452600b751bfd5"
+    },
+    {
+      "file": "certification/public-launch/18_PAUSECLOUD_REGISTER.json",
+      "sha256": "59a3a49e60f5a418a4950054c89d62894955faf7c5d419b298514f76b292fd68"
+    },
+    {
+      "file": "certification/public-launch/19_AI_PROVIDER_REGISTER.json",
+      "sha256": "cbeaedfd10b0c29bab7bd0ee381734c904c021a40246de6db8bef2504606e8b5"
+    },
+    {
+      "file": "certification/public-launch/20_AI_LIVE_EXECUTION_REGISTER.json",
+      "sha256": "857c7672882af9806e85d2a1892f94f8778d987fd4ba3b7e1284d976ef840c1c"
+    },
+    {
+      "file": "certification/public-launch/21_AI_SECURITY_REGISTER.json",
+      "sha256": "24259a36c10e730564bbe2b2572ecefa330c024362e9b485950008daf42bd741"
+    },
+    {
+      "file": "certification/public-launch/22_TOOL_AUTHORIZATION_REGISTER.json",
+      "sha256": "4ce10de53b4f4afbb493301bf4213ab304d4d30d5ad24a502b7e3518acb88b5e"
+    },
+    {
+      "file": "certification/public-launch/23_POLICY_ENFORCEMENT_REGISTER.json",
+      "sha256": "517f8d6443e8f0ef873d4e80e66d8fe53cb3434677bc061670df3510916044d6"
+    },
+    {
+      "file": "certification/public-launch/24_COMPUTER_A_B_CONTROL_REGISTER.json",
+      "sha256": "b54559b2f70d5a8f9dbc126bf4734dcdfb753217fdaa7bf579842f473b099172"
+    },
+    {
+      "file": "certification/public-launch/25_EVIDENCE_PROVENANCE_REGISTER.json",
+      "sha256": "ad4a08e910567afa02414e7cdd012bac65cb437d6fac9260c05fa14fea96c6c8"
+    },
+    {
+      "file": "certification/public-launch/26_UPDATE_REGISTER.json",
+      "sha256": "7597b5bcb7405239314214de95bfc077ad12b523ad6eabecc80881fef6836342"
+    },
+    {
+      "file": "certification/public-launch/27_ROLLBACK_REGISTER.json",
+      "sha256": "c7cdff8c9ba2a996530691e91f5bfb66cc3715c6610bf7c8d02c7a7329ec93e7"
+    },
+    {
+      "file": "certification/public-launch/28_OBSERVABILITY_REGISTER.json",
+      "sha256": "7798ba0c4dc28095832ab45d0d2179c7dad3ce514144b5209bff83d781bb8a5e"
+    },
+    {
+      "file": "certification/public-launch/29_INCIDENT_RECOVERY_REGISTER.json",
+      "sha256": "ae12976dab294a1feaa8ffaf2d72218e1555f3303064537abef57d268c91799f"
+    },
+    {
+      "file": "certification/public-launch/30_USER_PILOT_REGISTER.json",
+      "sha256": "90875e90c0e27075019021ef35a84bb2b46ff03c40c30e091cd88492583dae16"
+    },
+    {
+      "file": "certification/public-launch/31_SUPPORT_READINESS_REGISTER.json",
+      "sha256": "1b59687fad32713227967d434532ee1a70c8d3b3f433288937b3b3af63ce2ce4"
+    },
+    {
+      "file": "certification/public-launch/32_PRIVACY_DATA_REGISTER.json",
+      "sha256": "eed6495aa5313ab3ad0f256d22d0e45854f78a54c01cd817fdb63586a5e64222"
+    },
+    {
+      "file": "certification/public-launch/33_REGULATORY_REVIEW_REGISTER.json",
+      "sha256": "1d1f004c3cdf84f9332748b37978c2cb19bec3d4493b62f299b1ef2154c4f07a"
+    },
+    {
+      "file": "certification/public-launch/34_INTENDED_USE_REGISTER.json",
+      "sha256": "b63ccdd63e365ba10c2e97190e3e65b1f293e09a7ac7ac1b64f4e7c302673a1e"
+    },
+    {
+      "file": "certification/public-launch/35_PUBLIC_RELEASE_MANIFEST.json",
+      "sha256": "00250d25a07e3d88d04a692ccfc1d8c780a9ccb7762460887e883d5e841bb66e"
+    },
+    {
+      "file": "certification/public-launch/36_RELEASE_PROVENANCE.json",
+      "sha256": "21400485ef3c570f56736c5ac689f71d6b98fd04947e72ae0913c37cc3fe132a"
+    },
+    {
+      "file": "certification/public-launch/38_FINAL_LAUNCH_GATE.json",
+      "sha256": "670c879e11dd43f711b85bc4f1e707ebaefd2f5074107b0bb0de36a841117f95"
+    },
+    {
+      "file": "certification/public-launch-002/01_RELEASE_IDENTITY.json",
+      "sha256": "db85964505486d63a1bb1894efe84cce92f0acb4a2a38514b71d7a12cbc9533f"
+    },
+    {
+      "file": "certification/public-launch-002/02_VERSION_REGISTER.json",
+      "sha256": "4576dc7b88f5e79d1512a97aecd53cea32c9e697dbd5b2cea2f3e193f2440890"
+    },
+    {
+      "file": "certification/public-launch-002/03_SOURCE_REGISTER.json",
+      "sha256": "dcbb0e842d1a69244f86031ff5f49fd4b9138893d87132d17bc84cfbc575e44f"
+    },
+    {
+      "file": "certification/public-launch-002/04_BUILD_REGISTER.json",
+      "sha256": "bb9471870e235d6c2a7bb9ec0b8b277642ff36ee002668fcdcbfdabc4ac14fac"
+    },
+    {
+      "file": "certification/public-launch-002/05_DEPENDENCY_REGISTER.json",
+      "sha256": "73763537ca4b5301256eb2fc865db91ac4172366b68efa9726a1004d58f103ef"
+    },
+    {
+      "file": "certification/public-launch-002/06_SECURITY_REGISTER.json",
+      "sha256": "78d4c0126a1c981ec08f64dbf622c5e0232a0790a69866091af0f63ccb006744"
+    },
+    {
+      "file": "certification/public-launch-002/07_AI_LIVE_REGISTER.json",
+      "sha256": "6787a3d335216ae2c03fda61ecbb3623ff5fc42f5254de5e6e80ed89637e3ac8"
+    },
+    {
+      "file": "certification/public-launch-002/08_AI_SECURITY_REGISTER.json",
+      "sha256": "925193dbb0a6daef4d23bf2c6fea7ce4a5d33ea059fd5e7babbd041e251f250e"
+    },
+    {
+      "file": "certification/public-launch-002/09_AUTHORIZATION_REGISTER.json",
+      "sha256": "f99171ce31eecbd62276a65fdc0146a25219717a7872a196961ccaeb3598c6da"
+    },
+    {
+      "file": "certification/public-launch-002/10_DEVICE_REGISTER.json",
+      "sha256": "7dfeabfbd9524f82a6604b0d370e13536d4254a4e0e994d020c8eb977dff6a73"
+    },
+    {
+      "file": "certification/public-launch-002/11_BACKEND_REGISTER.json",
+      "sha256": "06f83e6d93267df9c199ddc682db62ce2cf4d495168595a7c05202511dcbfc09"
+    },
+    {
+      "file": "certification/public-launch-002/12_CONTROL_PLANE_REGISTER.json",
+      "sha256": "8227ae27ad4821b7368ae8e32fe060f8d868705249fe49df12909dc76f26c787"
+    },
+    {
+      "file": "certification/public-launch-002/13_EVIDENCE_REGISTER.json",
+      "sha256": "00245bb0a7e47b93a77135cf780d644098ae2f9a3e6542a9d7b7d485aabd149f"
+    },
+    {
+      "file": "certification/public-launch-002/14_PROVENANCE_REGISTER.json",
+      "sha256": "1e3e3532e296cecf92d08ee394b8fab55e4c910535513a8749f25e808b273e68"
+    },
+    {
+      "file": "certification/public-launch-002/15_APPLE_REGISTER.json",
+      "sha256": "b3144fbbdbbe8ba6af147331bc1efcec7593af898021d9643933c331fed9fa4a"
+    },
+    {
+      "file": "certification/public-launch-002/16_WINDOWS_REGISTER.json",
+      "sha256": "5e58519e94034ac172f2b93cd2463d7e6d2a3420d263538a55959e5ee4058655"
+    },
+    {
+      "file": "certification/public-launch-002/17_MAC_ARCHITECTURE_REGISTER.json",
+      "sha256": "42ddd6f15803aaaaa9c21c974753011d1770bb55880caa1202ec7cc9ee0d95c5"
+    },
+    {
+      "file": "certification/public-launch-002/18_INSTALLATION_REGISTER.json",
+      "sha256": "f60aed4fc193db9024e551c1a4031a47b0f8bd824c7f2670b2bd68c19b967f39"
+    },
+    {
+      "file": "certification/public-launch-002/19_FIRST_RUN_REGISTER.json",
+      "sha256": "a1e9173a8011437eae2dc58df587cdef1d7645f43b9ac00feeb1077101aa09d4"
+    },
+    {
+      "file": "certification/public-launch-002/20_UPDATE_REGISTER.json",
+      "sha256": "71a933d82ddeba41b6e858216afd40306e45058d8ac0eb2aac7b747550177b32"
+    },
+    {
+      "file": "certification/public-launch-002/21_ROLLBACK_REGISTER.json",
+      "sha256": "1e7cd5c6d34f2b5b578166b831a94740ed6c300e3f88fd7560167680e12b552c"
+    },
+    {
+      "file": "certification/public-launch-002/22_PUBLIC_HOST_REGISTER.json",
+      "sha256": "5328339c25c530d33d8710eb3307f3629f1ddbc51d6d9b6575e4dbf40f32fb16"
+    },
+    {
+      "file": "certification/public-launch-002/23_UPDATE_FEED_REGISTER.json",
+      "sha256": "498b63714a3dcefae876d0d463cdc463941ea912463596eded34bd0e92345202"
+    },
+    {
+      "file": "certification/public-launch-002/24_PRIVACY_REGISTER.json",
+      "sha256": "466839c28112605c6825514e0cf08278aea749fd8c8b99ca2298d286929c218a"
+    },
+    {
+      "file": "certification/public-launch-002/25_SUPPORT_REGISTER.json",
+      "sha256": "7ad3f4d852e08d3559af089e36c8b36681daed6018af34df5cd0e526db8e2a89"
+    },
+    {
+      "file": "certification/public-launch-002/26_REGULATORY_REGISTER.json",
+      "sha256": "d8e8924b7dd3cc8d141d6bd5ae758b22d87ace9c4e86253e2852b930cbd2e2dd"
+    },
+    {
+      "file": "certification/public-launch-002/27_INTENDED_USE_REGISTER.json",
+      "sha256": "cd1f61d11f5df81591e3c7f23de91b72b8a6bdd8004ea36bfdf574eb016d1503"
+    },
+    {
+      "file": "certification/public-launch-002/28_AB_DIVERGENCE_REGISTER.json",
+      "sha256": "004f2d322f9621d103aa663d7063ea0554b1786917436932f422e0d2d560a96d"
+    },
+    {
+      "file": "certification/public-launch-002/29_NPB023_CORRECTION_REGISTER.json",
+      "sha256": "5fdc8588c346dba0558b1f9bd1cf0ec4aa4f288a118349aa5cf2fb548761124e"
+    },
+    {
+      "file": "certification/public-launch-002/30_EXTERNAL_USER_REGISTER.json",
+      "sha256": "0c368c04dfd1cc56b709c846f979bb186b44541652b5fca784048a56f20cbd44"
+    },
+    {
+      "file": "certification/public-launch-002/31_RELEASE_ARTIFACT_REGISTER.json",
+      "sha256": "8c3f85a56bde387d4937a12eb5f4dfa31b9fca310e8e0e7e2185b5259357fa34"
+    },
+    {
+      "file": "certification/public-launch-002/32_FINAL_GATE.json",
+      "sha256": "4a3324449b5e339bc64bd40ef16a2fded7c4bb3ebc4a75f27a7335bb9c92d226"
+    }
+  ]
+}

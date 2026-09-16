@@ -22,6 +22,11 @@ import { saveAiConfig } from './aiConfigStore';
 import { ANTHROPIC_CREDENTIAL_ID } from './providerManager';
 import { engineManager } from './engineManager';
 import { aiEngine } from './engineInstance';
+import { tenantAiPreferenceStore as prefSingleton } from './tenantAiPreferenceInstance';
+import {
+  announceTenantRecovery,
+  resetTenantRecoveryListenersForTests,
+} from '../tenancy/tenantRecoveryHub';
 
 beforeEach(async () => {
   mockState.userDataDir = await fs.mkdtemp(join(tmpdir(), 'np-em-'));
@@ -31,6 +36,12 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
+  prefSingleton.bindScope(() => null);
+  resetTenantRecoveryListenersForTests();
+  // The preference singleton resolves its file path at import time (before the
+  // mocked userData dir exists), so setMine writes into the cwd — same cleanup
+  // the product journey performs.
+  await fs.rm('tenant-ai-preference.json', { force: true }).catch(() => undefined);
   await fs.rm(mockState.userDataDir, { recursive: true, force: true }).catch(() => undefined);
 });
 
@@ -55,6 +66,33 @@ describe('EngineManager', () => {
     await engineManager.reconfigure();
     expect(engineManager.status().provider).toBe('ollama');
     expect(engineManager.status().configured).toBe(true); // ollama needs no key
+  });
+
+  /**
+   * P13C ROUND 39 — GATE 26. The live-restart race, reproduced: the engine's
+   * boot reconfigure ran inside the tenant resolver's refused window (6ms
+   * before RECOVERED in the app.log evidence), so the D-1 clamp saw no
+   * preference row, the local candidate was dropped, and a local-only user
+   * with a Connected Ollama got "No AI model" for the entire session. The
+   * recovery announcement is the missing trigger — and this test proves the
+   * ANNOUNCEMENT rebuilds the router, not some later manual reconfigure.
+   */
+  it('round 39 — a tenant-recovery announcement rebuilds the router with the recovered preference', async () => {
+    // Boot inside the refused window: no scope resolves, no preference visible.
+    prefSingleton.bindScope(() => null);
+    await engineManager.init();
+    expect(engineManager.status().configured).toBe(false); // parked needs-setup
+
+    // Resolution recovers: the row onboarding wrote becomes readable.
+    prefSingleton.bindScope(() => ({ tenantId: 'org-default', workspaceId: 'workspace-default' }));
+    await prefSingleton.setMine('local_only', 1_700_000_000_000);
+    announceTenantRecovery();
+
+    // The listener fires reconfigure asynchronously — wait for the swap itself.
+    await vi.waitFor(() => {
+      expect(engineManager.status().configured).toBe(true);
+    });
+    expect(aiEngine.isConfigured()).toBe(true); // the local candidate entered the plan
   });
 
   it('serialises concurrent reconfigure calls', async () => {

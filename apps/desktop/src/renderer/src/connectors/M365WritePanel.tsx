@@ -8,9 +8,24 @@
  */
 import { useState } from 'react';
 import type { ConnectorSyncSnapshot } from '@neuropause/shared';
+import { BrainReviewCard, type BrainReview } from './BrainReviewCard';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
-import { relativeTime } from './connectorLib';
+import {
+  classifyWriteOutcome,
+  EXECUTING_VIEW,
+  type M365OutcomeTone,
+  type M365OutcomeView,
+} from './m365Outcome';
+
+/** Honest tone → color mapping. UNKNOWN (warn) is deliberately distinct from FAILED/DENIED (error). */
+const TONE_CLASS: Record<M365OutcomeTone, string> = {
+  ok: 'text-sysgreen',
+  warn: 'text-sysorange',
+  error: 'text-sysred',
+  info: 'text-sysblue',
+  pending: 'text-faint',
+};
 
 function Title({ children }: { children: string }): JSX.Element {
   return <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-faint">{children}</div>;
@@ -29,25 +44,45 @@ export function M365WritePanel({
   connectorId,
   accountId,
   snaps,
+  proposal,
+  brainReview,
+  correlationId,
 }: {
   connectorId: string;
   accountId: string | null;
   snaps: ConnectorSyncSnapshot[];
+  /**
+   * Wave-2 Slice-7 — an optional NeuroPause-validated action to REVIEW. The AI (as the human's representative)
+   * proposes which capability + concrete parameters; this prefills the compose fields so the human sees the exact
+   * recipient/subject/body that would be sent. NeuroPause proposes — it never confirms and never sends; the human's
+   * explicit "Confirm send" remains the sole consent, and the certified governed IPC path is unchanged.
+   */
+  proposal?: { to?: string; subject?: string; body?: string };
+  /** FG-9 — a certified L6 proposal's eight review fields (display-only), rendered VERBATIM above the compose form. */
+  brainReview?: BrainReview | null;
+  /**
+   * FG-14 — the ORIGINATING CAUSAL EPISODE identity (F-P40), forwarded to the governed execute
+   * request as EVIDENCE LINEAGE. It does not change what is sent, does not gate the confirm, and
+   * carries no authority: the human's explicit "Confirm send" remains the sole consent.
+   */
+  correlationId?: string;
 }): JSX.Element {
   const snap = snaps.find((s) => s.accountId === accountId) ?? snaps[0];
-  const [to, setTo] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
+  const [to, setTo] = useState(proposal?.to ?? '');
+  const [subject, setSubject] = useState(proposal?.subject ?? '');
+  const [body, setBody] = useState(proposal?.body ?? '');
   const [instruction, setInstruction] = useState('');
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<M365OutcomeView | null>(null);
 
   const canWrite = accountId !== null;
 
   async function draft(): Promise<void> {
     if (!accountId) return;
     setBusy(true);
+    setOutcome(null);
     setStatus('Drafting…');
     try {
       const r = await ipc.connectors.m365Draft(connectorId, accountId, 'email', instruction || subject || 'Draft a short email', '');
@@ -62,20 +97,34 @@ export function M365WritePanel({
 
   async function confirmSend(): Promise<void> {
     if (!accountId) return;
+    // NP-FG-001 (M6) — the confirmation instant, captured ONCE at the qualifying "Confirm send"
+    // gesture (the reveal click is not consent). Evidence only — never authorization or consent.
+    const confirmedAt = new Date().toISOString();
     setBusy(true);
     setConfirming(false);
-    setStatus('Sending…');
+    setStatus(null);
+    setOutcome(EXECUTING_VIEW);
     try {
       const recipients = to.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
-      const r = await ipc.connectors.m365Execute(connectorId, accountId, 'mail.send', { to: recipients, subject, body }, true);
-      setStatus(r.ok ? `Sent: ${r.message ?? 'ok'}` : `Not sent: ${r.message ?? 'failed'}`);
-      if (r.ok) {
+      const r = await ipc.connectors.m365Execute(connectorId, accountId, 'mail.send', { to: recipients, subject, body }, true, correlationId, confirmedAt);
+      const view = classifyWriteOutcome(r);
+      setOutcome(view);
+      // Clear the compose fields only on an honest provider acknowledgement — never on UNKNOWN/HELD/DENIED,
+      // so the operator keeps the exact content to reconcile or retry deliberately.
+      if (view.state === 'ACKNOWLEDGED') {
         setTo('');
         setSubject('');
         setBody('');
       }
     } catch {
-      setStatus('Send failed');
+      // A thrown IPC/transport error is an ambiguous outcome, NOT a proven no-effect. Treat as UNKNOWN.
+      setOutcome({
+        state: 'OUTCOME_UNKNOWN',
+        label: 'Outcome unknown',
+        detail: 'The request could not be confirmed (transport error). Reconcile the external state before any retry.',
+        tone: 'warn',
+        reconciliationRequired: true,
+      });
     } finally {
       setBusy(false);
     }
@@ -83,8 +132,6 @@ export function M365WritePanel({
 
   const m = snap
     ? {
-        last: snap.lastWriteAt ? relativeTime(snap.lastWriteAt) : 'never',
-        writes: String(snap.writeCount ?? 0),
         failed: String(snap.failedWrites ?? 0),
         pending: String(snap.pendingWrites ?? 0),
         retry: String(snap.writeRetryDepth ?? 0),
@@ -92,15 +139,29 @@ export function M365WritePanel({
         quota: snap.apiQuotaRemaining != null ? String(snap.apiQuotaRemaining) : '—',
       }
     : null;
+  // S19 (FG-7) — the TRUTHFUL five write states, each derived from the S34a
+  // ActionRecord (via the snapshot join). Retires the disjoint "Writes/Last write"
+  // counter. Absent (older snapshot / no writes) → honest absence, never a fake 0.
+  const ws = snap?.writeStates ?? null;
 
   return (
     <section className="mb-6">
       <Title>Microsoft 365 writes</Title>
 
+      {/* S19 — the five truthful states, each provably derived from the ActionRecord. */}
+      {ws ? (
+        <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+          <Metric label="Requested" value={String(ws.requested)} />
+          <Metric label="Authorized" value={String(ws.authorized)} />
+          <Metric label="Executed" value={String(ws.executed)} />
+          <Metric label="Provider acknowledged" value={String(ws.providerAcknowledged)} />
+          <Metric label="Externally observed" value={String(ws.externallyObserved)} />
+        </div>
+      ) : (
+        <div className="mb-3 text-2xs text-faint">No governed writes yet.</div>
+      )}
       {m && (
         <div className="mb-3 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-          <Metric label="Last write" value={m.last} />
-          <Metric label="Writes" value={m.writes} />
           <Metric label="Failed" value={m.failed} />
           <Metric label="Pending" value={m.pending} />
           <Metric label="Retry queue" value={m.retry} />
@@ -110,6 +171,16 @@ export function M365WritePanel({
       )}
 
       <div className="rounded-xl border border-[var(--hairline)] p-3">
+        {proposal && (
+          <div role="note" className="mb-2 rounded-lg border border-sysblue/30 px-3 py-1.5 text-2xs text-sysblue">
+            Proposed by NeuroPause — review the exact recipient, subject and body below, then confirm. NeuroPause
+            proposes; it never sends without your confirmation.
+          </div>
+        )}
+        {/* FG-9 · S5.4 Phase 0 — the certified L6 proposal's eight review fields, rendered VERBATIM (display-only). */}
+        <div className="mb-2">
+          <BrainReviewCard review={brainReview} />
+        </div>
         <div className="mb-2 text-2xs text-faint">
           Compose an email. AI can draft the body — it never sends; every send needs your explicit confirmation.
         </div>
@@ -172,7 +243,18 @@ export function M365WritePanel({
               Send…
             </button>
           )}
-          {status && <div className={cn('text-2xs', status.startsWith('Not sent') || status.endsWith('failed') ? 'text-sysorange' : 'text-faint')}>{status}</div>}
+          {status && <div className={cn('text-2xs', status.endsWith('failed') ? 'text-sysorange' : 'text-faint')}>{status}</div>}
+          {outcome && (
+            <div role="status" className="rounded-lg [background:var(--fill-2)] px-3 py-2">
+              <div className={cn('text-2xs font-semibold', TONE_CLASS[outcome.tone])}>{outcome.label}</div>
+              <div className="mt-0.5 text-2xs text-faint">{outcome.detail}</div>
+              {outcome.reconciliationRequired && (
+                <div className="mt-1 text-2xs text-sysorange">
+                  Reconciliation required — check the external state; do not blindly retry.
+                </div>
+              )}
+            </div>
+          )}
           {!canWrite && <div className="text-2xs text-faint">Connect a Microsoft account to enable writes.</div>}
         </div>
       </div>

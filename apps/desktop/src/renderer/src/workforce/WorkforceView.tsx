@@ -50,7 +50,7 @@ function WorkforceInner({ initialTab }: { initialTab: WorkforceTab }): JSX.Eleme
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">AI Workforce</h1>
             <p className="mt-1 text-md text-muted">
-              Nine governed AI workers that propose, await your approval, and act under policy — with full evidence and audit.
+              Governed AI workers that propose, await your approval, and act under policy — with full evidence and audit.
             </p>
           </div>
           <div className="flex items-center gap-3">

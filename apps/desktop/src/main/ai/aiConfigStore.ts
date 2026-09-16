@@ -48,7 +48,7 @@ declareStoreScope({
     'administrator redirect every other tenant’s records off the device — the Round 7 finding.',
 });
 
-export type AiProviderId = 'claude' | 'ollama';
+export type AiProviderId = 'claude' | 'ollama' | 'openai';
 
 /** The persisted AI mode. Null = "never chosen" — see `resolveAiMode`. */
 export type StoredAiMode = 'private_first' | 'local_only' | 'external' | null;
@@ -95,7 +95,10 @@ function configPath(): string {
 
 /** Normalise unknown/partial input to a valid AiConfig (unset → null). */
 function coerce(raw: Partial<AiConfig> | null | undefined): AiConfig {
-  const provider = raw?.provider === 'claude' || raw?.provider === 'ollama' ? raw.provider : null;
+  const provider =
+    raw?.provider === 'claude' || raw?.provider === 'ollama' || raw?.provider === 'openai'
+      ? raw.provider
+      : null;
   const mode =
     raw?.mode === 'private_first' || raw?.mode === 'local_only' || raw?.mode === 'external'
       ? raw.mode
@@ -122,7 +125,11 @@ function coerce(raw: Partial<AiConfig> | null | undefined): AiConfig {
  */
 export function resolveAiMode(cfg: AiConfig, effectiveProvider: AiProviderId): AiConfig['mode'] & {} {
   if (cfg.mode) return cfg.mode;
-  return effectiveProvider === 'claude' ? 'external' : 'private_first';
+  // Any CLOUD provider selection means the user's own setup already routes
+  // externally — 'openai' (round 34) takes the same branch 'claude' does.
+  return effectiveProvider === 'claude' || effectiveProvider === 'openai'
+    ? 'external'
+    : 'private_first';
 }
 
 /** Load the persisted config, falling back to safe defaults on any error. */

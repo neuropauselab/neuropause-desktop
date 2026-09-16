@@ -52,6 +52,7 @@ import type { EnterpriseRecordStore } from '../enterprise/framework/enterpriseRe
 import type { ProvenanceRecord, ProvenanceStore } from '../dataPlane/importer';
 import { createLogger } from '../logger';
 import { IdentityStore } from './identityStore';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 const log = createLogger('identity');
 
@@ -147,6 +148,9 @@ export interface ServiceAuthorizer {
 
 export function initIdentity(deps: IdentitySubsystemDeps): IdentitySubsystem {
   const store = new IdentityStore(join(deps.userDataDir, 'identity.json'), deps.now);
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('identity-store', () => store.flush());
 
   const descriptorFor = (moduleId: string): EnterpriseModuleDescriptor | null =>
     deps.modules().find((m) => m.id === moduleId) ?? null;
@@ -280,6 +284,8 @@ export function initIdentity(deps: IdentitySubsystemDeps): IdentitySubsystem {
       recordId,
       moduleId: match.destinationModuleId,
       planId: `identity_${match.id}`,
+      // NP-010 §2: identity adoption matches records, it does not verify them.
+      sourceTrust: 'unverified-source',
       sourceFile: `${match.provider} (${match.providerEntityType})`,
       sourceTable: match.providerEntityType,
       sourceRow: 1,

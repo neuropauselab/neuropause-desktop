@@ -27,6 +27,7 @@ import {
   glAccountFromRecord,
   glJournalEntryFromRecord,
   glStatement,
+  glTrialBalance,
   validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import {
@@ -43,13 +44,19 @@ export const FINANCIAL_RATIOS_DESCRIPTOR: EnterpriseModuleDescriptor = {
   plural: 'Financial Ratios',
   icon: 'percent',
   description:
-    'Immutable financial ratios derived from real posted balances — margins, returns, leverage; undefined ratios are null, not fabricated.',
+    'Immutable financial snapshot from real posted balances — the trial balance (debits vs credits, balanced check), statement figures, and margins/returns/leverage; an unbalanced trial balance is flagged, and undefined ratios are null, not fabricated.',
   group: 'Finance',
   titleField: 'reportNumber',
   permissions: { read: 'operations:read', write: 'operations:manage' },
   fields: [
     { key: 'reportNumber', label: 'Register #', type: 'text', readOnly: true },
     { key: 'asOfDate', label: 'As Of', type: 'date', format: 'date', placeholder: 'Defaults to today' },
+    // S143 — the Trial Balance: the foundational accounting control (total debits vs total credits over
+    // posted entries, and whether the ledger balances). Computed from the certified `glTrialBalance`
+    // builder over the SAME posted journal the statement reads — never typed in.
+    { key: 'totalDebits', label: 'Total Debits', type: 'number', readOnly: true, format: 'currency', default: 0 },
+    { key: 'totalCredits', label: 'Total Credits', type: 'number', readOnly: true, format: 'currency', default: 0 },
+    { key: 'trialBalanceStatus', label: 'Trial Balance', type: 'text', readOnly: true, placeholder: 'Balanced / UNBALANCED' },
     { key: 'revenue', label: 'Revenue', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'expenses', label: 'Expenses', type: 'number', readOnly: true, format: 'currency', default: 0 },
     { key: 'netIncome', label: 'Net Income', type: 'number', readOnly: true, format: 'currency', default: 0 },
@@ -106,11 +113,15 @@ export function createFinancialRatiosModule(
         const accounts = accountStore.list().map(glAccountFromRecord);
         const entries = journalStore.list().map(glJournalEntryFromRecord).filter((e) => e.posted);
         const statement = glStatement(accounts, entries);
+        const trialBalance = glTrialBalance(entries);
         const ratios = deriveFinancialRatios(statement);
         const priorCount = store.list().filter((r) => str(r.fields.asOfDate) === asOfDate).length;
 
         result.values.asOfDate = asOfDate;
         result.values.reportNumber = `FR-${asOfDate}-${priorCount + 1}`;
+        result.values.totalDebits = trialBalance.totalDebits;
+        result.values.totalCredits = trialBalance.totalCredits;
+        result.values.trialBalanceStatus = trialBalance.balanced ? 'Balanced' : 'UNBALANCED';
         result.values.revenue = statement.revenue;
         result.values.expenses = statement.expenses;
         result.values.netIncome = statement.netIncome;
@@ -136,21 +147,26 @@ export function createFinancialRatiosModule(
         const f = record.fields;
         const margin = f.netProfitMargin === null || f.netProfitMargin === undefined ? null : Number(f.netProfitMargin);
         const de = f.debtToEquity === null || f.debtToEquity === undefined ? null : Number(f.debtToEquity);
+        // S143 — an UNBALANCED trial balance is a GL integrity alarm (posted debits ≠ credits) and outranks
+        // leverage as the register's risk signal; a balanced ledger is the normal accounting invariant.
+        const unbalanced = str(f.trialBalanceStatus) === 'UNBALANCED';
         return {
           moduleId: FINANCIAL_RATIOS_MODULE_ID,
           recordId: record.id,
-          headline: `${str(f.reportNumber)} · net margin ${show(margin)}% · D/E ${show(de)}`,
+          headline: `${str(f.reportNumber)} · trial balance ${str(f.trialBalanceStatus) || 'n/a'} · net margin ${show(margin)}% · D/E ${show(de)}`,
           summary:
-            `As of ${str(f.asOfDate)}: revenue ${money(Number(f.revenue ?? 0))}, net income ${money(Number(f.netIncome ?? 0))}. ` +
+            `As of ${str(f.asOfDate)}: trial balance — debits ${money(Number(f.totalDebits ?? 0))} vs credits ${money(Number(f.totalCredits ?? 0))} (${str(f.trialBalanceStatus) || 'n/a'}). ` +
+            `Revenue ${money(Number(f.revenue ?? 0))}, net income ${money(Number(f.netIncome ?? 0))}. ` +
             `Net margin ${show(margin)}%, ROA ${show(f.returnOnAssets === null ? null : Number(f.returnOnAssets ?? 0))}%, ` +
             `ROE ${show(f.returnOnEquity === null ? null : Number(f.returnOnEquity ?? 0))}%, debt/equity ${show(de)}. ${str(f.note)}.`,
-          risk: de !== null && de > 2 ? 'medium' : 'low',
-          riskReason:
-            de !== null && de > 2
+          risk: unbalanced ? 'high' : de !== null && de > 2 ? 'medium' : 'low',
+          riskReason: unbalanced
+            ? 'Trial balance does not balance — posted debits ≠ credits. Investigate the ledger before relying on any statement figure.'
+            : de !== null && de > 2
               ? 'Leverage above 2× equity — watch solvency and interest cover.'
-              : 'Ratios derive from posted balances; a register is a frozen point on the trend.',
+              : 'Trial balance balances and ratios derive from posted balances; a register is a frozen point on the trend.',
           executiveExplanation:
-            'Financial ratios are computed from the real posted ledger, not typed in; undefined ratios are shown as n/a rather than a misleading zero.',
+            'The trial balance and financial figures are computed from the real posted ledger, not typed in; an unbalanced trial balance is flagged rather than hidden, and undefined ratios are shown as n/a rather than a misleading zero.',
           grounded: false,
           model: 'none',
         };

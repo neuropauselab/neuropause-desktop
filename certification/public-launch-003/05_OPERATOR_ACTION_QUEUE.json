@@ -1,0 +1,162 @@
+{
+  "ARTIFACT": "05_OPERATOR_ACTION_QUEUE",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:51.847Z",
+  "branch_head": "6175f3633925b0e7088f85b877563b71d7a3bbc0",
+  "actions": [
+    {
+      "action_id": "A-P0-01",
+      "priority": "P0",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "Renew neuropause033.com (expires 2026-09-15T08:07:40Z)",
+      "expected_evidence": "whois expiry ≥ 2027",
+      "verifier": "whois",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P0-02",
+      "priority": "P0",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "Store notarytool keychain profile np-notary on this Mac (no secret in chat)",
+      "expected_evidence": "profile exists",
+      "verifier": "xcrun notarytool history --keychain-profile np-notary",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P0-03",
+      "priority": "P0",
+      "owner": "session (after A-P0-02)",
+      "dependency": "A-P0-02",
+      "exact_action": "notarytool submit --wait + stapler staple on the exact dmg/zip; re-run verify-mac-artifact",
+      "expected_evidence": "spctl accepted; stapler validate ok; new digests registered",
+      "verifier": "verify-mac-artifact.cjs",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P0-04",
+      "priority": "P0",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "Obtain Windows code-signing certificate (Azure Artifact Signing preferred); configure CI",
+      "expected_evidence": "signed installer",
+      "verifier": "PE cert table > 0; signtool verify",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P1-01",
+      "priority": "P1",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "Restore api origin/tunnel; add apex/www DNS",
+      "expected_evidence": "/health 200; apex resolves",
+      "verifier": "curl/dig",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P1-02",
+      "priority": "P1",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "Configure production AI provider in backend env (AI_GATEWAY_PROVIDER/MODEL + key)",
+      "expected_evidence": "/ai/status configured:true",
+      "verifier": "curl",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P1-03",
+      "priority": "P1",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "Choose mail provider; confirm support/security/privacy mailboxes",
+      "expected_evidence": "staging reset mail received",
+      "verifier": "operator confirmation",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P1-04",
+      "priority": "P1",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "Set ALERT_WEBHOOK_URL + metrics scraping; define retention",
+      "expected_evidence": "test alert delivered",
+      "verifier": "operator confirmation",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P2-01",
+      "priority": "P2",
+      "owner": "operator",
+      "dependency": null,
+      "exact_action": "git push -u origin pilot/public-launch (no tag)",
+      "expected_evidence": "branch on origin; CI runs",
+      "verifier": "git ls-remote; gh run list",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P2-02",
+      "priority": "P2",
+      "owner": "release owner",
+      "dependency": null,
+      "exact_action": "Decide RELEASE_VERSION",
+      "expected_evidence": "decision record",
+      "verifier": "version coherence check",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P2-03",
+      "priority": "P2",
+      "owner": "release owner",
+      "dependency": null,
+      "exact_action": "Decide dependency findings (accept or authorize fixes)",
+      "expected_evidence": "decision record",
+      "verifier": "npm audit",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P2-04",
+      "priority": "P2",
+      "owner": "session (after A-P0-03, A-P0-04)",
+      "dependency": "A-P0-03,A-P0-04",
+      "exact_action": "Clean-machine install + update transition + rollback exercise on disposable VMs",
+      "expected_evidence": "reports with environment ids",
+      "verifier": "packaged-smoke / journey scripts",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P3-01",
+      "priority": "P3",
+      "owner": "human authority",
+      "dependency": null,
+      "exact_action": "Intended-use form + regulatory review",
+      "expected_evidence": "signed records",
+      "verifier": "presence in custody",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P3-02",
+      "priority": "P3",
+      "owner": "legal",
+      "dependency": null,
+      "exact_action": "Privacy/terms review of docs/public-launch/PRIVACY.md facts",
+      "expected_evidence": "reviewed policy",
+      "verifier": "presence in custody",
+      "status": "OPEN"
+    },
+    {
+      "action_id": "A-P3-03",
+      "priority": "P3",
+      "owner": "human authority",
+      "dependency": "all P0–P2",
+      "exact_action": "PUBLIC_RELEASE_AUTHORIZATION decision",
+      "expected_evidence": "signed decision file",
+      "verifier": "verify command",
+      "status": "OPEN"
+    }
+  ],
+  "note": "Human Authority is never assigned to Claude. Session-owned actions run only after their dependency is satisfied by a human/infrastructure step."
+}

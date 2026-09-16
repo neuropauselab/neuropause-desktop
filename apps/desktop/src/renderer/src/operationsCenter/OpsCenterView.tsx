@@ -1,6 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { cn } from '@renderer/lib/cn';
+import { ipc } from '@renderer/lib/ipc';
 import { Icon } from '@renderer/components/ui/Icon';
+import { StatusBadge } from '@renderer/operations/primitives';
 import { SegmentedTabs, type SegmentedTabItem } from '@renderer/components/ui/pillTabs';
 import { OpsCenterProvider, useOpsCenter } from './OpsCenterProvider';
 import { headline, relativeTime, sortedRecommendations, type OpsCenterTab } from './opsModel';
@@ -13,17 +15,33 @@ import { DiagnosticsPanel, SearchPanel, TimelinePanel } from './panels/SystemPan
 import { EopsPlatformTab } from '../operationsPlatform/EopsPlatformTab';
 
 /** The Operations Center, mounted with its live intelligence provider. */
-export function OpsCenterRoot(): JSX.Element {
+export function OpsCenterRoot({ onNavigate }: { onNavigate?: (section: string) => void } = {}): JSX.Element {
   return (
     <OpsCenterProvider>
-      <OpsCenterInner />
+      <OpsCenterInner onNavigate={onNavigate} />
     </OpsCenterProvider>
   );
 }
 
-function OpsCenterInner(): JSX.Element {
+function OpsCenterInner({ onNavigate }: { onNavigate?: (section: string) => void }): JSX.Element {
   const { report, loading, error, refreshing, loadedAt, nowMs, refresh } = useOpsCenter();
   const [tab, setTab] = useState<OpsCenterTab>('home');
+
+  // S141 — honest "needs attention" count for the primary Operations nav, reused from the SAME governed
+  // QueryOperationalExceptions read (S139). `number` = a real count; `'unavailable'` = the read failed (NEVER
+  // a fabricated 0); `null` = not yet loaded. Read-only, server-resolved tenant, RBAC operations:read.
+  const [exceptions, setExceptions] = useState<number | 'unavailable' | null>(null);
+  const loadExceptions = useCallback(async () => {
+    try {
+      const resp = await ipc.platform.operationalExceptions({ limit: 1 });
+      if (!resp.ok) { setExceptions('unavailable'); return; }
+      const total = (((resp.data ?? {}) as { counts?: { total?: number } }).counts?.total);
+      setExceptions(typeof total === 'number' ? total : 'unavailable');
+    } catch {
+      setExceptions('unavailable');
+    }
+  }, []);
+  useEffect(() => { void loadExceptions(); }, [loadExceptions]);
 
   const tabs = useMemo<SegmentedTabItem<OpsCenterTab>[]>(() => {
     const h = report ? headline(report) : null;
@@ -44,9 +62,11 @@ function OpsCenterInner(): JSX.Element {
       { id: 'search', label: 'Search', icon: 'filter' },
       { id: 'diagnostics', label: 'Diagnostics', icon: 'activity' },
       // Phase 6 Stage 9 — services · SLA · readiness · incidents · continuity.
-      { id: 'platform', label: 'Platform', icon: 'server' },
+      // S141 — the Platform tab hosts the S139 exceptions queue; badge its live "needs attention" count
+      // (only when >0; 0 or unavailable ⇒ no numeric badge — never a fabricated 0).
+      { id: 'platform', label: 'Platform', icon: 'server', count: typeof exceptions === 'number' && exceptions > 0 ? exceptions : undefined },
     ];
-  }, [report]);
+  }, [report, exceptions]);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -59,6 +79,20 @@ function OpsCenterInner(): JSX.Element {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            {/* S141 — honest "needs attention" pill on the primary Operations nav: a real count when the
+                governed read succeeds, an explicit "unavailable" when it fails (NEVER a fabricated 0);
+                clicking it opens the Platform tab where the S139 exceptions queue lives. */}
+            {exceptions !== null && (
+              exceptions === 'unavailable' ? (
+                <button type="button" onClick={() => setTab('platform')} aria-label="Needs attention: unavailable">
+                  <StatusBadge tone="gray" label="Needs attention: unavailable" />
+                </button>
+              ) : (
+                <button type="button" onClick={() => setTab('platform')} aria-label={`Needs attention: ${exceptions}`}>
+                  <StatusBadge tone={exceptions > 0 ? 'red' : 'green'} label={`Needs attention: ${exceptions}`} />
+                </button>
+              )
+            )}
             <span className="inline-flex items-center gap-1.5 text-xs font-medium text-faint">
               <span className="relative flex h-2 w-2">
                 <span className={cn('absolute inline-flex h-full w-full rounded-full', report ? 'animate-ping bg-sysgreen opacity-60' : '')} />
@@ -104,7 +138,7 @@ function OpsCenterInner(): JSX.Element {
         )}
         {/* Phase 6 Stage 9 — the Platform tab loads its own eops:* reads and
             renders even when the P7 report is unavailable (honest isolation). */}
-        {tab === 'platform' && <EopsPlatformTab />}
+        {tab === 'platform' && <EopsPlatformTab onNavigate={onNavigate} />}
       </div>
     </div>
   );

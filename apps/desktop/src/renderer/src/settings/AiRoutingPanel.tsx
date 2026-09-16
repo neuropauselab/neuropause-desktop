@@ -8,11 +8,19 @@
  * counter. Percentages appear only after the first measured run.
  */
 import { useCallback, useEffect, useState } from 'react';
-import type { AiConfigDto, AiMode, AiRoutingStatusView, AiRoutingUsage } from '@neuropause/shared';
+import type {
+  AiConfigDto,
+  AiMode,
+  AiRoutingStatusView,
+  AiRoutingUsage,
+  TenantAiMode,
+  TenantAiPreferenceView,
+} from '@neuropause/shared';
 import {
   AI_MODES,
   AI_MODE_DESCRIPTIONS,
   AI_MODE_LABELS,
+  TENANT_AI_MODES,
   PROCESSING_LOCATION_DESCRIPTIONS,
   PROCESSING_LOCATION_LABELS,
 } from '@neuropause/shared';
@@ -51,6 +59,7 @@ export function AiRoutingPanel(): JSX.Element {
    * which is what D-6 exists to stop.
    */
   const [error, setError] = useState<string | null>(null);
+  const [pref, setPref] = useState<TenantAiPreferenceView | null>(null);
 
   const describe = (err: unknown): string =>
     err instanceof Error && err.message ? err.message : 'The request failed.';
@@ -62,6 +71,14 @@ export function AiRoutingPanel(): JSX.Element {
     } catch (err) {
       log.warn('Routing status unavailable', err);
       setError(describe(err));
+    }
+    // The organization preference is a separate authority (org:read) and its
+    // absence must not blank the platform surface above — degrade to hidden.
+    try {
+      setPref(await ipc.aiConfig.preference());
+    } catch (err) {
+      log.warn('Tenant AI preference unavailable', err);
+      setPref(null);
     }
   }, []);
 
@@ -92,6 +109,22 @@ export function AiRoutingPanel(): JSX.Element {
       await refresh();
     } catch (err) {
       log.warn('Could not set consent', err);
+      setError(describe(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setPreference = async (mode: TenantAiMode): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      setPref(await ipc.aiConfig.setPreference(mode));
+      // The preference now clamps live routing (round 34), so the routes and
+      // plan below must re-render from the same change.
+      await refresh();
+    } catch (err) {
+      log.warn('Could not set organization AI preference', err);
       setError(describe(err));
     } finally {
       setBusy(false);
@@ -152,6 +185,46 @@ export function AiRoutingPanel(): JSX.Element {
           </p>
         )}
       </section>
+
+      {/* ── Organization preference (round 34: finally shown after first-run) ── */}
+      {pref !== null && (
+        <section aria-label="Organization AI preference">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-faint">
+            Organization preference
+          </h3>
+          <p className="mb-1.5 text-2xs leading-relaxed text-faint">
+            Your organization&apos;s choice from setup. It can only narrow the platform mode above — the
+            effective mode is the stricter of the two, and it is what requests actually use.
+          </p>
+          <div className="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Organization AI preference">
+            {TENANT_AI_MODES.map((mode: TenantAiMode) => (
+              <label
+                key={mode}
+                className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-1.5 text-2xs transition ${
+                  pref.tenantMode === mode ? 'border-accent/60 bg-accent/10' : 'border-[var(--hairline)] hover:bg-white/5'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="tenant-ai-preference"
+                  checked={pref.tenantMode === mode}
+                  disabled={busy}
+                  onChange={() => void setPreference(mode)}
+                />
+                {AI_MODE_LABELS[mode]}
+              </label>
+            ))}
+            <span className="text-2xs text-muted">
+              Effective mode: <strong>{AI_MODE_LABELS[pref.effectiveMode]}</strong>
+            </span>
+          </div>
+          {pref.restrictedByPlatform && (
+            <p role="status" className="mt-1.5 text-2xs text-amber-400">
+              The platform mode above currently restricts this preference — the stricter setting wins.
+            </p>
+          )}
+        </section>
+      )}
 
       {/* ── Routes ── */}
       <section aria-label="AI routes">

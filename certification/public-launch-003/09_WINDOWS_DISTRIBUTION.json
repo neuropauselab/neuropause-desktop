@@ -1,0 +1,30 @@
+{
+  "ARTIFACT": "09_WINDOWS_DISTRIBUTION",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:51.847Z",
+  "branch_head": "6175f3633925b0e7088f85b877563b71d7a3bbc0",
+  "artifacts": [
+    "NeuroPause-Setup.exe",
+    "NeuroPause 1.0.0-rc.30.exe",
+    "NeuroPause-1.0.0-rc.30-win.zip"
+  ],
+  "authenticode": "NeuroPause-Setup.exe bytes=111896057 machine=0x14c authenticode_cert_table_size=0 UNSIGNED; NeuroPause 1.0.0-rc.30.exe bytes=111592872 authenticode_cert_table_size=0 UNSIGNED",
+  "certificate": "ABSENT",
+  "certificate_subject": "ABSENT",
+  "chain": "ABSENT",
+  "timestamp": "ABSENT",
+  "signature_validity": "NOT_APPLICABLE (unsigned)",
+  "smartscreen": "unknown publisher warning expected",
+  "ci_signing": "WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD (absent) → unsigned build path",
+  "azure_artifact_signing": "ABSENT (no configuration in workflow)",
+  "classification": "UNSIGNED",
+  "human_requirements": [
+    "code-signing certificate (Azure Artifact Signing or CA-issued OV/EV) — never a self-signed cert",
+    "CI secret configuration (names only recorded)",
+    "timestamp server in signing config",
+    "win.publisherName in electron-builder.yml matching the certificate subject"
+  ]
+}

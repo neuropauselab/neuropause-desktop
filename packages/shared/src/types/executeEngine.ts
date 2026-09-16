@@ -99,6 +99,20 @@ export interface ExecutionSession {
   result: unknown | null;
   /** P8.3 — the chain id this session belongs to (the originating job/goal id), or null. */
   correlationId?: string | null;
+  /**
+   * P13C I-A.3 Step 5 — durable decision-consumption identity.
+   *
+   * Present ONLY for a governed (BoundDecisionClaim-bearing) execution. `decisionId`
+   * is the durable single-use key: the governance decision (`verdict.requestId`) is
+   * admitted to at most one consequential execution. `bindingDigest` durably records
+   * the exact governed binding (integrity); `claimNonce` is the claim-instance/audit
+   * id. All OPTIONAL — absent means a legacy or non-governed execution (mirrors
+   * `tenantId?`), which contributes nothing to consumption and is unaffected.
+   * `CONSUMED` (a session bearing `decisionId`) ≠ effect success ≠ verification.
+   */
+  decisionId?: string;
+  bindingDigest?: string;
+  claimNonce?: string;
 }
 
 /** Aggregate stats for the Execute dashboard. */

@@ -17,9 +17,12 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { route, clearRoutes, unroutedChannels } from './setup';
+import { route, clearRoutes, unroutedChannels, routeTenantAiPreference } from './setup';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AiRoutingStatusView, AiRoutingUsage } from '@neuropause/shared';
 import { IpcChannel, emptyRoutingUsage } from '@neuropause/shared';
 import { AiRoutingPanel } from '@renderer/settings/AiRoutingPanel';
@@ -43,6 +46,10 @@ beforeEach(() => {
   setModeCalls = 0;
   route(IpcChannel.AiRoutingStatus, () => status());
   route(IpcChannel.AiRoutingUsage, (): AiRoutingUsage => emptyRoutingUsage());
+  // Round 34: the panel now also reads the organization preference (and
+  // degrades to hidden when the read is refused — but this suite asserts
+  // "nothing went unrouted", so route it through the production-shaped helper).
+  routeTenantAiPreference(join(mkdtempSync(join(tmpdir(), 'np-airouting-')), 'pref.json'));
   route(IpcChannel.AiConfigSetMode, () => {
     setModeCalls += 1;
     // The real refusal, produced where production produces it: main throws, the
@@ -72,8 +79,11 @@ describe('Settings → AI, when the platform refuses the write', () => {
   it('does not pretend the mode changed — the control returns to the truth', async () => {
     const user = userEvent.setup();
     render(<AiRoutingPanel />);
-    const localOnly = await screen.findByRole('radio', { name: /Local Only/i });
-    const privateFirst = await screen.findByRole('radio', { name: /Private First/i });
+    // Round 34: the panel now has TWO radiogroups ("AI mode" and the
+    // organization preference), so the query scopes to the platform one.
+    const modeGroup = await screen.findByRole('radiogroup', { name: 'AI mode' });
+    const localOnly = within(modeGroup).getByRole('radio', { name: /Local Only/i });
+    const privateFirst = within(modeGroup).getByRole('radio', { name: /Private First/i });
 
     await user.click(localOnly);
     await screen.findByRole('alert');

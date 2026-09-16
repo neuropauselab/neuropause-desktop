@@ -1,0 +1,27 @@
+{
+  "ARTIFACT": "33_REGULATORY_REVIEW_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "status": "WAITING_FOR_HUMAN",
+  "form": {
+    "path": "/Users/saurabhpatel/Downloads/attachments-67/NP-GLOBAL-PILOT-003-HUMAN-DECISION-FORM-20260909T041455Z.md",
+    "sha256": "6ab090d46b76109ec75c71cd61a55d8c9e742a79c5e2748645cc1e98ab713f5e",
+    "state": "MODE A — every HUMAN DECISION field blank"
+  },
+  "jurisdictions": {
+    "US": "REQUIRES_HUMAN_DETERMINATION",
+    "EU": "REQUIRES_HUMAN_DETERMINATION",
+    "INDIA": "REQUIRES_HUMAN_DETERMINATION (CDSCO MDR 2017 + amendments)"
+  },
+  "machine_boundary": "may_prepare=true may_decide=false may_authorize=false"
+}

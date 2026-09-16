@@ -107,6 +107,37 @@ export interface ExecutiveCenterSnapshot {
   workforceHealth?: WorkforceHealthSummary;
   /** Count of items by priority, for the "what requires attention" glance. */
   attentionCounts: { critical: number; high: number; normal: number };
+  /**
+   * S80 — Governed KPI intelligence: persisted, immutable KPI snapshots + the
+   * active-exception set (NORMAL/WARNING/EXCEPTION/RECOVERED), tenant-scoped and
+   * captured by the governed background service. Optional so older callers/builds
+   * still typecheck; null when unresolved or not yet captured (never a fabricated 0).
+   */
+  kpiIntelligence?: KpiIntelligenceSnapshot | null;
+}
+
+/** S80 — the executive read-model of the governed KPI-snapshot + exception stores. */
+export interface KpiIntelligenceSnapshot {
+  capturedAt: string;
+  /** Latest immutable snapshot per KPI for the active tenant. */
+  snapshots: {
+    kpiKey: string;
+    label: string;
+    value: number | null;
+    band: string | null;
+    calculatedAt: string;
+    periodKey: string;
+  }[];
+  /** Currently-active exceptions (WARNING/EXCEPTION) for the active tenant. */
+  activeExceptions: {
+    kpiKey: string;
+    conditionId: string;
+    status: 'WARNING' | 'EXCEPTION';
+    observedValue: number | null;
+    threshold: number | null;
+    lastTransitionAt: string;
+    message: string;
+  }[];
 }
 
 /** Priority tier for an executive recommendation (V3.2). */

@@ -1,0 +1,400 @@
+[2026-08-31T06:33:46.613Z] INFO (sandbox-engine) sandbox executor registered
+[2026-08-31T06:33:46.613Z] INFO (sandbox-enterprise) enterprise scenario runner registered {"platform":"real","kinds":["enterprise","desktop"]}
+[2026-08-31T06:33:46.614Z] INFO (sandbox-ai-qa) AI QA agent runtime initialized {"reasoner":"llm","agents":15}
+[2026-08-31T06:33:46.614Z] INFO (runtime-core) AI QA agent ready {"agents":15,"reasoner":"llm"}
+[2026-08-31T06:33:46.615Z] INFO (sandbox-perf-security-lab) perf & security lab initialized {"benchmarks":0}
+[2026-08-31T06:33:46.615Z] INFO (runtime-core) Perf & Security Lab ready {"benchmarks":0}
+[2026-08-31T06:33:46.616Z] INFO (sandbox-continuous-validation) continuous validation platform initialized {"pipelines":13,"scheduled":2}
+[2026-08-31T06:33:46.616Z] INFO (runtime-core) Continuous Validation Platform ready ?" AI Sandbox v1.0 complete {"pipelines":13}
+[2026-08-31T06:33:46.618Z] INFO (delivery-engine) Registered intelligence source {"key":"operations-watch"}
+[2026-08-31T06:33:46.618Z] INFO (operations-platform) Enterprise Operations Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:33:46.619Z] INFO (delivery-engine) Registered intelligence source {"key":"strategy-watch"}
+[2026-08-31T06:33:46.619Z] INFO (strategy-platform) Enterprise Strategy Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:33:46.619Z] INFO (delivery-engine) Registered intelligence source {"key":"federation-watch"}
+[2026-08-31T06:33:46.619Z] INFO (enterprise-federation) Enterprise Federation Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:33:46.619Z] INFO (delivery-engine) Registered intelligence source {"key":"analytics-watch"}
+[2026-08-31T06:33:46.620Z] INFO (analytics-platform) Enterprise Analytics Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:33:46.620Z] INFO (delivery-engine) Registered intelligence source {"key":"twin-watch"}
+[2026-08-31T06:33:46.620Z] INFO (digital-twin-platform) Enterprise Digital Twin Platform ready {"channels":7,"sources":1}
+[2026-08-31T06:33:46.622Z] INFO (secure-ipc) Secure IPC handlers registered {"count":723}
+[2026-08-31T06:33:46.624Z] INFO (crash-reporter) Crash reporter started
+[2026-08-31T06:33:46.624Z] INFO (scheduler) Task scheduler started
+[2026-08-31T06:33:46.624Z] INFO (notify-scheduler) Notification scheduler started
+[2026-08-31T06:33:46.624Z] INFO (services) Health monitor started {"intervalMs":5000}
+[2026-08-31T06:33:46.625Z] INFO (services) Update checker started {"intervalMs":21600000}
+[2026-08-31T06:33:46.627Z] INFO (app-updater) App updater started {"channel":"beta","version":"1.0.0-rc.21"}
+[2026-08-31T06:33:46.627Z] INFO (readback-reconciler) Read-back reconciler started {"intervalMs":60000}
+[2026-08-31T06:33:46.627Z] INFO (services) Background services started {"count":9,"skipped":[]}
+[2026-08-31T06:33:46.629Z] INFO (crash-reporter) Crash reporting initialized {"optedIn":false,"nativeActive":false}
+[2026-08-31T06:33:46.638Z] INFO (runtime-core) Runtime core ready: catalog unreachable (will retry on demand), registry loaded (0 installs), plugins (0)
+[2026-08-31T06:33:46.638Z] INFO (main) Startup complete {"phases":[{"name":"app-ready","atMs":61,"deltaMs":61},{"name":"window-created","atMs":142,"deltaMs":81},{"name":"runtime-core-ready","atMs":612,"deltaMs":470}],"totalMs":612,"complete":true}
+[2026-08-31T06:33:46.645Z] WARN (secure-ipc) IPC handler error {"channel":"org:list","message":"Sign in to manage organizations."}
+[2026-08-31T06:33:47.851Z] INFO (graph) Knowledge graph rebuilt {"nodes":22,"edges":0,"nodesAdded":0,"nodesRemoved":0,"edgesAdded":0,"edgesRemoved":0}
+[2026-08-31T06:33:47.960Z] INFO (memory) AI memory rebuilt {"projected":0,"added":0,"updated":0,"removed":0}
+[2026-08-31T06:33:56.866Z] ERROR (app-updater) Error: Error: net::ERR_NAME_NOT_RESOLVED
+    at SimpleURLLoaderWrapper.<anonymous> (node:electron/js2c/browser_init:2:137418)
+    at SimpleURLLoaderWrapper.emit (node:events:509:28)
+[2026-08-31T06:34:06.625Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":13}
+[2026-08-31T06:34:06.635Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":10}
+[2026-08-31T06:35:42.580Z] INFO (ipc) IPC handlers registered {"count":20}
+[2026-08-31T06:35:42.672Z] INFO (runtime-tray) Runtime tray initialized
+[2026-08-31T06:35:42.674Z] INFO (runtime-service) RuntimeService started {"loginAtStartup":false}
+[2026-08-31T06:35:42.728Z] INFO (auth) Entering device-local mode (no cloud account)
+[2026-08-31T06:35:42.735Z] INFO (registry) Registry loaded {"entries":0,"integrityOk":true}
+[2026-08-31T06:35:42.742Z] INFO (plugins) Plugins loaded {"count":0}
+[2026-08-31T06:35:42.748Z] INFO (platform) Platform core initialized {"timeline":0}
+[2026-08-31T06:35:42.753Z] INFO (connectors) Connector service ready {"connectors":22,"accounts":0}
+[2026-08-31T06:35:42.758Z] INFO (connector-runtime) Runtime supervisor primed {"accounts":0}
+[2026-08-31T06:35:42.781Z] INFO (connectors) Connector subsystem initialized {"handlers":16}
+[2026-08-31T06:35:42.785Z] INFO (unified-store) Unified store ready {"entities":0}
+[2026-08-31T06:35:42.787Z] INFO (unified) Unified knowledge layer initialized {"entities":0}
+[2026-08-31T06:35:42.789Z] INFO (sync-state) Sync state ready {"accounts":0}
+[2026-08-31T06:35:42.790Z] INFO (sync) Sync engine initialized {"adapters":13,"resources":106}
+[2026-08-31T06:35:42.793Z] INFO (graph-store) Knowledge graph ready {"nodes":22,"edges":0}
+[2026-08-31T06:35:42.797Z] INFO (graph) Knowledge graph initialized {"nodes":0,"edges":0,"byNodeType":{},"byEdgeType":{},"lastBuiltAt":null}
+[2026-08-31T06:35:42.804Z] INFO (memory-store) AI memory ready {"items":0}
+[2026-08-31T06:35:42.807Z] INFO (memory-audit) Memory audit log ready {"entries":0}
+[2026-08-31T06:35:42.810Z] INFO (memory) AI memory initialized {"total":0,"byKind":{},"byOrigin":{},"lastBuiltAt":"2026-08-31T06:33:47.958Z"}
+[2026-08-31T06:35:42.812Z] INFO (enterprise-timeline) Enterprise timeline initialized {"total":0,"bySource":{},"byCategory":{},"oldest":null,"newest":null}
+[2026-08-31T06:35:42.816Z] INFO (search) Enterprise search initialized {"sources":["entity","graph","memory","timeline","federation (opt-in)"]}
+[2026-08-31T06:35:42.821Z] INFO (daily-intelligence) Daily intelligence initialized {"periods":5}
+[2026-08-31T06:35:42.824Z] INFO (recommendations) Recommendation engine initialized {"rules":10}
+[2026-08-31T06:35:42.826Z] INFO (executive-center) Executive Intelligence Center initialized
+[2026-08-31T06:35:42.826Z] INFO (executive-decisions) Executive Decision Intelligence initialized
+[2026-08-31T06:35:42.826Z] INFO (automation-producer) Automation event producers wired {"types":19}
+[2026-08-31T06:35:42.826Z] INFO (automations) Automation Builder subsystem initialized
+[2026-08-31T06:35:42.826Z] INFO (voice) Executive Voice Assistant initialized
+[2026-08-31T06:35:42.827Z] INFO (delivery-engine) Registered intelligence source {"key":"mission-brief-morning"}
+[2026-08-31T06:35:42.828Z] INFO (delivery-engine) Registered intelligence source {"key":"mission-brief-evening"}
+[2026-08-31T06:35:42.828Z] INFO (delivery-engine) Registered intelligence source {"key":"work-afternoon"}
+[2026-08-31T06:35:42.828Z] INFO (delivery-engine) Registered intelligence source {"key":"work-weekly"}
+[2026-08-31T06:35:42.828Z] INFO (delivery-engine) Registered intelligence source {"key":"work-monthly"}
+[2026-08-31T06:35:42.828Z] INFO (delivery-engine) Registered intelligence source {"key":"founder-ai-proactive"}
+[2026-08-31T06:35:42.829Z] INFO (delivery-engine) Registered intelligence source {"key":"organization-intelligence"}
+[2026-08-31T06:35:42.829Z] INFO (delivery-engine) Delivery engine started
+[2026-08-31T06:35:42.829Z] INFO (delivery-root) Executive delivery initialized {"sources":["mission-brief-morning","mission-brief-evening","work-afternoon","work-weekly","work-monthly","founder-ai-proactive","organization-intelligence"]}
+[2026-08-31T06:35:42.831Z] INFO (founder-ai) Founder AI initialized {"intents":7}
+[2026-08-31T06:35:42.831Z] INFO (engineering-ai) Engineering AI initialized {"provider":"claude"}
+[2026-08-31T06:35:42.831Z] INFO (founder-ai-v2) Founder AI v2 initialized {"provider":"claude"}
+[2026-08-31T06:35:42.832Z] INFO (trace) Trace subsystem initialized {"traces":["governance","context","relationship"]}
+[2026-08-31T06:35:42.835Z] INFO (workforce-audit) Workforce audit log ready {"entries":0,"dropped":0,"totalAppended":0}
+[2026-08-31T06:35:42.838Z] INFO (workforce-jobs) Workforce job store ready {"jobs":0,"recovered":0}
+[2026-08-31T06:35:42.845Z] INFO (worker-registry) Worker registry ready {"workers":27}
+[2026-08-31T06:35:42.850Z] INFO (workforce-workers) Registered built-in workers {"count":27}
+[2026-08-31T06:35:42.859Z] INFO (workforce-install) Restored installed workers {"count":0}
+[2026-08-31T06:35:42.861Z] INFO (workforce-scheduler) Workforce scheduler started {"intervalMs":1000}
+[2026-08-31T06:35:42.862Z] WARN (enterprise) Tenant refused {"reason":"not_loaded","refusalIndex":1,"firstRefusalAfterSuccess":false,"msSinceLastSuccess":null,"loaded":false,"sessionEmailShape":null,"activeWorkspaceId":null,"workspaceFound":null,"workspaceOrgId":null,"organizationFound":null,"organizationOperable":null,"memberCount":null,"humanMembersWithEmail":null,"sessionMatchedAMember":null,"ownerExists":null,"ownerClaimed":null,"ownerOrgMatches":null,"ownerEmailShape":null,"sessionMatchesOwner":null,"memberStatus":null,"memberInWorkspace":null,"suppressedSinceLastLine":0}
+[2026-08-31T06:35:42.869Z] INFO (workforce) AI Workforce initialized {"workers":27,"skills":56,"policies":4,"audit":0,"jobs":0}
+[2026-08-31T06:35:42.876Z] INFO (org-runtime) Organization runtime ready {"orgs":1,"units":13,"roles":6,"users":28}
+[2026-08-31T06:35:42.880Z] INFO (ai-engine-manager) AI engine configured {"provider":"claude","configured":false}
+[2026-08-31T06:35:42.881Z] INFO (workspace) Workspace manager ready {"workspaces":1,"active":"workspace-default"}
+[2026-08-31T06:35:42.882Z] INFO (enterprise-governance) Enterprise governance ready {"chains":3,"rules":6,"audit":0}
+[2026-08-31T06:35:42.884Z] INFO (enterprise) Enterprise OS ready {"org":"NeuroPause","units":13,"members":28,"workspaces":1}
+[2026-08-31T06:35:42.888Z] INFO (enterprise-personalization) Enterprise personalization ready {"actors":0}
+[2026-08-31T06:35:42.892Z] INFO (data-plane) Data Plane ready {"channels":22,"entities":15,"relationships":36}
+[2026-08-31T06:35:42.893Z] INFO (documents) Documents ready {"channels":8,"readable":7,"ocr":false}
+[2026-08-31T06:35:42.893Z] INFO (runtime-core) Tenant archive sources registered {"domains":6,"uncovered":13}
+[2026-08-31T06:35:42.894Z] INFO (identity) Identity ready {"channels":6}
+[2026-08-31T06:35:42.898Z] INFO (developer-registry) Developer registry ready {"developers":1,"keys":0,"apps":0}
+[2026-08-31T06:35:42.902Z] INFO (marketplace) Marketplace ready {"listings":5,"versions":5,"keyId":"npsign_81b2a7af76dae5d1"}
+[2026-08-31T06:35:42.903Z] INFO (api-gateway) API gateway ready {"audit":0}
+[2026-08-31T06:35:42.904Z] INFO (billing) Billing ready {"subscriptions":1,"seats":1,"licenses":0}
+[2026-08-31T06:35:42.909Z] INFO (ecosystem-installs) Ecosystem installs ready {"installs":0}
+[2026-08-31T06:35:42.910Z] INFO (ecosystem-exchange) Organization exchange ready {"packs":0}
+[2026-08-31T06:35:42.913Z] INFO (ecosystem-partners) Partner directory ready {"partners":0}
+[2026-08-31T06:35:42.916Z] WARN (enterprise) Tenant resolution RECOVERED {"msSinceFirstRefusal":54,"msSinceLastSuccess":null,"refusalsWhileDown":2,"lastRefusalReason":"not_loaded"}
+[2026-08-31T06:35:42.919Z] INFO (ecosystem) Ecosystem platform ready {"developer":"accept","plan":"free","listings":5,"signingKey":"????????","seats":1}
+[2026-08-31T06:35:42.922Z] INFO (ecosystem) Ecosystem network ready {"installs":0,"packs":0,"partners":0}
+[2026-08-31T06:35:42.932Z] INFO (marketplace) Enterprise Marketplace ready {"listings":5}
+[2026-08-31T06:35:42.936Z] INFO (webhook-store) Webhook store ready {"webhooks":0,"deliveries":0}
+[2026-08-31T06:35:42.938Z] INFO (webhook-producer) Webhook producers wired
+[2026-08-31T06:35:42.940Z] INFO (webhooks) Enterprise Webhooks initialized {"webhooks":0}
+[2026-08-31T06:35:42.943Z] INFO (sandbox) AI Sandbox core initialized {"workspaces":0,"scenarios":0}
+[2026-08-31T06:35:42.945Z] INFO (platform-operator) Platform operator registry ready {"operators":0}
+[2026-08-31T06:35:42.948Z] INFO (cloud-tenancy) Cloud tenancy ready {"tenants":1,"regions":6,"projects":0}
+[2026-08-31T06:35:42.962Z] INFO (cloud-identity) Cloud identity ready {"connections":0,"scim":1,"mfa":1}
+[2026-08-31T06:35:42.964Z] INFO (cloud-apiplatform) Cloud API platform ready {"deployments":0,"webhooks":0,"apis":0}
+[2026-08-31T06:35:42.965Z] INFO (cloud) Cloud platform ready {"homeTenant":"NeuroPause","tenants":1,"regions":6,"region":"us-east"}
+[2026-08-31T06:35:42.975Z] INFO (cloud) Cloud services ready {"deployments":0,"sso":0,"liveSync":"idle"}
+[2026-08-31T06:35:42.978Z] INFO (ai-engine-manager) AI engine configured {"provider":"claude","configured":false}
+[2026-08-31T06:35:42.979Z] INFO (infrastructure) Infrastructure runtime ready {"platforms":10,"resources":0}
+[2026-08-31T06:35:42.980Z] INFO (enterprise-intelligence) Enterprise Intelligence subsystem ready
+[2026-08-31T06:35:42.982Z] INFO (onboarding) Experience profile {"state":"pending","workspaceType":null,"aiModeChosen":false}
+[2026-08-31T06:35:42.985Z] INFO (federation-runtime) Federation runtime ready {"orgs":1,"peers":0,"trust":0,"shared":0}
+[2026-08-31T06:35:42.986Z] INFO (federation-exchange) Organization exchange ready {"artifacts":0,"keyId":"npfed_71512c7f36568a91"}
+[2026-08-31T06:35:42.987Z] INFO (enterprise) Tenant migration inventory {"COMPLETE":106,"PARTIAL":26,"REQUIRES_MIGRATION":3,"BLOCKED":2,"records":0,"assigned":0,"unresolved":0}
+[2026-08-31T06:35:42.988Z] INFO (federation-governance) Global governance ready {"policies":4,"approvals":0,"audit":0}
+[2026-08-31T06:35:42.990Z] INFO (federation-observability) Observability history ready {"usagePoints":0,"security":0}
+[2026-08-31T06:35:42.991Z] INFO (federation-dr) Disaster recovery ready {"backups":0,"replicas":0,"validations":0}
+[2026-08-31T06:35:42.994Z] INFO (federation) Federation runtime ready {"orgs":1,"peers":0,"activePeers":0,"trustedPeers":0}
+[2026-08-31T06:35:42.995Z] INFO (federation) Federation services ready {"artifacts":0,"signingKey":"????????","policies":4,"backups":0,"replicas":0}
+[2026-08-31T06:35:42.996Z] INFO (federation-platform) Federation Platform ready {"orgs":1,"artifacts":0}
+[2026-08-31T06:35:42.996Z] INFO (control-plane) Cloud Control Plane ready {"regions":6,"tenants":1,"deployments":0}
+[2026-08-31T06:35:42.996Z] INFO (developer-platform) Developer Platform ready {"listings":5,"publicApis":0}
+[2026-08-31T06:35:42.999Z] INFO (industry-platform) Industry Solution Platform ready {"suites":12,"frameworks":20}
+[2026-08-31T06:35:43.018Z] INFO (autonomous-intelligence) Autonomous Enterprise Intelligence ready {"goals":9,"decisions":2}
+[2026-08-31T06:35:43.034Z] INFO (enterprise-twin) Enterprise Digital Twin ready {"domains":9}
+[2026-08-31T06:35:43.039Z] INFO (enterprise-knowledge) Enterprise Knowledge Fabric ready {"sources":13}
+[2026-08-31T06:35:43.051Z] INFO (global-orchestration) Global AI Orchestration ready {"orchestrators":9}
+[2026-08-31T06:35:43.056Z] INFO (intelligence-network) Enterprise Intelligence Network ready {"modules":7}
+[2026-08-31T06:35:43.057Z] INFO (updater) Updater subsystem initialized {"channel":"stable","supported":true}
+[2026-08-31T06:35:43.062Z] INFO (release-ops) Release operations initialized {"dataVersion":2,"handlers":17}
+[2026-08-31T06:35:43.064Z] INFO (runtime-supervisor) Runtime supervisor started {"intervalMs":20000}
+[2026-08-31T06:35:43.064Z] INFO (execute-engine) executor registered {"kind":"task"}
+[2026-08-31T06:35:43.064Z] INFO (execute-engine) executor registered {"kind":"automation"}
+[2026-08-31T06:35:43.064Z] INFO (execute-engine) executor registered {"kind":"decision"}
+[2026-08-31T06:35:43.065Z] INFO (execute-engine) executor registered {"kind":"memory"}
+[2026-08-31T06:35:43.065Z] INFO (execute-engine) executor registered {"kind":"voice"}
+[2026-08-31T06:35:43.065Z] INFO (execute-engine) executor registered {"kind":"executive"}
+[2026-08-31T06:35:43.065Z] INFO (execute-engine) executor registered {"kind":"runtime"}
+[2026-08-31T06:35:43.065Z] INFO (execute-engine) executor registered {"kind":"worker"}
+[2026-08-31T06:35:43.066Z] INFO (execute-engine) executor registered {"kind":"connector"}
+[2026-08-31T06:35:43.066Z] INFO (execution-store) Execution store ready {"executions":0,"recovered":0}
+[2026-08-31T06:35:43.067Z] INFO (workspace-assistant) Workspace Assistant initialized {"conversations":0,"channels":8}
+[2026-08-31T06:35:43.067Z] INFO (delivery-engine) Registered intelligence source {"key":"meeting-soon"}
+[2026-08-31T06:35:43.068Z] INFO (notifications) Notification inbox initialized {"stored":0,"unread":0,"busTypes":14}
+[2026-08-31T06:35:43.068Z] INFO (delivery-engine) Registered intelligence source {"key":"insight-monitor"}
+[2026-08-31T06:35:43.068Z] INFO (delivery-engine) Registered intelligence source {"key":"insight-risk-trend"}
+[2026-08-31T06:35:43.068Z] INFO (insight) Enterprise Intelligence Layer ready {"channels":5,"sources":2}
+[2026-08-31T06:35:43.069Z] INFO (delivery-engine) Registered intelligence source {"key":"knowledge-hygiene"}
+[2026-08-31T06:35:43.069Z] INFO (knowledge-assets) Enterprise Knowledge Platform ready {"channels":7,"sources":1}
+[2026-08-31T06:35:43.069Z] INFO (delivery-engine) Registered intelligence source {"key":"automation-watch"}
+[2026-08-31T06:35:43.069Z] INFO (automation-platform) Enterprise Automation Platform ready {"channels":6,"sources":1,"playbooks":4}
+[2026-08-31T06:35:43.077Z] INFO (autonomous-operations) Autonomous Enterprise Operations ready {"modules":7}
+[2026-08-31T06:35:43.089Z] INFO (commercial-platform) NeuroPause Platform v2 (commercial) ready {"modules":9}
+[2026-08-31T06:35:43.095Z] INFO (experience) Decision-first experience ready {"compressed":269}
+[2026-08-31T06:35:43.097Z] INFO (intent) Intent-native experience ready {"intents":9}
+[2026-08-31T06:35:43.106Z] INFO (companion) Companion subsystem ready {"enabled":false,"devices":0,"identity":true}
+[2026-08-31T06:35:43.107Z] INFO (enterprise-api) Enterprise REST API initialized {"routes":28}
+[2026-08-31T06:35:43.109Z] INFO (sandbox-engine) sandbox executor registered
+[2026-08-31T06:35:43.109Z] INFO (sandbox-enterprise) enterprise scenario runner registered {"platform":"real","kinds":["enterprise","desktop"]}
+[2026-08-31T06:35:43.110Z] INFO (sandbox-ai-qa) AI QA agent runtime initialized {"reasoner":"llm","agents":15}
+[2026-08-31T06:35:43.110Z] INFO (runtime-core) AI QA agent ready {"agents":15,"reasoner":"llm"}
+[2026-08-31T06:35:43.114Z] INFO (sandbox-perf-security-lab) perf & security lab initialized {"benchmarks":0}
+[2026-08-31T06:35:43.115Z] INFO (runtime-core) Perf & Security Lab ready {"benchmarks":0}
+[2026-08-31T06:35:43.116Z] INFO (sandbox-continuous-validation) continuous validation platform initialized {"pipelines":13,"scheduled":2}
+[2026-08-31T06:35:43.117Z] INFO (runtime-core) Continuous Validation Platform ready ?" AI Sandbox v1.0 complete {"pipelines":13}
+[2026-08-31T06:35:43.119Z] INFO (delivery-engine) Registered intelligence source {"key":"operations-watch"}
+[2026-08-31T06:35:43.120Z] INFO (operations-platform) Enterprise Operations Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:35:43.120Z] INFO (delivery-engine) Registered intelligence source {"key":"strategy-watch"}
+[2026-08-31T06:35:43.120Z] INFO (strategy-platform) Enterprise Strategy Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:35:43.121Z] INFO (delivery-engine) Registered intelligence source {"key":"federation-watch"}
+[2026-08-31T06:35:43.121Z] INFO (enterprise-federation) Enterprise Federation Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:35:43.121Z] INFO (delivery-engine) Registered intelligence source {"key":"analytics-watch"}
+[2026-08-31T06:35:43.121Z] INFO (analytics-platform) Enterprise Analytics Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:35:43.122Z] INFO (delivery-engine) Registered intelligence source {"key":"twin-watch"}
+[2026-08-31T06:35:43.122Z] INFO (digital-twin-platform) Enterprise Digital Twin Platform ready {"channels":7,"sources":1}
+[2026-08-31T06:35:43.125Z] INFO (secure-ipc) Secure IPC handlers registered {"count":723}
+[2026-08-31T06:35:43.128Z] INFO (crash-reporter) Crash reporter started
+[2026-08-31T06:35:43.129Z] INFO (scheduler) Task scheduler started
+[2026-08-31T06:35:43.129Z] INFO (notify-scheduler) Notification scheduler started
+[2026-08-31T06:35:43.129Z] INFO (services) Health monitor started {"intervalMs":5000}
+[2026-08-31T06:35:43.129Z] INFO (services) Update checker started {"intervalMs":21600000}
+[2026-08-31T06:35:43.132Z] INFO (app-updater) App updater started {"channel":"beta","version":"1.0.0-rc.21"}
+[2026-08-31T06:35:43.132Z] INFO (readback-reconciler) Read-back reconciler started {"intervalMs":60000}
+[2026-08-31T06:35:43.133Z] INFO (services) Background services started {"count":9,"skipped":[]}
+[2026-08-31T06:35:43.138Z] INFO (crash-reporter) Crash reporting initialized {"optedIn":false,"nativeActive":false}
+[2026-08-31T06:35:43.145Z] WARN (secure-ipc) IPC handler error {"channel":"org:list","message":"Sign in to manage organizations."}
+[2026-08-31T06:35:43.156Z] INFO (runtime-core) Runtime core ready: catalog unreachable (will retry on demand), registry loaded (0 installs), plugins (0)
+[2026-08-31T06:35:43.157Z] INFO (main) Startup complete {"phases":[{"name":"app-ready","atMs":61,"deltaMs":61},{"name":"window-created","atMs":156,"deltaMs":95},{"name":"runtime-core-ready","atMs":647,"deltaMs":491}],"totalMs":647,"complete":true}
+[2026-08-31T06:35:44.306Z] INFO (graph) Knowledge graph rebuilt {"nodes":22,"edges":0,"nodesAdded":0,"nodesRemoved":0,"edgesAdded":0,"edgesRemoved":0}
+[2026-08-31T06:35:44.426Z] INFO (memory) AI memory rebuilt {"projected":0,"added":0,"updated":0,"removed":0}
+[2026-08-31T06:35:53.406Z] ERROR (app-updater) Error: Error: net::ERR_NAME_NOT_RESOLVED
+    at SimpleURLLoaderWrapper.<anonymous> (node:electron/js2c/browser_init:2:137418)
+    at SimpleURLLoaderWrapper.emit (node:events:509:28)
+[2026-08-31T06:36:03.134Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":20}
+[2026-08-31T06:36:03.148Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":13}
+[2026-08-31T06:37:18.326Z] INFO (ipc) IPC handlers registered {"count":20}
+[2026-08-31T06:37:18.421Z] INFO (runtime-tray) Runtime tray initialized
+[2026-08-31T06:37:18.423Z] INFO (runtime-service) RuntimeService started {"loginAtStartup":false}
+[2026-08-31T06:37:18.470Z] INFO (auth) Entering device-local mode (no cloud account)
+[2026-08-31T06:37:18.482Z] INFO (registry) Registry loaded {"entries":0,"integrityOk":true}
+[2026-08-31T06:37:18.490Z] INFO (plugins) Plugins loaded {"count":0}
+[2026-08-31T06:37:18.496Z] INFO (platform) Platform core initialized {"timeline":0}
+[2026-08-31T06:37:18.499Z] INFO (connectors) Connector service ready {"connectors":22,"accounts":0}
+[2026-08-31T06:37:18.501Z] INFO (connector-runtime) Runtime supervisor primed {"accounts":0}
+[2026-08-31T06:37:18.520Z] INFO (connectors) Connector subsystem initialized {"handlers":16}
+[2026-08-31T06:37:18.529Z] INFO (unified-store) Unified store ready {"entities":0}
+[2026-08-31T06:37:18.531Z] INFO (unified) Unified knowledge layer initialized {"entities":0}
+[2026-08-31T06:37:18.534Z] INFO (sync-state) Sync state ready {"accounts":0}
+[2026-08-31T06:37:18.535Z] INFO (sync) Sync engine initialized {"adapters":13,"resources":106}
+[2026-08-31T06:37:18.537Z] INFO (graph-store) Knowledge graph ready {"nodes":22,"edges":0}
+[2026-08-31T06:37:18.538Z] INFO (graph) Knowledge graph initialized {"nodes":0,"edges":0,"byNodeType":{},"byEdgeType":{},"lastBuiltAt":null}
+[2026-08-31T06:37:18.540Z] INFO (memory-store) AI memory ready {"items":0}
+[2026-08-31T06:37:18.541Z] INFO (memory-audit) Memory audit log ready {"entries":0}
+[2026-08-31T06:37:18.542Z] INFO (memory) AI memory initialized {"total":0,"byKind":{},"byOrigin":{},"lastBuiltAt":"2026-08-31T06:35:44.425Z"}
+[2026-08-31T06:37:18.543Z] INFO (enterprise-timeline) Enterprise timeline initialized {"total":0,"bySource":{},"byCategory":{},"oldest":null,"newest":null}
+[2026-08-31T06:37:18.543Z] INFO (search) Enterprise search initialized {"sources":["entity","graph","memory","timeline","federation (opt-in)"]}
+[2026-08-31T06:37:18.545Z] INFO (daily-intelligence) Daily intelligence initialized {"periods":5}
+[2026-08-31T06:37:18.545Z] INFO (recommendations) Recommendation engine initialized {"rules":10}
+[2026-08-31T06:37:18.546Z] INFO (executive-center) Executive Intelligence Center initialized
+[2026-08-31T06:37:18.546Z] INFO (executive-decisions) Executive Decision Intelligence initialized
+[2026-08-31T06:37:18.546Z] INFO (automation-producer) Automation event producers wired {"types":19}
+[2026-08-31T06:37:18.546Z] INFO (automations) Automation Builder subsystem initialized
+[2026-08-31T06:37:18.546Z] INFO (voice) Executive Voice Assistant initialized
+[2026-08-31T06:37:18.547Z] INFO (delivery-engine) Registered intelligence source {"key":"mission-brief-morning"}
+[2026-08-31T06:37:18.547Z] INFO (delivery-engine) Registered intelligence source {"key":"mission-brief-evening"}
+[2026-08-31T06:37:18.547Z] INFO (delivery-engine) Registered intelligence source {"key":"work-afternoon"}
+[2026-08-31T06:37:18.547Z] INFO (delivery-engine) Registered intelligence source {"key":"work-weekly"}
+[2026-08-31T06:37:18.547Z] INFO (delivery-engine) Registered intelligence source {"key":"work-monthly"}
+[2026-08-31T06:37:18.547Z] INFO (delivery-engine) Registered intelligence source {"key":"founder-ai-proactive"}
+[2026-08-31T06:37:18.548Z] INFO (delivery-engine) Registered intelligence source {"key":"organization-intelligence"}
+[2026-08-31T06:37:18.548Z] INFO (delivery-engine) Delivery engine started
+[2026-08-31T06:37:18.548Z] INFO (delivery-root) Executive delivery initialized {"sources":["mission-brief-morning","mission-brief-evening","work-afternoon","work-weekly","work-monthly","founder-ai-proactive","organization-intelligence"]}
+[2026-08-31T06:37:18.549Z] INFO (founder-ai) Founder AI initialized {"intents":7}
+[2026-08-31T06:37:18.549Z] INFO (engineering-ai) Engineering AI initialized {"provider":"claude"}
+[2026-08-31T06:37:18.549Z] INFO (founder-ai-v2) Founder AI v2 initialized {"provider":"claude"}
+[2026-08-31T06:37:18.549Z] INFO (trace) Trace subsystem initialized {"traces":["governance","context","relationship"]}
+[2026-08-31T06:37:18.552Z] INFO (workforce-audit) Workforce audit log ready {"entries":0,"dropped":0,"totalAppended":0}
+[2026-08-31T06:37:18.553Z] INFO (workforce-jobs) Workforce job store ready {"jobs":0,"recovered":0}
+[2026-08-31T06:37:18.555Z] INFO (worker-registry) Worker registry ready {"workers":27}
+[2026-08-31T06:37:18.559Z] INFO (workforce-workers) Registered built-in workers {"count":27}
+[2026-08-31T06:37:18.563Z] INFO (workforce-install) Restored installed workers {"count":0}
+[2026-08-31T06:37:18.564Z] INFO (workforce-scheduler) Workforce scheduler started {"intervalMs":1000}
+[2026-08-31T06:37:18.565Z] WARN (enterprise) Tenant refused {"reason":"not_loaded","refusalIndex":1,"firstRefusalAfterSuccess":false,"msSinceLastSuccess":null,"loaded":false,"sessionEmailShape":null,"activeWorkspaceId":null,"workspaceFound":null,"workspaceOrgId":null,"organizationFound":null,"organizationOperable":null,"memberCount":null,"humanMembersWithEmail":null,"sessionMatchedAMember":null,"ownerExists":null,"ownerClaimed":null,"ownerOrgMatches":null,"ownerEmailShape":null,"sessionMatchesOwner":null,"memberStatus":null,"memberInWorkspace":null,"suppressedSinceLastLine":0}
+[2026-08-31T06:37:18.575Z] INFO (workforce) AI Workforce initialized {"workers":27,"skills":56,"policies":4,"audit":0,"jobs":0}
+[2026-08-31T06:37:18.584Z] INFO (org-runtime) Organization runtime ready {"orgs":1,"units":13,"roles":6,"users":28}
+[2026-08-31T06:37:18.586Z] INFO (ai-engine-manager) AI engine configured {"provider":"claude","configured":false}
+[2026-08-31T06:37:18.587Z] INFO (workspace) Workspace manager ready {"workspaces":1,"active":"workspace-default"}
+[2026-08-31T06:37:18.589Z] INFO (enterprise-governance) Enterprise governance ready {"chains":3,"rules":6,"audit":0}
+[2026-08-31T06:37:18.590Z] INFO (enterprise) Enterprise OS ready {"org":"NeuroPause","units":13,"members":28,"workspaces":1}
+[2026-08-31T06:37:18.596Z] INFO (enterprise-personalization) Enterprise personalization ready {"actors":0}
+[2026-08-31T06:37:18.599Z] INFO (data-plane) Data Plane ready {"channels":22,"entities":15,"relationships":36}
+[2026-08-31T06:37:18.599Z] INFO (documents) Documents ready {"channels":8,"readable":7,"ocr":false}
+[2026-08-31T06:37:18.600Z] INFO (runtime-core) Tenant archive sources registered {"domains":6,"uncovered":13}
+[2026-08-31T06:37:18.601Z] INFO (identity) Identity ready {"channels":6}
+[2026-08-31T06:37:18.606Z] INFO (developer-registry) Developer registry ready {"developers":1,"keys":0,"apps":0}
+[2026-08-31T06:37:18.610Z] INFO (marketplace) Marketplace ready {"listings":5,"versions":5,"keyId":"npsign_81b2a7af76dae5d1"}
+[2026-08-31T06:37:18.612Z] INFO (api-gateway) API gateway ready {"audit":0}
+[2026-08-31T06:37:18.613Z] INFO (billing) Billing ready {"subscriptions":1,"seats":1,"licenses":0}
+[2026-08-31T06:37:18.614Z] INFO (ecosystem-installs) Ecosystem installs ready {"installs":0}
+[2026-08-31T06:37:18.616Z] INFO (ecosystem-exchange) Organization exchange ready {"packs":0}
+[2026-08-31T06:37:18.618Z] INFO (ecosystem-partners) Partner directory ready {"partners":0}
+[2026-08-31T06:37:18.621Z] WARN (enterprise) Tenant resolution RECOVERED {"msSinceFirstRefusal":56,"msSinceLastSuccess":null,"refusalsWhileDown":2,"lastRefusalReason":"not_loaded"}
+[2026-08-31T06:37:18.622Z] INFO (ecosystem) Ecosystem platform ready {"developer":"accept","plan":"free","listings":5,"signingKey":"????????","seats":1}
+[2026-08-31T06:37:18.623Z] INFO (ecosystem) Ecosystem network ready {"installs":0,"packs":0,"partners":0}
+[2026-08-31T06:37:18.628Z] INFO (marketplace) Enterprise Marketplace ready {"listings":5}
+[2026-08-31T06:37:18.631Z] INFO (webhook-store) Webhook store ready {"webhooks":0,"deliveries":0}
+[2026-08-31T06:37:18.632Z] INFO (webhook-producer) Webhook producers wired
+[2026-08-31T06:37:18.636Z] INFO (webhooks) Enterprise Webhooks initialized {"webhooks":0}
+[2026-08-31T06:37:18.639Z] INFO (sandbox) AI Sandbox core initialized {"workspaces":0,"scenarios":0}
+[2026-08-31T06:37:18.640Z] INFO (platform-operator) Platform operator registry ready {"operators":0}
+[2026-08-31T06:37:18.642Z] INFO (cloud-tenancy) Cloud tenancy ready {"tenants":1,"regions":6,"projects":0}
+[2026-08-31T06:37:18.647Z] INFO (cloud-identity) Cloud identity ready {"connections":0,"scim":1,"mfa":1}
+[2026-08-31T06:37:18.648Z] INFO (cloud-apiplatform) Cloud API platform ready {"deployments":0,"webhooks":0,"apis":0}
+[2026-08-31T06:37:18.650Z] INFO (cloud) Cloud platform ready {"homeTenant":"NeuroPause","tenants":1,"regions":6,"region":"us-east"}
+[2026-08-31T06:37:18.651Z] INFO (cloud) Cloud services ready {"deployments":0,"sso":0,"liveSync":"idle"}
+[2026-08-31T06:37:18.654Z] INFO (ai-engine-manager) AI engine configured {"provider":"claude","configured":false}
+[2026-08-31T06:37:18.655Z] INFO (infrastructure) Infrastructure runtime ready {"platforms":10,"resources":0}
+[2026-08-31T06:37:18.656Z] INFO (enterprise-intelligence) Enterprise Intelligence subsystem ready
+[2026-08-31T06:37:18.658Z] INFO (onboarding) Experience profile {"state":"pending","workspaceType":null,"aiModeChosen":false}
+[2026-08-31T06:37:18.662Z] INFO (federation-runtime) Federation runtime ready {"orgs":1,"peers":0,"trust":0,"shared":0}
+[2026-08-31T06:37:18.664Z] INFO (federation-exchange) Organization exchange ready {"artifacts":0,"keyId":"npfed_71512c7f36568a91"}
+[2026-08-31T06:37:18.665Z] INFO (enterprise) Tenant migration inventory {"COMPLETE":106,"PARTIAL":26,"REQUIRES_MIGRATION":3,"BLOCKED":2,"records":0,"assigned":0,"unresolved":0}
+[2026-08-31T06:37:18.666Z] INFO (federation-governance) Global governance ready {"policies":4,"approvals":0,"audit":0}
+[2026-08-31T06:37:18.667Z] INFO (federation-observability) Observability history ready {"usagePoints":0,"security":0}
+[2026-08-31T06:37:18.668Z] INFO (federation-dr) Disaster recovery ready {"backups":0,"replicas":0,"validations":0}
+[2026-08-31T06:37:18.670Z] INFO (federation) Federation runtime ready {"orgs":1,"peers":0,"activePeers":0,"trustedPeers":0}
+[2026-08-31T06:37:18.671Z] INFO (federation) Federation services ready {"artifacts":0,"signingKey":"????????","policies":4,"backups":0,"replicas":0}
+[2026-08-31T06:37:18.672Z] INFO (federation-platform) Federation Platform ready {"orgs":1,"artifacts":0}
+[2026-08-31T06:37:18.673Z] INFO (control-plane) Cloud Control Plane ready {"regions":6,"tenants":1,"deployments":0}
+[2026-08-31T06:37:18.673Z] INFO (developer-platform) Developer Platform ready {"listings":5,"publicApis":0}
+[2026-08-31T06:37:18.679Z] INFO (industry-platform) Industry Solution Platform ready {"suites":12,"frameworks":20}
+[2026-08-31T06:37:18.709Z] INFO (autonomous-intelligence) Autonomous Enterprise Intelligence ready {"goals":9,"decisions":2}
+[2026-08-31T06:37:18.746Z] INFO (enterprise-twin) Enterprise Digital Twin ready {"domains":9}
+[2026-08-31T06:37:18.759Z] INFO (enterprise-knowledge) Enterprise Knowledge Fabric ready {"sources":13}
+[2026-08-31T06:37:18.795Z] INFO (global-orchestration) Global AI Orchestration ready {"orchestrators":9}
+[2026-08-31T06:37:18.810Z] INFO (intelligence-network) Enterprise Intelligence Network ready {"modules":7}
+[2026-08-31T06:37:18.812Z] INFO (updater) Updater subsystem initialized {"channel":"stable","supported":true}
+[2026-08-31T06:37:18.822Z] INFO (release-ops) Release operations initialized {"dataVersion":2,"handlers":17}
+[2026-08-31T06:37:18.826Z] INFO (runtime-supervisor) Runtime supervisor started {"intervalMs":20000}
+[2026-08-31T06:37:18.827Z] INFO (execute-engine) executor registered {"kind":"task"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"automation"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"decision"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"memory"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"voice"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"executive"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"runtime"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"worker"}
+[2026-08-31T06:37:18.828Z] INFO (execute-engine) executor registered {"kind":"connector"}
+[2026-08-31T06:37:18.829Z] INFO (execution-store) Execution store ready {"executions":0,"recovered":0}
+[2026-08-31T06:37:18.832Z] INFO (workspace-assistant) Workspace Assistant initialized {"conversations":0,"channels":8}
+[2026-08-31T06:37:18.833Z] INFO (delivery-engine) Registered intelligence source {"key":"meeting-soon"}
+[2026-08-31T06:37:18.833Z] INFO (notifications) Notification inbox initialized {"stored":0,"unread":0,"busTypes":14}
+[2026-08-31T06:37:18.834Z] INFO (delivery-engine) Registered intelligence source {"key":"insight-monitor"}
+[2026-08-31T06:37:18.835Z] INFO (delivery-engine) Registered intelligence source {"key":"insight-risk-trend"}
+[2026-08-31T06:37:18.835Z] INFO (insight) Enterprise Intelligence Layer ready {"channels":5,"sources":2}
+[2026-08-31T06:37:18.836Z] INFO (delivery-engine) Registered intelligence source {"key":"knowledge-hygiene"}
+[2026-08-31T06:37:18.836Z] INFO (knowledge-assets) Enterprise Knowledge Platform ready {"channels":7,"sources":1}
+[2026-08-31T06:37:18.837Z] INFO (delivery-engine) Registered intelligence source {"key":"automation-watch"}
+[2026-08-31T06:37:18.837Z] INFO (automation-platform) Enterprise Automation Platform ready {"channels":6,"sources":1,"playbooks":4}
+[2026-08-31T06:37:18.856Z] INFO (autonomous-operations) Autonomous Enterprise Operations ready {"modules":7}
+[2026-08-31T06:37:18.879Z] INFO (commercial-platform) NeuroPause Platform v2 (commercial) ready {"modules":9}
+[2026-08-31T06:37:18.896Z] INFO (experience) Decision-first experience ready {"compressed":269}
+[2026-08-31T06:37:18.900Z] INFO (intent) Intent-native experience ready {"intents":9}
+[2026-08-31T06:37:18.982Z] INFO (companion) Companion subsystem ready {"enabled":false,"devices":0,"identity":true}
+[2026-08-31T06:37:18.983Z] INFO (enterprise-api) Enterprise REST API initialized {"routes":28}
+[2026-08-31T06:37:18.989Z] INFO (sandbox-engine) sandbox executor registered
+[2026-08-31T06:37:18.990Z] INFO (sandbox-enterprise) enterprise scenario runner registered {"platform":"real","kinds":["enterprise","desktop"]}
+[2026-08-31T06:37:18.993Z] INFO (sandbox-ai-qa) AI QA agent runtime initialized {"reasoner":"llm","agents":15}
+[2026-08-31T06:37:18.994Z] INFO (runtime-core) AI QA agent ready {"agents":15,"reasoner":"llm"}
+[2026-08-31T06:37:18.998Z] INFO (sandbox-perf-security-lab) perf & security lab initialized {"benchmarks":0}
+[2026-08-31T06:37:18.999Z] INFO (runtime-core) Perf & Security Lab ready {"benchmarks":0}
+[2026-08-31T06:37:19.003Z] INFO (sandbox-continuous-validation) continuous validation platform initialized {"pipelines":13,"scheduled":2}
+[2026-08-31T06:37:19.003Z] INFO (runtime-core) Continuous Validation Platform ready ?" AI Sandbox v1.0 complete {"pipelines":13}
+[2026-08-31T06:37:19.009Z] INFO (delivery-engine) Registered intelligence source {"key":"operations-watch"}
+[2026-08-31T06:37:19.009Z] INFO (operations-platform) Enterprise Operations Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:37:19.011Z] INFO (delivery-engine) Registered intelligence source {"key":"strategy-watch"}
+[2026-08-31T06:37:19.011Z] INFO (strategy-platform) Enterprise Strategy Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:37:19.013Z] INFO (delivery-engine) Registered intelligence source {"key":"federation-watch"}
+[2026-08-31T06:37:19.013Z] INFO (enterprise-federation) Enterprise Federation Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:37:19.014Z] INFO (delivery-engine) Registered intelligence source {"key":"analytics-watch"}
+[2026-08-31T06:37:19.015Z] INFO (analytics-platform) Enterprise Analytics Platform ready {"channels":6,"sources":1}
+[2026-08-31T06:37:19.016Z] INFO (delivery-engine) Registered intelligence source {"key":"twin-watch"}
+[2026-08-31T06:37:19.017Z] INFO (digital-twin-platform) Enterprise Digital Twin Platform ready {"channels":7,"sources":1}
+[2026-08-31T06:37:19.020Z] INFO (secure-ipc) Secure IPC handlers registered {"count":723}
+[2026-08-31T06:37:19.026Z] INFO (crash-reporter) Crash reporter started
+[2026-08-31T06:37:19.026Z] INFO (scheduler) Task scheduler started
+[2026-08-31T06:37:19.026Z] INFO (notify-scheduler) Notification scheduler started
+[2026-08-31T06:37:19.027Z] INFO (services) Health monitor started {"intervalMs":5000}
+[2026-08-31T06:37:19.029Z] INFO (services) Update checker started {"intervalMs":21600000}
+[2026-08-31T06:37:19.034Z] INFO (app-updater) App updater started {"channel":"beta","version":"1.0.0-rc.21"}
+[2026-08-31T06:37:19.035Z] INFO (readback-reconciler) Read-back reconciler started {"intervalMs":60000}
+[2026-08-31T06:37:19.035Z] INFO (services) Background services started {"count":9,"skipped":[]}
+[2026-08-31T06:37:19.041Z] INFO (crash-reporter) Crash reporting initialized {"optedIn":false,"nativeActive":false}
+[2026-08-31T06:37:19.065Z] INFO (runtime-core) Runtime core ready: catalog unreachable (will retry on demand), registry loaded (0 installs), plugins (0)
+[2026-08-31T06:37:19.065Z] INFO (main) Startup complete {"phases":[{"name":"app-ready","atMs":75,"deltaMs":75},{"name":"window-created","atMs":164,"deltaMs":89},{"name":"runtime-core-ready","atMs":822,"deltaMs":658}],"totalMs":822,"complete":true}
+[2026-08-31T06:37:19.526Z] WARN (secure-ipc) IPC handler error {"channel":"org:list","message":"Sign in to manage organizations."}
+[2026-08-31T06:37:20.045Z] INFO (graph) Knowledge graph rebuilt {"nodes":22,"edges":0,"nodesAdded":0,"nodesRemoved":0,"edgesAdded":0,"edgesRemoved":0}
+[2026-08-31T06:37:20.151Z] INFO (memory) AI memory rebuilt {"projected":0,"added":0,"updated":0,"removed":0}
+[2026-08-31T06:37:29.255Z] ERROR (app-updater) Error: Error: net::ERR_NAME_NOT_RESOLVED
+    at SimpleURLLoaderWrapper.<anonymous> (node:electron/js2c/browser_init:2:137418)
+    at SimpleURLLoaderWrapper.emit (node:events:509:28)
+[2026-08-31T06:37:38.906Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":16}
+[2026-08-31T06:37:38.917Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":11}
+[2026-08-31T06:38:18.929Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":24}
+[2026-08-31T06:38:18.947Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":14}
+[2026-08-31T06:38:18.952Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"backend","ok":false,"durationMs":4}
+[2026-08-31T06:38:58.908Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":10}
+[2026-08-31T06:38:58.917Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":9}
+[2026-08-31T06:38:58.920Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"backend","ok":false,"durationMs":2}
+[2026-08-31T06:39:38.930Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":8}
+[2026-08-31T06:39:38.940Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":9}
+[2026-08-31T06:39:38.948Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"backend","ok":false,"durationMs":6}
+[2026-08-31T06:40:18.957Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":21}
+[2026-08-31T06:40:18.967Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":9}
+[2026-08-31T06:40:58.956Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":20}
+[2026-08-31T06:40:58.965Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":9}
+[2026-08-31T06:41:38.964Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":21}
+[2026-08-31T06:41:38.974Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":9}
+[2026-08-31T06:41:53.431Z] INFO (ai-engine-manager) AI engine configured {"provider":"claude","configured":true}
+[2026-08-31T06:42:18.960Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":16}
+[2026-08-31T06:42:18.968Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":6}
+[2026-08-31T06:42:58.986Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":29}
+[2026-08-31T06:42:58.995Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":6}
+[2026-08-31T06:43:18.973Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"backend","ok":false,"durationMs":4}
+[2026-08-31T06:43:38.982Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":7}
+[2026-08-31T06:43:38.993Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":10}
+[2026-08-31T06:43:58.966Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"backend","ok":false,"durationMs":3}
+[2026-08-31T06:44:19.000Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"runtime","ok":true,"durationMs":9}
+[2026-08-31T06:44:19.011Z] INFO (runtime-supervisor) recovery attempt {"subsystem":"platform","ok":true,"durationMs":9}

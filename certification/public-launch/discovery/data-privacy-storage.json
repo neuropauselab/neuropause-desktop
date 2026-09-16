@@ -1,0 +1,963 @@
+{
+  "key": "data-privacy-storage",
+  "generated_at": "2026-09-12",
+  "mode": "READ-ONLY subsystem map",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399f",
+    "version": "1.0.0-rc.30"
+  },
+  "classification_legend": {
+    "MEASURED": "executed/observed by this mapper",
+    "DECLARED": "asserted by a doc/comment/config",
+    "DERIVED": "computed from measured facts",
+    "INFERRED": "mapper judgement",
+    "ABSENT": "looked for it; does not exist"
+  },
+  "context_read": [
+    "/Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md sections 2, 4, 5 (read; no data-privacy items there beyond 'do not mutate R3' and credential-blocked signing)"
+  ],
+  "backend_schema": {
+    "migrations_dir": "apps/backend/src/db/migrations",
+    "migration_count": 13,
+    "create_table_total": 39,
+    "create_table_count_source": "grep -c 'CREATE TABLE' apps/backend/src/db/migrations/*.sql (0001:4, 0002:23, 0003:2, 0004:1, 0005:1, 0006:1, 0009:1, 0010:1, 0012:1, 0013:4)",
+    "last_migration_commit": "c151e19 2026-09-06 (git log -1 -- migrations/)",
+    "migrations": [
+      {
+        "file": "0001_init.sql",
+        "tables": [
+          "users(id, email CITEXT UNIQUE, display_name, avatar_url, password_hash)",
+          "auth_identities(user_id FK CASCADE, provider, provider_user_id, email)",
+          "auth_sessions(user_id FK CASCADE, token_hash SHA-256 UNIQUE, rotated_to, user_agent, expires_at, revoked_at)",
+          "audit_log(user_id FK SET NULL, action, detail JSONB, ip INET, created_at)"
+        ],
+        "tenant_key": "user_id only; no org_id",
+        "evidence": "0001_init.sql:7-57"
+      },
+      {
+        "file": "0002_store.sql",
+        "tables": [
+          "organizations(id, slug, name, description, website, logo_url, is_enterprise)",
+          "developers(organization_id FK SET NULL, email, avatar_url, bio)",
+          "developer_verifications",
+          "categories",
+          "tags",
+          "applications",
+          "app_tags",
+          "versions",
+          "update_channels",
+          "releases",
+          "changelogs",
+          "screenshots",
+          "pricing_plans",
+          "app_ratings",
+          "reviews(user_id FK CASCADE, UNIQUE(application_id,user_id))",
+          "downloads(user_id FK SET NULL)",
+          "installations(user_id FK CASCADE)",
+          "bookmarks(user_id FK CASCADE)",
+          "collections",
+          "collection_apps",
+          "featured_apps",
+          "app_permissions",
+          "plugin_packages"
+        ],
+        "tenant_key": "AI Store catalog: keyed by application_id/developer_id/user_id; organizations table defined here (0002:12-22); no org_id on user-facing engagement tables",
+        "evidence": "0002_store.sql:12-383"
+      },
+      {
+        "file": "0003_organizations.sql",
+        "tables": [
+          "memberships(org_id FK CASCADE, user_id FK CASCADE nullable-while-invited, role CHECK owner|admin|member|viewer, status, invited_email CITEXT, invite_token_hash SHA-256 UNIQUE, invite_expires_at, invited_by)",
+          "workspaces(org_id FK CASCADE, name)"
+        ],
+        "tenant_key": "org_id; partial unique (org_id,user_id) and (org_id,invited_email)",
+        "evidence": "0003_organizations.sql:8-49"
+      },
+      {
+        "file": "0004_auth_hardening.sql",
+        "tables": [
+          "auth_tokens(user_id FK CASCADE, kind email_verify|password_reset, token_hash UNIQUE, expires_at, consumed_at)"
+        ],
+        "alters": [
+          "users.email_verified BOOLEAN"
+        ],
+        "tenant_key": "user_id",
+        "evidence": "0004_auth_hardening.sql:5-17"
+      },
+      {
+        "file": "0005_subscriptions.sql",
+        "tables": [
+          "subscriptions(org_id UNIQUE FK CASCADE, plan_tier, status, seats, stripe_customer_id, stripe_subscription_id, current_period_end)"
+        ],
+        "tenant_key": "org_id",
+        "evidence": "0005_subscriptions.sql:6-19"
+      },
+      {
+        "file": "0006_connector_accounts.sql",
+        "tables": [
+          "connector_accounts(org_id FK CASCADE, user_id FK CASCADE, provider, external_account_id, display_name, status; UNIQUE(org_id,user_id,provider))"
+        ],
+        "tenant_key": "org_id + user_id",
+        "note_DECLARED": "'Metadata ONLY. OAuth tokens are NEVER stored here — they remain in the desktop keychain' (0006:3-4)",
+        "evidence": "0006_connector_accounts.sql:10-22"
+      },
+      {
+        "file": "0007_billing.sql",
+        "tables": [],
+        "alters": [
+          "subscriptions.plan CHECK trial|starter|professional|enterprise",
+          "subscriptions.trial_ends_at"
+        ],
+        "evidence": "0007_billing.sql:9-11"
+      },
+      {
+        "file": "0008_billing_provider.sql",
+        "tables": [],
+        "alters": [
+          "RENAME stripe_customer_id -> provider_customer_id",
+          "RENAME stripe_subscription_id -> provider_subscription_id (Razorpay)"
+        ],
+        "evidence": "0008_billing_provider.sql:7-8"
+      },
+      {
+        "file": "0009_sync_state.sql",
+        "tables": [
+          "sync_state(org_id FK CASCADE, entity_type CHECK organization|membership|workspace_settings|connected_account|connector_config|org_prefs, entity_id, version, updated_at, deleted tombstone, data JSONB, device_id, seq BIGINT; PK(org_id,entity_type,entity_id))"
+        ],
+        "tenant_key": "org_id (PK component); index (org_id, seq)",
+        "note_DECLARED": "'AI Memory, Timeline, and the Knowledge Graph are local-first and are intentionally not represented here' (0009:5-6) — superseded by 0011",
+        "evidence": "0009_sync_state.sql:10-26"
+      },
+      {
+        "file": "0010_devices.sql",
+        "tables": [
+          "devices(org_id FK CASCADE, device_id TEXT, user_id FK CASCADE, name, platform, os, arch, app_version, trust_status CHECK trusted|blocked|revoked, last_seen, registered_at; PK(org_id,device_id))"
+        ],
+        "tenant_key": "org_id (PK component)",
+        "evidence": "0010_devices.sql:7-26"
+      },
+      {
+        "file": "0011_memory_sync_entity.sql",
+        "tables": [],
+        "alters": [
+          "sync_state entity_type CHECK + 'memory'"
+        ],
+        "note_DECLARED": "'ORG-SCOPED memory ride[s] the existing sync_state transport as an OPAQUE payload. The backend does not interpret memory semantics' (0011:3-6)",
+        "evidence": "0011_memory_sync_entity.sql:14-17"
+      },
+      {
+        "file": "0012_embedding_state.sql",
+        "tables": [
+          "embedding_state(memory_id TEXT PK, org_id TEXT (no FK), content_hash, embedding_version, embedded_at)"
+        ],
+        "tenant_key": "org_id TEXT without FK to organizations",
+        "evidence": "0012_embedding_state.sql:4-12"
+      },
+      {
+        "file": "0013_pilot.sql",
+        "tables": [
+          "consents(user_id FK CASCADE, version)",
+          "pilot_enrollments(user_id UNIQUE FK CASCADE, state CHECK 11 states, consent_id FK, decision_id)",
+          "pilot_events(user_id FK CASCADE, enrollment_id FK CASCADE, event_type, metadata JSONB)",
+          "human_decisions(actor_id FK users NO CASCADE, decision_type, subject, decision, reason)"
+        ],
+        "tenant_key": "user_id only; no org_id on any pilot table",
+        "evidence": "0013_pilot.sql:3-42"
+      }
+    ],
+    "row_level_security": {
+      "status": "ABSENT",
+      "evidence": "grep -rn 'ROW LEVEL SECURITY|CREATE POLICY|app.tenant_id|set_config' apps/backend/src → no matches"
+    },
+    "packages_persistence": {
+      "has_rls_migration": "MEASURED: packages/persistence/src/schema.ts:118-131 defines ENABLE ROW LEVEL SECURITY + policy tenant_id = current_setting('app.tenant_id') on every entity table; tenants table at schema.ts:141",
+      "tenant_scoped_repository": "MEASURED: packages/persistence/src/tenancy.ts:57-80 TenantScopedRepository binds tenant on every op",
+      "backup_tenant_scopable": "MEASURED: packages/persistence/src/backup.ts:1-9 full()/incremental()/restore() optionally tenant-scoped; TENANT_SCOPED_ENTITY_TABLES",
+      "wired_into_backend": "ABSENT: grep '@neuropause/persistence' apps/backend/package.json apps/desktop/package.json apps/backend/src apps/desktop/src → no matches. The backend uses raw pg queries in apps/backend/src/*/repository.ts",
+      "rls_validation_DECLARED": "tenancy.ts:8-9 'Layer (2) needs a non-superuser role (infra-pending)'"
+    },
+    "deletion_paths": {
+      "DELETE_statements_found": [
+        "memberships WHERE id (organizations/repository.ts:213)",
+        "workspaces WHERE id AND org_id (organizations/repository.ts:240)",
+        "connector_accounts WHERE id (connectorAccounts/repository.ts:85)",
+        "devices WHERE org_id AND device_id (devices/repository.ts:116)",
+        "bookmarks WHERE user_id AND application_id (store/repository.ts:696)"
+      ],
+      "user_account_deletion": "ABSENT (no DELETE FROM users; accountRouter.ts exposes only /request-verification, /verify-email, /request-password-reset, /reset-password at lines 50-78)",
+      "organization_deletion": "ABSENT (no DELETE FROM organizations; organizations/router.ts routes: POST /, GET /, POST /accept-invite, GET/PATCH /:orgId, members, invitations, workspaces — no org delete)",
+      "auth_sessions_cleanup": "ABSENT (session.ts only UPDATE auth_sessions SET revoked_at at 69,91,108; no DELETE; expired rows retained indefinitely)",
+      "sync_state_deletion": "tombstones only (0009:18 deleted BOOLEAN); no purge",
+      "data_export_endpoint": "ABSENT (grep export in backend routers → none)"
+    },
+    "auth_and_authorization": {
+      "requireAuth": "MEASURED: verifies Bearer JWT, sets req.userId/userEmail (auth/requireAuth.ts:13-26); no device binding",
+      "access_ttl_default_s": 900,
+      "refresh_ttl_default_s": 2592000,
+      "evidence_ttl": "apps/backend/src/config/env.ts:32-37",
+      "sync_membership_check": "MEASURED: sync/router.ts:43-46 requireMember via getMemberRole; applied at :53 (push) and :64 (pull)",
+      "sync_repo_org_scoping": "MEASURED: every query WHERE org_id (sync/repository.ts:41,54,79,99)",
+      "device_trust_enforced_on_requests": "ABSENT: grep trust_status|blocked|revoked in sync/, auth/, middleware/, app.ts → none; heartbeat (devices/service.ts:62-75) only assertMember + touch; a device with trust_status=revoked and a valid JWT can still push/pull",
+      "semantic_api": "MEASURED: semanticRouter.ts:3-20 mounted behind requireAuth, orgId from path, getMemberRole check; POST /memory/semantic/:orgId/search {text}"
+    },
+    "logging_and_audit": {
+      "pino_redact_paths": [
+        "req.headers.authorization",
+        "password",
+        "*.password",
+        "refreshToken",
+        "accessToken"
+      ],
+      "pino_redact_evidence": "apps/backend/src/config/logger.ts:8-11",
+      "pino_http_request_logging": "MEASURED: app.ts:69-73 pinoHttp with autoLogging ignore /health only",
+      "pino_http_default_serializer_includes_remoteAddress": "INFERRED (pino-http default req serializer; not verified by reading node_modules)",
+      "audit_log_writer": "MEASURED: middleware/audit.ts:9-22 stores user_id, action, detail JSONB, req.ip",
+      "audited_actions": [
+        "auth.logout",
+        "auth.email.register",
+        "auth.email.login",
+        "auth.oauth.register",
+        "auth.oauth.login"
+      ],
+      "audited_actions_evidence": "grep audit( call sites in apps/backend/src; auth/router.ts:133",
+      "user_agent_stored": "MEASURED: auth/router.ts:165,178,192,200 pass req.header('user-agent') into auth_sessions.user_agent",
+      "rate_limit_ip_in_redis": "MEASURED: middleware/rateLimit.ts:78-79 key rl:<bucket>:<ip>, window TTL",
+      "metrics_labels_pii": "MEASURED: observability/metrics.ts:61-62 generic labels; no userId/email labels found"
+    },
+    "third_parties_backend": {
+      "embedding_provider": "MEASURED: default 'ollama' at http://127.0.0.1:11434 (semantic/embedding/embeddingConfig.ts:33,48); optional 'openai' https://api.openai.com/v1 or 'voyage' https://api.voyageai.com/v1 when EMBEDDING_PROVIDER + EMBEDDING_API_KEY set (:34-35,58-62)",
+      "what_goes_to_embedding_provider": "MEASURED: memory content strings (semantic/api/backfillService.ts:48,70; pipeline/embeddingPipeline.ts:105 embed(m.content)) and semantic search query text (semanticSearchService.ts:72-82)",
+      "qdrant_payload": "MEASURED: only {orgId, memoryId} + vector; no text (qdrant/qdrantVectorStore.ts:117; pipeline/embeddingPipeline.ts:106); mandatory orgId must-filter on search/delete (:4-5,143-149)",
+      "payment_gateway": "MEASURED: Razorpay; subscription create sends notes:{orgId}, customer_notify:1 (billing/razorpayGateway.ts:14-16); env RAZORPAY_* (env.ts:60-65)",
+      "mailer": "MEASURED: createLoggingMailer logs the link, does NOT send (auth/mailer.ts:4-7); no SMTP/SES/Postmark env vars in env.ts",
+      "oauth_identity_providers": "MEASURED env names: GOOGLE_/GITHUB_/MICROSOFT_/APPLE_ CLIENT_ID/SECRET (env.ts:39-49)",
+      "alert_webhook": "MEASURED: ALERT_WEBHOOK_URL optional (env.ts:56); health transitions only (observability/alertWebhookSink.ts:70)"
+    },
+    "encryption_at_rest": {
+      "postgres": "ABSENT in repo: docker-compose.prod.yml:14-21 postgres:16-alpine with plain pgdata volume; no TDE/pgcrypto column encryption; secrets stored are hashes (password_hash argon2id users/service.ts:28; token_hash SHA-256 0001:32-38, 0003:17, 0004:11)",
+      "db_backups": "DECLARED: docs/launch/LAUNCH-01-BACKEND-DEPLOY.md:139-148 nightly cron scripts/backup-db.sh; MEASURED: scripts/backup-db.sh:12,18 BACKUP_RETENTION default 14 dumps; no gpg/encrypt in script (ABSENT)"
+    },
+    "tenant_isolation_tests": {
+      "integration": "apps/backend/src/__integration__/organizations.test.ts (305 lines): migrations idempotent (:67), create→invite→accept→promote→remove (:80), cross-org workspace update rejected not_found (:222-231), cascade membership delete on org removal (:295)",
+      "unit_router": "apps/backend/src/organizations/router.test.ts: excludes orgs caller is not member of (:117), 403 org_forbidden on mismatched invite email (:151-163), non-manager invite 403 (:178-194)",
+      "sync_tests_present": [
+        "sync/memorySync.test.ts",
+        "sync/router.test.ts",
+        "sync/service.test.ts",
+        "sync/syncCore.test.ts"
+      ],
+      "note": "Not executed by this mapper (background revalidation running)."
+    }
+  },
+  "desktop_local_storage": {
+    "persistence_dir_expected": "apps/desktop/src/main/persistence",
+    "persistence_dir_status": "ABSENT (ls → not found). Persistence is per-subsystem; the two structural registries are storage/storePaths.ts (backup/restore domain map) and tenancy/storeScope.ts (mandatory scope/retention declaration, enforced by tenancy/storeScopeGate.test.ts)",
+    "userData_getPath_call_sites": "MEASURED: 60+ join(app.getPath('userData'), ...) sites in apps/desktop/src/main (grep)",
+    "store_scope_declarations": {
+      "count": 75,
+      "evidence": "grep -rn 'declareStoreScope({' apps/desktop/src/main (non-test)",
+      "retentionScope_split": {
+        "OWNER": 51,
+        "INSTALL": 10,
+        "NONE": 10
+      },
+      "declarations_without_retentionScope": [
+        "ecosystem-partner-directory (ecosystem/exchange/partnersStore.ts)",
+        "connector-lifecycle-history (connectors/connectorRuntimeSupervisor.ts, memory)",
+        "connector-activity-log (connectors/connectorService.ts, memory)",
+        "enterprise-personalization (enterprise/personalization/personalizationStore.ts)",
+        "workspace-directory (enterprise/workspace/workspaceStore.ts)",
+        "ai-config (ai/aiConfigStore.ts)",
+        "ai-routing-usage (ai/routingUsageStore.ts)",
+        "cloud-livesync-mirror (cloud/livesync/mirror.ts)"
+      ],
+      "scope_types": [
+        "TENANT",
+        "WORKSPACE",
+        "USER",
+        "INSTALL_GLOBAL",
+        "PLATFORM_GLOBAL",
+        "EPHEMERAL"
+      ],
+      "illegal_combination_enforced": "MEASURED: storeScope.ts:187-193 declareStoreScope throws for CUSTOMER_DERIVED + INSTALL_GLOBAL/PLATFORM_GLOBAL (DECLARED in header :181-186)"
+    },
+    "storePaths_DOMAIN_FILES": {
+      "evidence": "apps/desktop/src/main/storage/storePaths.ts:29-128",
+      "configuration": [
+        "telemetry.json",
+        "crash-reporting.json",
+        "update-prefs.json",
+        "update-history.json",
+        "window-state.json",
+        "connectors.json",
+        "onboarding.json",
+        "feature-flags.json",
+        "pilot.json",
+        "license-status.json",
+        "companion-devices.json",
+        "tenant-ai-preference.json",
+        "local-principal.json",
+        "vault.bin",
+        "connector-vault.bin",
+        "experience-profile.json",
+        "ai-config.json",
+        "ai-routing-usage.json",
+        "identity.json",
+        "workspace-contexts.json",
+        "webhooks.json",
+        "delivery-preferences.json",
+        "sync-state.json"
+      ],
+      "workspace": [
+        "enterprise-workspaces.json",
+        "enterprise-org.json"
+      ],
+      "knowledgeGraph": [
+        "graph.json",
+        "unified-store.json"
+      ],
+      "aiWorker": [
+        "workforce-registry.json",
+        "workforce-jobs.json",
+        "workforce-audit.json"
+      ],
+      "plugin": [
+        "plugins.json",
+        "plugins/",
+        "plugin-data/"
+      ],
+      "aiMemory": [
+        "memory.json",
+        "memory-audit.json"
+      ],
+      "timeline": [
+        "timeline/ (JSONL)"
+      ],
+      "business": [
+        "enterprise-module-* (prefix, 100+ ERP/CRM module stores)",
+        "executive-decisions.json",
+        "enterprise-governance.json",
+        "automations.json",
+        "health-history.json",
+        "decision-records.json",
+        "holds.json",
+        "opportunity-decisions.json",
+        "outcome-revisions.json",
+        "erp-document-lines.json",
+        "erp-approvals.json",
+        "platform-command-journal.json",
+        "platform-command-journal.intents.json",
+        "platform-delivered-events.json",
+        "medical-device-traceability.json",
+        "data-plane-provenance.json",
+        "data-plane-mappings.json",
+        "data-plane-relationships.json",
+        "notification-inbox.json",
+        "action-records.json",
+        "m365-governed-actions.json",
+        "connector-controls.json",
+        "enterprise-personalization.json",
+        "platform-operators.json",
+        "marketplace-policy.json",
+        "documents.json",
+        "documents/ (blobs)",
+        "sandbox/"
+      ],
+      "assistant": [
+        "assistant-conversations.json",
+        "feedback.json"
+      ],
+      "not_in_registry_but_on_disk": [
+        "executions.json (runtimeCore.ts:2444)",
+        "logs/app.log",
+        "logs/audit.log",
+        "logs/crashes.log",
+        "livesync-device-id (liveSyncInstance.ts:75)",
+        "livesync-queue.json, livesync-mirror.json (liveSyncInstance.ts:152-153)",
+        "api-signing-secret (ecosystem/auth/signingSecretInstance.ts:19)",
+        "registry.json (registry.ts:195)",
+        "backups/ (registry.ts:672; releaseOps/index.ts:114)",
+        "ecosystem-*.json (partners/marketplace/gateway/developer/installs/packs/billing)",
+        "data-version.json, migration-audit.json (deliberately excluded, storePaths.ts:21-24)"
+      ]
+    },
+    "secret_vaults": {
+      "vault.bin": {
+        "holds": "app refresh token + per-provider API keys (anthropic/openai credential ids)",
+        "encryption": "Electron safeStorage (macOS Keychain-backed); refuses to write if isEncryptionAvailable() false",
+        "file_mode": "0o600",
+        "atomic": "tmp+rename",
+        "corrupt_handling": "quarantine, not reset",
+        "evidence": "security/secureStore.ts:1-11,30,44-59,66-87,128-149",
+        "classification": "MEASURED"
+      },
+      "connector-vault.bin": {
+        "holds": "OAuth access/refresh tokens per workspaceId→connectorId→accountId",
+        "encryption": "safeStorage per account; refuses plaintext",
+        "schema_version": 2,
+        "key_version": 1,
+        "reencryptAll_rotation_hook": "connectorVault.ts:320-330",
+        "scope": "WORKSPACE / SECRET / retention OWNER",
+        "legacy_unscoped_entries_unspendable": "connectorVault.ts:82-105",
+        "evidence": "connectors/connectorVault.ts:1-11,19-58,108,179-220",
+        "classification": "MEASURED"
+      },
+      "envelope_crypto": {
+        "exists": "AES-256-GCM DEK per record wrapped by tenant KEK (security/envelopeCrypto.ts:1-24); KEK persisted via credentialStore keychain entry neuropause.envelope.keks.v1 (security/durableKekProvider.ts:1-32)",
+        "consumers": "security/signedAuditChain.ts (Ed25519 audit head signing) and workforce/index.ts (SecretStore type import) only",
+        "customer_data_stores_envelope_encrypted": "ABSENT — no JSON store (memory.json, assistant-conversations.json, enterprise-module-*, documents/) calls envelopeCrypto; they rely on 0o600 file mode",
+        "classification": "MEASURED"
+      }
+    },
+    "file_modes_0600": [
+      "connectorVault.ts",
+      "conversationStore.ts",
+      "appendOnlyStore.ts",
+      "memoryStore.ts",
+      "durableJsonStore.ts",
+      "graphStore.ts",
+      "documentStore.ts",
+      "enterpriseRecordStore.ts",
+      "secureStore.ts",
+      "crashReporter.ts (crash-reporting.json)",
+      "telemetry.ts (telemetry.json)",
+      "experienceProfileService.ts",
+      "supportBundle.ts outputs"
+    ],
+    "logs": {
+      "app.log": "MEASURED: logs/app.log bounded 5 MiB keep 2 (main/index.ts:289-292); redaction at logger boundary (logger.ts:4-60 redactCredentialText: token/secret/key/password kv, Bearer, eyJ prefixes)",
+      "audit.log": "MEASURED: TWO writers to the same file — ipc/secureBridge.ts:8-21 createBoundedLog 5 MiB keep 3 (IPC channel audit) AND platform/index.ts:89-105 raw fs.appendFile of platform events {type, actor, resource, correlationId} with no bound",
+      "audit.log_dual_writer_risk": "INFERRED: unbounded appendFile alongside a rotating writer can interleave and defeat rotation",
+      "crashes.log": "MEASURED: logs/crashes.log bounded 2 MiB keep 2 (services/crashReporter.ts:65,75); message+stack scrubbed by buildCrashRecord (:118-119)",
+      "telemetry.log": "MEASURED: JSONL appended only when enabled; unbounded appendFile (services/telemetry.ts:52-57); excluded from support bundle (supportBundle.ts:53)",
+      "pii_redaction_in_logs": "DECLARED: logger.ts:18-19 'PII redaction is source-side (redactedEmailShape) and export-side (supportBundle)' — email addresses are NOT redacted at the logger boundary"
+    },
+    "telemetry_and_crash": {
+      "third_party_sdks": "ABSENT: grep crashReporter.|Sentry|@sentry|posthog|mixpanel|segment|amplitude in apps/desktop/src and apps/backend/src → only Electron native crashReporter usage",
+      "telemetry_default": "MEASURED: off (services/telemetry.ts:20,39); local JSONL only; 'there is no telemetry endpoint' (:2-5 DECLARED, consistent with grep: only outbound fetch in runtimeTelemetry.ts:125 is backend /health probe)",
+      "crash_default": "MEASURED: optedIn=false default (crashReporter.ts:62,98); native start with submitURL 'https://invalid.localhost/' and uploadToServer:false (:107-108); store scope INSTALL_GLOBAL retention INSTALL/SYSTEM (:23-49)",
+      "crash_ipc_authz": "MEASURED: CrashSetOptIn and CrashReport are PUBLIC (runtimeAuthz.ts:1106-1110); CrashExport/GetStatus operations:read (:667-668)",
+      "otel": "MEASURED: observability/otel.ts:2-5 projection of gateway audit to OTLP spans; no exporter/collector http call (grep exporter|collector|http → only attribute names)",
+      "prometheus": "MEASURED: observability/prometheus.ts toPrometheus() text formatter; no listen/createServer"
+    },
+    "support_bundle": {
+      "trigger": "user-initiated; IPC SupportGenerateBundle requires cloud:operate (runtimeAuthz.ts:391)",
+      "contents": [
+        "versions.json",
+        "diagnostics.json",
+        "modules.json",
+        "connectors.json (id,name,status only)",
+        "plugins.json",
+        "crashes.json",
+        "logs/* (redacted)"
+      ],
+      "never_included": [
+        "connectors.json (userData original)",
+        "telemetry.log"
+      ],
+      "redaction": "home-dir usernames (/Users/<user>, /home/<user>, C:\\Users\\<user>), JWTs, sk- keys, Bearer tokens, key/value secrets (supportBundle.ts:15-24,35)",
+      "destination": "save-dialog path outside userData (feedbackService.ts:15 'egress')",
+      "evidence": "support/supportBundle.ts:1-6,15-24,53,114-135"
+    },
+    "backups": {
+      "location": "userData/backups/<id>/ (registry.ts:672; releaseOps/index.ts:114)",
+      "manifest": "sha256 per file (backupManager.ts:6-8)",
+      "retention": "MANUAL_BACKUP_KEEP=10, scheduled keep 10, pre-migration snapshots never pruned (backupManager.ts:33-37,78-83)",
+      "scope": "MULTI_TENANT_INSTALL, restore all-or-nothing across tenants (backupManager.ts:14-22)",
+      "includes_secret_vaults": "yes, ciphertext only, undecryptable off-machine (storePaths.ts:52-61)",
+      "encrypted": "ABSENT (grep encrypt in backup/*.ts → none)",
+      "ipc_authz": "BackupCreate/List/Validate/Restore/Delete all cloud:operate (runtimeAuthz.ts:388-420)"
+    },
+    "cloud_sync_from_desktop": {
+      "entity_types": [
+        "organization",
+        "membership",
+        "workspace_settings",
+        "connected_account",
+        "connector_config",
+        "org_prefs",
+        "memory"
+      ],
+      "entity_types_evidence": "packages/shared/src/types/sync.ts:23-31",
+      "memory_payload": "MEASURED: text = memory content; metadata = title, kind, tags, entityRefs, occurredAt, item.metadata; id/createdAt/origin/evidence/connectorId/source NOT versioned (memory/memorySyncAdapter.ts:8-13,23-36)",
+      "memory_visibility_filter": "MEASURED: 'unowned, personal, or system — never leaves' (memory/memoryLiveSyncBridge.ts:54); only tenant-owned memories enqueue; default visibility on remember() is 'tenant' (memoryStore.ts:351)",
+      "backend_storage_of_memory": "DERIVED: full MemorySyncState including content is stored as plaintext JSONB in sync_state.data (0009:19 + memoryLiveSyncBridge.ts:8-9 'opaque data — the backend never interprets it')",
+      "local_mirror_files": "livesync-queue.json, livesync-mirror.json (liveSyncInstance.ts:152-153); mirror declared TENANT/CUSTOMER_DERIVED but lacks retentionScope"
+    },
+    "renderer_storage": {
+      "localStorage_usages": 16,
+      "content": "nav tab/hidden-module preferences only (NAV_KEY, PREFIX keys) — grep setItem in apps/desktop/src/renderer/src",
+      "classification": "MEASURED"
+    },
+    "csp": {
+      "prod": "default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data: https:",
+      "evidence": "security/csp.ts:14-28",
+      "note": "INFERRED: img-src https: permits image loads from any HTTPS host (e.g. connector avatar_url) — a low-volume egress/beacon vector"
+    }
+  },
+  "data_inventory": [
+    {
+      "data_type": "AI prompts (user query + assembled context + system prompt)",
+      "collected": "YES",
+      "where": "Desktop: assistant-conversations.json (user turns), memory.json (executive memory), executions.json; transient in-process ModelRequest. Backend: not stored.",
+      "encryption_at_rest": "None store-level; file mode 0600 (conversationStore.ts 0o600). Not envelope-encrypted.",
+      "retention": "assistant-conversations: MAX_CONVERSATIONS=100 per tenant, MAX_MESSAGES=200 per conversation (conversationStore.ts:71,73). AI audit ring 1000 in-memory holds no prompt text (ai/auditLog.ts:1-9).",
+      "access_control": "TENANT scope, authority USER; `assistant:*` on PUBLIC IPC allowlist (conversationStore.ts:36-39); tenant boundary tests tenancy/assistantConversationTenancy.test.ts:65-125",
+      "deletion": "per-conversation delete inside owner (assistantConversationTenancy.test.ts:125); no bulk 'delete my AI data' surface (ABSENT). Privacy notice: delete data folder (PRIVACY.md:16).",
+      "export": "ABSENT (no conversation export IPC found); backups include the file (storePaths.ts:127)",
+      "logging": "ai.run.error logs worker+promptId only (aiEngine.ts:55); prompts never logged (auditLog.ts:8-9 DECLARED)",
+      "third_party": "Sent to model route chosen by planRoute: Ollama (local or private_infrastructure) /api/chat {model, messages[system,user], stream:false} (ollamaClient.ts:55-83); Anthropic api.anthropic.com/v1/messages {model, system, messages, max_tokens} (claudeClient.ts:10,62-66); OpenAI {model, messages} (openaiClient.ts:58-71). Only when route permitted.",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "AI responses",
+      "collected": "YES",
+      "where": "Desktop: assistant-conversations.json (assistant turns incl. routing envelope), memory.json (captured decisions), executive-decisions.json, founder suggestions; Backend: not stored",
+      "encryption_at_rest": "None store-level; 0600",
+      "retention": "same caps as conversations",
+      "access_control": "TENANT; USER authority",
+      "deletion": "per conversation; no bulk",
+      "export": "ABSENT",
+      "logging": "response id/tokens/cost/latency/confidence in in-memory AiAuditLog (aiEngine.ts:writeAudit); text never logged",
+      "third_party": "Response originates from provider; apiKeyGuard prevents provider error text leaking API key into conversations (apiKeyGuard.ts:2-20)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Tool / connector outputs (GitHub, Notion, Slack, Google Workspace, M365 entities)",
+      "collected": "YES",
+      "where": "Desktop: unified-store.json (unified entities), graph.json, timeline/ JSONL, action-records.json (governed action evidence), m365-governed-actions.json, sync-state.json cursors; Backend: connector_accounts metadata only (0006)",
+      "encryption_at_rest": "None store-level; 0600 where AppendOnly/Durable stores used",
+      "retention": "unified: NO CAP (unifiedStore.ts:34-36); graph relationship history 5000 rows/tenant (graphStore.ts:60-61); timeline JSONL 'append-only and never trimmed' (timelineService.ts:67-68 DECLARED); action-records TENANT/OWNER",
+      "access_control": "TENANT/WORKSPACE scoped stores; deleteByConnector scope-checked (unifiedStore.ts:35-36)",
+      "deletion": "per-connector deleteByConnector; disconnect path; no TTL",
+      "export": "backups only",
+      "logging": "connector-activity-log in-memory; RULE-009 metadataCredentialGuard scrubs credential-shaped values from connectors.json (connectorStore.ts:6-9,17)",
+      "third_party": "Included in AI context when worker source set includes github/notion/calendar/slack/unified-model (contextBuilder.ts:77-110); item text = title + snippet + evidence ids (:274-277)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Files / documents (uploaded blobs)",
+      "collected": "YES",
+      "where": "Desktop: userData/documents/<sha256> blobs + documents.json metadata (documentStore.ts:11-24); sandbox/ artifacts; Backend: none",
+      "encryption_at_rest": "None; 0600; content-addressed sha256",
+      "retention": "reference-counted deletion (documentStore.ts:19-20); no TTL",
+      "access_control": "WORKSPACE scope; path derived never supplied (:21-23)",
+      "deletion": "reference-counted remove",
+      "export": "backups include documents/ (storePaths.ts:123-124)",
+      "logging": "provenance in data-plane-provenance.json",
+      "third_party": "Not sent to AI provider directly; parsed values may enter unified model/context",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Device identity",
+      "collected": "YES",
+      "where": "Desktop: livesync-device-id (randomUUID, liveSyncInstance.ts:75,84), local-principal.json (OS username via userInfo().username, localPrincipalStore.ts:61), identity.json (external identity questions), companion-devices.json; Backend: devices table (name=hostname, platform='desktop', os=process.platform, arch, app_version; deviceClient.ts:76-86; 0010:7-21); sync_state.device_id",
+      "encryption_at_rest": "None (INSTALL_GLOBAL metadata files); backend plaintext",
+      "retention": "backend devices row until DELETE /devices/:deviceId (devices/router.ts:115) or org/user cascade; local id persists across restarts (backed up)",
+      "access_control": "backend: member of org; trust_status trusted|blocked|revoked but NOT enforced on sync/auth requests (ABSENT)",
+      "deletion": "DELETE /devices/:deviceId?orgId= (deviceClient.ts remove)",
+      "export": "GET /devices?orgId=",
+      "logging": "pilot event 'device_connected' type exists (pilot/types.ts:30)",
+      "third_party": "hostname sent to NeuroPause backend on register (deviceClient.ts:81,92-95); companion pairing broadcasts hostname (companion/index.ts:111)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Auth tokens / sessions",
+      "collected": "YES",
+      "where": "Desktop: vault.bin refreshToken (safeStorage ciphertext); Backend: auth_sessions.token_hash SHA-256, user_agent, expires_at, revoked_at; auth_tokens.token_hash for verify/reset; JWT access tokens in memory",
+      "encryption_at_rest": "Desktop: safeStorage/Keychain; Backend: hashes only (0001:32-38, 0004:2-3)",
+      "retention": "access 900s, refresh 30d default (env.ts:32-37); sessions never purged (ABSENT cleanup); rotation chain reuse-detection (session.ts:69-91)",
+      "access_control": "Bearer JWT (requireAuth.ts); refresh via POST /auth/token/refresh; logout revokes (auth/router.ts:198-205)",
+      "deletion": "revoked_at set; rows retained",
+      "export": "none",
+      "logging": "pino redacts authorization/refreshToken/accessToken (logger.ts:9); audit auth.* actions with ip (audit.ts:16)",
+      "third_party": "OAuth providers google/github/microsoft/apple when configured (env.ts:39-49)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Telemetry / usage analytics",
+      "collected": "NO by default; opt-in local only",
+      "where": "Desktop: telemetry.json {enabled}, telemetry.log JSONL (services/telemetry.ts:23,55); Backend: /metrics Prometheus counters (no user labels), pino request logs",
+      "encryption_at_rest": "None",
+      "retention": "telemetry.log unbounded when enabled; settings file 0600",
+      "access_control": "IPC (not enumerated in runtimeAuthz grep; TelemetrySetEnabled not found in policy table — NOT_MEASURED)",
+      "deletion": "manual file deletion only",
+      "export": "excluded from support bundle (supportBundle.ts:53)",
+      "logging": "n/a",
+      "third_party": "ABSENT: no analytics SDK, no upload endpoint (grep; TELEMETRY-POLICY.md:9 DECLARED consistent)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Crash logs",
+      "collected": "Opt-in; default off",
+      "where": "Desktop: crash-reporting.json {optedIn}, logs/crashes.log (bounded 2 MiB keep 2), Crashpad minidumps in userData when native opted in",
+      "encryption_at_rest": "None; scrubbed message/stack (crashReporter.ts:118-119)",
+      "retention": "rotation 2 MiB×2; retentionScope INSTALL / SYSTEM",
+      "access_control": "CrashSetOptIn/CrashReport PUBLIC IPC; CrashExport operations:read (runtimeAuthz.ts:667-668,1106-1110)",
+      "deletion": "rotation only",
+      "export": "crashes.json in support bundle; crashReporter.export() (releaseOps/index.ts:280,415)",
+      "logging": "log.error 'Crash captured' with category/kind/scrubbed message (:120)",
+      "third_party": "ABSENT: uploadToServer:false, submitURL invalid.localhost (:107-108); stated limit: stack frames may quote record names (DECLARED :48-50)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Evidence (governed-action / execution evidence)",
+      "collected": "YES",
+      "where": "Desktop: action-records.json, executions.json (MAX_PERSISTED 500, executionStore.ts:60), platform-command-journal.json, platform-delivered-events.json, erp-approvals.json, decision-records.json, holds.json, medical-device-traceability.json, workforce-audit.json, enterprise-governance.json, logs/audit.log; Backend: audit_log, pilot_events, human_decisions",
+      "encryption_at_rest": "None store-level; signed audit chain head (Ed25519 via keychain, signedAuditChain.ts:2-10) for integrity not confidentiality",
+      "retention": "executions 500/tenant + archiveOlderThan with no production caller (executionStore.ts:36-45 DECLARED); audit.log 5 MiB×3 (IPC writer) + unbounded platform-event appends; backend audit_log append-only, no purge (ABSENT)",
+      "access_control": "TENANT scoped; backend audit_log not exposed via API (no router found)",
+      "deletion": "caps only; no erasure path",
+      "export": "backups (business domain, storePaths.ts:83-126)",
+      "logging": "is the log",
+      "third_party": "no",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Provenance (import lineage, memory audit)",
+      "collected": "YES",
+      "where": "Desktop: data-plane-provenance.json, data-plane-mappings.json, data-plane-relationships.json, memory-audit.json (MAX_ENTRIES 5000/tenant, memoryAuditLog.ts:80), migration-audit.json",
+      "encryption_at_rest": "None",
+      "retention": "memory-audit 5000/tenant; provenance no cap stated",
+      "access_control": "TENANT (memory-audit-log was on PUBLIC channel per Round 7 finding, since moved — runtimeAuthz.ts:71-82 DECLARED)",
+      "deletion": "cap only",
+      "export": "backups",
+      "logging": "n/a",
+      "third_party": "no",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Connector credentials (OAuth tokens)",
+      "collected": "YES",
+      "where": "Desktop only: connector-vault.bin (safeStorage ciphertext keyed workspace→connector→account); Backend: NEVER (0006:3-4 DECLARED; connector_accounts columns contain no token field — MEASURED)",
+      "encryption_at_rest": "Electron safeStorage (macOS Keychain); refuses plaintext write (connectorVault.ts:216-220)",
+      "retention": "No cap; delete(one account), clear(workspaceId), discardUnscoped(legacy) (connectorVault.ts:41-49)",
+      "access_control": "main process only, never over IPC (:10); WORKSPACE-keyed get with required workspace arg (:50-53)",
+      "deletion": "disconnect → delete; clear per workspace",
+      "export": "backups carry ciphertext only (storePaths.ts:52-61)",
+      "logging": "redactCredentialText at logger boundary; RULE-009 guard on metadata",
+      "third_party": "tokens presented to the respective SaaS provider APIs only",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "AI provider API keys",
+      "collected": "YES (user-entered) or env",
+      "where": "Desktop: vault.bin secrets[providerId] via credentialStore (aiConfigIpc.ts:381,388); env fallback ANTHROPIC_API_KEY/OPENAI_API_KEY (providerManager.ts:33-35)",
+      "encryption_at_rest": "safeStorage",
+      "retention": "until deleteSecret (AiConfigClearCredential cloud:operate, runtimeAuthz.ts:125)",
+      "access_control": "AiConfigSetCredential cloud:operate (runtimeAuthz.ts:129); renderer only sees hasStoredKey booleans (aiConfig.ts:1-4,24-31)",
+      "deletion": "credentialStore.deleteSecret",
+      "export": "ciphertext in backups only",
+      "logging": "sk- patterns redacted in logs and bundles",
+      "third_party": "sent as x-api-key / Authorization to provider",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "User profile",
+      "collected": "YES",
+      "where": "Desktop: experience-profile.json (workspaceType, onboarding state, aiModeChosen, understanding attributes about role/domain — USER scope 0600, experienceProfileService.ts:67-70,80-96,124), local-principal.json (OS username), workspace-contexts.json, enterprise-personalization.json; Backend: users(email, display_name, avatar_url, password_hash argon2id, email_verified), auth_identities(provider email), memberships(invited_email), consents, pilot_enrollments",
+      "encryption_at_rest": "Desktop 0600; backend plaintext except password hash",
+      "retention": "indefinite; no account deletion (ABSENT)",
+      "access_control": "GET /auth/me requireAuth (auth/router.ts:213); org member listing resolves member email/display_name (organizations integration test :119-149)",
+      "deletion": "ABSENT backend; local: attributes removeKeys (experienceProfileService.ts:91-96), delete data folder",
+      "export": "ABSENT backend",
+      "logging": "email NOT redacted at desktop logger boundary (logger.ts:18-19 DECLARED source-side only); backend pino does not redact email",
+      "third_party": "OAuth provider profile (email, displayName, avatarUrl) ingested (users/service.ts:52-77); synthetic placeholder email when provider gives none (:70-72)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Organization data (org profile, memberships, workspaces, subscriptions, org-scoped memory, org prefs)",
+      "collected": "YES",
+      "where": "Backend: organizations, memberships, workspaces, subscriptions(provider_customer_id), connector_accounts, devices, sync_state (incl. memory content JSONB), embedding_state, Qdrant vectors (orgId+memoryId payload); Desktop: enterprise-org.json, enterprise-workspaces.json, tenant-ai-preference.json, license-status.json, livesync-mirror.json",
+      "encryption_at_rest": "Backend: none (plain Postgres volume, ABSENT TDE); Desktop: 0600",
+      "retention": "backend indefinite; sync tombstones retained; DB dumps 14 (backup-db.sh:18)",
+      "access_control": "backend: membership role checks (organizations/service.ts; router tests 403 org_forbidden); app-layer org_id scoping everywhere; RLS ABSENT; desktop: TENANT scope + 72 tenancy test files (ls apps/desktop/src/main/tenancy/*.test.ts | wc -l) incl. crossTenant.test.ts READ/IDOR/WRITE/DELETE/SEARCH/COUNT/COLD-START/SWITCH cases (:110-270)",
+      "deletion": "membership/workspace/connector_account/device delete; org delete ABSENT",
+      "export": "sync pull (own org); backups locally",
+      "logging": "pino request logs",
+      "third_party": "Razorpay receives orgId in notes (razorpayGateway.ts:16); embedding provider receives memory content when openai/voyage configured",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Pilot consent & human decisions",
+      "collected": "YES (backend tables exist)",
+      "where": "Backend: consents(user_id, version), pilot_enrollments, pilot_events(event_type incl. session_started/ended, os_install_*, os_version_reported, device_connected, policy_acknowledged, measurement_recorded, feedback_submitted; metadata JSONB), human_decisions(actor_id, decision_type, subject, decision, reason); Desktop: pilot.json (PilotFileData, local)",
+      "encryption_at_rest": "none",
+      "retention": "indefinite; human_decisions.actor_id has no ON DELETE clause (0013:36) → user delete would be blocked by FK (DERIVED)",
+      "access_control": "pilot/router.ts routes /consent /enroll /status /events /day7 /decision; enforcement in pilot/authority.ts (per HANDOFF §4)",
+      "deletion": "ABSENT",
+      "export": "GET /pilot/status, /day7",
+      "logging": "pilot_events is the ledger",
+      "third_party": "no",
+      "desktop_caller_of_backend_pilot_api": "ABSENT: grep '/pilot/consent|/pilot/enroll|pilot/status|os_version_reported' in apps/desktop/src → no matches; desktop pilot store is local file only (pilot/pilotService.ts:14-40)",
+      "classification": "MEASURED"
+    },
+    {
+      "data_type": "Feedback",
+      "collected": "YES (user-authored)",
+      "where": "Desktop: feedback.json (feedbackInstance.ts:7); Backend: pilot_events feedback_submitted metadata (pilot/service.ts:95)",
+      "encryption_at_rest": "none",
+      "retention": "no cap stated",
+      "access_control": "FeedbackSubmit/List/Export dashboard:read; FeedbackClear/ExportToFile org:manage (runtimeAuthz.ts:160-164); entries owner-filtered (feedbackService.ts:18,126-131)",
+      "deletion": "feedback:clear (own tenant)",
+      "export": "feedback:exportToFile to user-chosen path",
+      "logging": "n/a",
+      "third_party": "no remote ingestion (feedbackService.ts:3-4 DECLARED)",
+      "classification": "MEASURED"
+    }
+  ],
+  "ai_provider_flow_private_first": {
+    "modes": {
+      "type": "'private_first' | 'local_only' | 'external'",
+      "evidence": "packages/shared/src/types/aiRouting.ts:67"
+    },
+    "default_mode_when_unset": "MEASURED: resolveAiMode → 'external' if effective provider is claude/openai (legacy cloud install), else 'private_first' (apps/desktop/src/main/ai/aiConfigStore.ts:126-133)",
+    "externalConsent_default": "MEASURED: false (aiConfigStore.ts:89); persisted in ai-config.json (INSTALL_GLOBAL)",
+    "tenant_clamp": "MEASURED: effective = min(platform, tenant); TenantAiMode cannot express 'external' (aiRouting.ts:96-120); applied at providerManager.ts:129-130",
+    "route_order_private_first": "local(0) → private_infrastructure(1) → external(2) (aiRouting.ts:243-247, 296-300)",
+    "external_gating": "MEASURED: under private_first/local_only an external candidate with enabled=false (enabled = externalConsent unless mode==='external', providerManager.ts:138) is skipped (aiRouting.ts:272-295); empty plan throws refusal, no network call (privateFirstClient.ts:15-18,74-77)",
+    "private_infrastructure_definition": "Ollama endpoint whose host is not loopback (classifyEndpointLocation, aiRouting.ts:200-215)",
+    "external_candidates": "anthropic api.anthropic.com model default claude-sonnet-4-6; openai api.openai.com (providerManager.ts:151-166)",
+    "who_can_grant_external_consent": "MEASURED: IPC ai:config.setExternalConsent requires 'cloud:operate' (ipc/runtimeAuthz.ts:150; ai/aiAuthzGate.ts:129); 'cloud:operate cannot be held by any organization role' (runtimeAuthz.ts:118-120); platform operators listed out-of-band in platform-operators.json with no in-app bootstrap (platformOperator/platformOperatorRegistry.ts:17-26)",
+    "request_shape_to_provider": "ModelRequest {model, system?, messages[{role:'user'|'assistant', content}], maxOutputTokens} (ai/modelClient.ts:14-19); no user id, email, org id, or device id fields in provider bodies (claudeClient.ts:62-66; openaiClient.ts:68-71; ollamaClient.ts:83) — MEASURED absence",
+    "what_data_flows_by_default_in_private_first": {
+      "route": "local Ollama at 127.0.0.1:11434 (DEFAULT_OLLAMA_URL) when 'ollamaIntended' (providerManager.ts:140-149); if no local model and externalConsent=false → refusal text, nothing sent (aiRouting.ts:302-306)",
+      "payload_when_a_route_serves": "system prompt (GROUNDING + worker template, promptManager.ts:86-90,328) + rendered context: up to DEFAULT_MAX_ITEMS=12 items / DEFAULT_MAX_CHARS=6000 (contextBuilder.ts:130-131) from per-worker sources (contextBuilder.ts:77-110): engineering[github,knowledge-graph,timeline,mission-brief,ai-memory]; founder/assistant[mission-brief,knowledge-graph,ai-memory,previous-decisions,timeline,(unified-model),github,notion,calendar,slack]; research/finance/marketing/support subsets; diagnostic ALL. Item text = hit title + snippet + evidence ids (contextBuilder.ts:274-277; aiEngine.ts:256-264). Assistant additionally sends WORKSPACE SNAPSHOT (live operational facts), KEY FINDINGS, RECENT CONVERSATION turns (promptManager.ts:328; assistantService.ts:468-513)",
+      "governance_filter": "DECLARED: 'Governance seam (default allow-all; real policy enforcement wired later)' (contextBuilder.ts:194-197) — no field-level redaction/classification before content reaches the model (ABSENT)",
+      "secrets_screening": "conversationMemory.screenMemory refuses to STORE passwords/API keys/tokens/private keys/cards/SSNs in memory (conversationMemory.ts:10-12); it does not screen the outbound prompt (DERIVED)",
+      "routing_provenance": "execution-stamped AiRoutingMetadata {location, provider, model, mode, reason, attempted, decidedAt} (privateFirstClient.ts:94-105); persisted in conversation envelope; per-location counters ai-routing-usage.json"
+    },
+    "ai_audit": "in-memory ring cap 1000; tokens/cost/latency/model/promptVersion/contextSources/confidence/outcome; never prompt/context/response (ai/auditLog.ts:1-9,13-16) — ephemeral, lost on restart",
+    "tests_present": [
+      "ai/privateFirstRouting.test.ts",
+      "ai/contextBuilder.test.ts",
+      "ai/apiKeyLeakGuard.test.ts",
+      "ai/liveProviderVerification.test.ts",
+      "ai/providerWireIntegration.test.ts",
+      "ai/tenantAiPreferenceCompose.test.ts"
+    ]
+  },
+  "privacy_documentation": {
+    "privacy_notice": {
+      "path": "docs/legal/PRIVACY.md",
+      "status": "DRAFT for counsel review (line 3, dated 2026-08-07)",
+      "lines": 16,
+      "last_commit": "99b6902 2026-08-07 22:25:16 +0530",
+      "bundled_in_app": "MEASURED identical sha256 5743ab8aa3db27b4ada0568457451ae3d4c24f059fcfccdcbc87d5a2fb010696 at apps/desktop/dist/mac-universal/NeuroPause.app/Contents/Resources/docs/legal/PRIVACY.md",
+      "claims_DECLARED": [
+        "local-first; business records never leave unless a service is connected (:6)",
+        "OAuth tokens in OS keychain vault (:10)",
+        "backend account/sync/licensing optional 'if your build is configured with one' (:10)",
+        "no usage analytics/telemetry; crash opt-in off, never uploaded (:12)",
+        "consents: crash opt-in, pilot participation, notice+EULA at first run (:14)",
+        "controls: export/delete feedback; backups; leave pilot; delete app + data folder (:16)"
+      ]
+    },
+    "eula": {
+      "path": "docs/legal/EULA.md",
+      "status": "DRAFT for counsel review (lines 1-4)"
+    },
+    "telemetry_policy": {
+      "path": "docs/enterprise/TELEMETRY-POLICY.md",
+      "version": "v1.0 for build 1.0.0-rc.15 (0a040e2), 2026-08-08 (line 3)",
+      "staleness": "DERIVED: 15 RCs behind rc.30",
+      "claims": "no third-party SDK; OTLP IPC-only; support bundles user-initiated & redacted (lines 9-31)"
+    },
+    "retention_policy_document": "ABSENT (find -iname '*retention*'/'*DPA*'/'*gdpr*' → none; 'retention' appears only in engineering reports/manuals)",
+    "data_subject_request_procedure": "ABSENT",
+    "dpa_or_subprocessor_list": "ABSENT",
+    "notice_vs_code_gaps_DERIVED": [
+      "Notice control 'delete the app and its data folder to remove everything' (:16) does not reach backend-held data: users, auth_sessions, audit_log(ip), devices(hostname), sync_state (org-scoped AI memory content in plaintext JSONB), consents, pilot_events, human_decisions — no backend erasure endpoint exists",
+      "Notice does not disclose that org-scoped AI memory content is synced to and stored on the backend in plaintext (0011 + memorySyncAdapter.ts:8-13), nor that memory content/search text may be sent to OpenAI/Voyage embedding providers when the operator configures EMBEDDING_PROVIDER (embeddingConfig.ts:34-35)",
+      "Notice does not disclose device hostname + OS username collection (deviceClient.ts:81; localPrincipalStore.ts:61)",
+      "Notice does not disclose which content reaches an external AI provider once consent is granted (context sources incl. GitHub/Notion/Slack/Calendar snippets, memory, workspace snapshot)",
+      "Notice says telemetry 'does not exist'; code ships an opt-in local-only telemetry layer with no uploader — consistent in effect, imprecise in wording"
+    ]
+  },
+  "invariant_observations": {
+    "ai_never_authorization_authority": "MEASURED consistent: context governance filter is a seam (contextBuilder.ts:194-197); assistant prompt forbids claiming actions (promptManager.ts:328); AssistantPlanDecide requires workforce:operate (runtimeAuthz.ts:550); envelopeCrypto/signedAuditChain explicitly 'NOT AUTHORITY' (envelopeCrypto.ts:19-21; signedAuditChain.ts:9-10)",
+    "client_not_final_authority_for_egress": "INFERRED tension: external-provider consent (the only gate between tenant data and api.anthropic.com/api.openai.com) is a desktop-local decision by a platform operator designated in a local platform-operators.json file; no backend policy/authority check participates. Backend cannot veto or observe external AI egress.",
+    "network_connection_not_authorization": "MEASURED partial: backend requires JWT + org membership on sync/devices/semantic; ABSENT: device trust_status is not consulted on any request path, so 'revoked' is advisory",
+    "stale_authorization_rejected": "MEASURED partial: access tokens 900s; refresh rotation with reuse detection (session.ts:69-91); ABSENT: revoked device still authorized via valid JWT; sync has no device-trust binding"
+  },
+  "gates": {
+    "DATA-STORAGE": {
+      "status": "MEASURABLE",
+      "measured": [
+        "39 backend tables across 13 migrations enumerated with tenant keys",
+        "org_id scoping on memberships, workspaces, subscriptions, connector_accounts, sync_state, devices, embedding_state; app-layer WHERE org_id on every sync query; membership checks on sync/devices/semantic routers",
+        "backend cross-org integration + router tests exist (organizations.test.ts, router.test.ts)",
+        "desktop: 75 structural store-scope declarations gated by storeScopeGate.test.ts; 72 tenancy test files; retention declared OWNER 51 / INSTALL 10 / NONE 10",
+        "secrets encrypted at rest via safeStorage (vault.bin, connector-vault.bin) with refuse-plaintext + quarantine-not-reset",
+        "backup registry (storePaths.ts) covers all domains incl. vaults; MANUAL_BACKUP_KEEP=10; sha256 manifests",
+        "logs bounded: app.log 5 MiB×2, audit.log 5 MiB×3 (IPC writer), crashes.log 2 MiB×2"
+      ],
+      "absent": [
+        "Postgres RLS / per-tenant DB role (packages/persistence has it but is not wired into apps/backend)",
+        "encryption at rest for customer-derived local stores (envelopeCrypto exists but unused for data stores) and for Postgres volume / DB dumps",
+        "retentionScope on 8 declarations (incl. cloud-livesync-mirror CUSTOMER_DERIVED)",
+        "auth_sessions/audit_log/sync tombstone purge jobs",
+        "user account and organization deletion paths",
+        "bound on platform-event writer to logs/audit.log (second, unbounded writer)",
+        "device trust_status enforcement on request paths"
+      ]
+    },
+    "PRIVACY": {
+      "status": "FAIL",
+      "reason": "Privacy notice and EULA are self-labelled DRAFT pending counsel (PRIVACY.md:3; EULA.md:3); no backend erasure or export path for personal data; no retention policy document; notice omits backend memory-content storage, embedding-provider egress option, hostname/OS-username collection. Default third-party AI egress is correctly off (externalConsent=false) and no analytics/crash upload exists — those sub-checks PASS.",
+      "measured_pass": [
+        "no third-party analytics/crash SDK; telemetry & crash opt-in off by default and local-only",
+        "external AI provider excluded by default in private_first/local_only; refusal path proven in code",
+        "connector tokens never stored server-side (schema + comment)",
+        "support bundles redact usernames/JWT/keys and exclude connectors.json/telemetry.log",
+        "renderer localStorage holds nav prefs only"
+      ],
+      "measured_fail_or_absent": [
+        "PRIVACY.md DRAFT (no counsel sign-off recorded)",
+        "no account deletion / data export endpoint on backend",
+        "no data-retention policy, DSR procedure, DPA/subprocessor list",
+        "TELEMETRY-POLICY.md stale (rc.15 vs rc.30)",
+        "email addresses not redacted at logger boundaries (desktop by design; backend pino paths omit email)",
+        "audit_log stores IP indefinitely with no purge"
+      ]
+    },
+    "sub_assessments": [
+      {
+        "gate": "DATA-STORAGE-INVENTORY",
+        "status": "PASS",
+        "reason": "storePaths.ts registry + storeScope declarations + 13 migrations fully enumerated"
+      },
+      {
+        "gate": "DATA-STORAGE-TENANT-ISOLATION",
+        "status": "MEASURABLE",
+        "reason": "app-layer isolation tested on both tiers; DB-layer RLS absent in backend"
+      },
+      {
+        "gate": "DATA-STORAGE-ENCRYPTION-AT-REST",
+        "status": "MEASURABLE",
+        "reason": "secrets: PASS (safeStorage); customer content: 0600 file mode only; Postgres: none"
+      },
+      {
+        "gate": "DATA-STORAGE-RETENTION",
+        "status": "MEASURABLE",
+        "reason": "51 OWNER caps declared; 8 declarations lack retentionScope; backend has no purge; timeline never trimmed"
+      },
+      {
+        "gate": "PRIVACY-NOTICE",
+        "status": "WAITING_FOR_HUMAN",
+        "reason": "DRAFT for counsel review since 2026-08-07"
+      },
+      {
+        "gate": "PRIVACY-DEFAULT-EGRESS",
+        "status": "PASS",
+        "reason": "externalConsent=false; no analytics; crash upload disabled; only outbound by default: backend /health probe and update feed"
+      },
+      {
+        "gate": "PRIVACY-ERASURE-AND-EXPORT",
+        "status": "FAIL",
+        "reason": "no backend user/org deletion or export; local 'delete data folder' only"
+      },
+      {
+        "gate": "PRIVACY-THIRD-PARTY-DISCLOSURE",
+        "status": "FAIL",
+        "reason": "notice does not list Anthropic/OpenAI (on consent), OpenAI/Voyage embeddings (operator-configured), Razorpay, OAuth IdPs, or backend memory storage"
+      }
+    ]
+  },
+  "gaps": [
+    "apps/desktop/src/main/persistence does not exist; task wording assumed a central persistence dir",
+    "Tests not executed (background revalidation); tenant isolation claims rest on test presence + code reading",
+    "pino-http request serializer contents (remoteAddress) inferred from library defaults, not read from node_modules",
+    "TelemetrySetEnabled IPC authz row not located in runtimeAuthz.ts grep (channel name may differ) — NOT_MEASURED",
+    "pilot.json field list not enumerated (PilotFileData at pilot/pilotService.ts:14)",
+    "Qdrant/Redis deployment encryption not assessed (infra outside repo)",
+    "Whether the production build actually configures a backend URL (privacy notice says 'if your build is configured with one') not verified here — belongs to deployment mapper",
+    "Historical evidence dirs NP-B-016..023 contain no privacy/retention material (grep); NP-B-017 is measurement custody, not data privacy"
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Add retentionScope/retentionAuthority to the 8 undeclared stores (esp. cloud-livesync-mirror CUSTOMER_DERIVED)",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/cloud/livesync/mirror.ts",
+        "apps/desktop/src/main/enterprise/workspace/workspaceStore.ts",
+        "apps/desktop/src/main/ai/aiConfigStore.ts",
+        "apps/desktop/src/main/ai/routingUsageStore.ts",
+        "apps/desktop/src/main/ecosystem/exchange/partnersStore.ts",
+        "apps/desktop/src/main/enterprise/personalization/personalizationStore.ts",
+        "apps/desktop/src/main/connectors/connectorRuntimeSupervisor.ts",
+        "apps/desktop/src/main/connectors/connectorService.ts"
+      ],
+      "risk": "low; declarations only"
+    },
+    {
+      "action": "Route platform/index.ts appendAuditLine through the same createBoundedLog as secureBridge (single bounded writer for logs/audit.log)",
+      "effort": "S",
+      "files": [
+        "apps/desktop/src/main/platform/index.ts",
+        "apps/desktop/src/main/ipc/secureBridge.ts"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Add backend purge job for expired/revoked auth_sessions and consumed auth_tokens; document audit_log/pilot_events retention",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/auth/session.ts",
+        "apps/backend/src/auth/accountRepository.ts",
+        "new migration or cron"
+      ],
+      "risk": "medium; touches auth"
+    },
+    {
+      "action": "Enforce devices.trust_status on sync push/pull and heartbeat (reject blocked/revoked)",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/sync/router.ts",
+        "apps/backend/src/sync/service.ts",
+        "apps/backend/src/devices/service.ts"
+      ],
+      "risk": "medium; needs deviceId binding to session"
+    },
+    {
+      "action": "Regenerate TELEMETRY-POLICY.md header for rc.30 and add the third-party list (Anthropic/OpenAI on consent, Ollama, OpenAI/Voyage embeddings if configured, Razorpay, OAuth IdPs) to PRIVACY.md as a DRAFT delta for counsel",
+      "effort": "S",
+      "files": [
+        "docs/enterprise/TELEMETRY-POLICY.md",
+        "docs/legal/PRIVACY.md"
+      ],
+      "risk": "docs only; must remain DRAFT until counsel"
+    },
+    {
+      "action": "Add backend DELETE /auth/me (account erasure with cascade audit) and GET /auth/me/export; add ON DELETE SET NULL to human_decisions.actor_id",
+      "effort": "L",
+      "files": [
+        "apps/backend/src/auth/accountRouter.ts",
+        "apps/backend/src/users/repository.ts",
+        "apps/backend/src/db/migrations/0014_*.sql"
+      ],
+      "risk": "high; regulated pilot ledger semantics need human decision on what 'erasure' means for human_decisions"
+    },
+    {
+      "action": "Wire envelopeCrypto to at least assistant-conversations.json and memory.json (customer-derived, AI content)",
+      "effort": "L",
+      "files": [
+        "apps/desktop/src/main/assistant/conversationStore.ts",
+        "apps/desktop/src/main/memory/memoryStore.ts",
+        "apps/desktop/src/main/security/durableKekProvider.ts"
+      ],
+      "risk": "high; migration + backup/restore interplay"
+    }
+  ],
+  "human_decisions_required": [
+    "Counsel review and sign-off of docs/legal/PRIVACY.md and EULA.md (both DRAFT since 2026-08-07) before public launch",
+    "Retention periods for backend audit_log (IP), auth_sessions, pilot_events, sync_state tombstones, and org-scoped memory content — none are set",
+    "Whether org-scoped AI memory content may be stored on the backend in plaintext JSONB, or must be client-encrypted before sync",
+    "Whether an OpenAI/Voyage embedding provider is permitted in production (sends memory content off-host) or Ollama-only is mandated",
+    "Whether external-AI consent (cloud:operate, local platform-operators.json) should require a backend/organization authority record to satisfy 'client must never be the final authorization authority'",
+    "Erasure semantics for regulated pilot ledgers (consents, pilot_events, human_decisions) under a user deletion request",
+    "Whether backups (unencrypted, include vault ciphertext) and DB dumps (unencrypted, 14 kept) meet the intended-use classification pending GATE-INTENDED-USE"
+  ]
+}

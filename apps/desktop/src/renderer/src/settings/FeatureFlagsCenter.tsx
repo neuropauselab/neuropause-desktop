@@ -24,6 +24,7 @@ import {
   type PlanTier,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { fetchActiveCloudOrg, AMBIGUOUS_ORG_MESSAGE } from '@renderer/lib/activeOrg';
 import { useToast } from '@renderer/state/ToastProvider';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Toggle, Badge } from '@renderer/components/ui/controls';
@@ -49,12 +50,14 @@ export function FeatureFlagsCenter(): JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      // Resolve the active plan the same way SubscriptionCenter does — via IPC, not a provider hook.
-      const orgs = await ipc.org.list().catch(() => []);
-      const active = orgs?.[0] ?? null;
+      // Round 36 — Gate 15: a failed org/license read must NEVER quietly
+      // become free-tier entitlements for a paying customer. Failures throw
+      // into the error state below; only a GENUINE no-org account is free.
+      const { orgs, active } = await fetchActiveCloudOrg();
+      if (active === null && orgs.length > 0) throw new Error(AMBIGUOUS_ORG_MESSAGE);
       let tier: PlanTier = 'free';
       if (active) {
-        const s = await ipc.license.refresh(active.orgId).catch(() => null);
+        const s = await ipc.license.refresh(active.orgId);
         tier = s?.evaluation?.entitledPlan ?? 'free';
       }
       setPlan(tier);

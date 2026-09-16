@@ -37,6 +37,8 @@ import {
   type EnterpriseModule,
 } from '../../framework';
 
+import { GENERATE_PLANNED_ORDERS_ACTION, generatePlannedOrders } from './plannedOrdersSeam';
+
 /** The declarative description of a BOM explosion — drives store, CRUD, and the UI. */
 export const BOM_EXPLOSION_DESCRIPTOR: EnterpriseModuleDescriptor = {
   id: BOM_EXPLOSIONS_MODULE_ID,
@@ -49,6 +51,9 @@ export const BOM_EXPLOSION_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'Manufacturing',
   titleField: 'reportNumber',
   permissions: { read: 'manufacturing:read', write: 'manufacturing:manage' },
+  actions: [
+    { key: GENERATE_PLANNED_ORDERS_ACTION, label: 'Generate Planned Orders', icon: 'shopping-cart' },
+  ],
   fields: [
     { key: 'reportNumber', label: 'Explosion #', type: 'text', readOnly: true },
     { key: 'rootProduct', label: 'Finished Product (SKU)', type: 'text', required: true, placeholder: 'FG-0001' },
@@ -126,6 +131,12 @@ export function createBomExplosionModule(
           (explosion.depthCapped ? `; depth cap ${maxDepth} hit — deeper sub-assemblies treated as purchased, stated here` : '');
         result.values.generatedAt = new Date().toISOString();
         return result;
+      },
+      // MRP → planned orders: draft a purchase request for every purchased
+      // requirement of this explosion (idempotent; governed downstream).
+      runAction: async (action, record, ctx) => {
+        if (action === GENERATE_PLANNED_ORDERS_ACTION) return generatePlannedOrders(record, ctx);
+        return { ok: false, error: `Unknown action "${action}".` };
       },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const f = record.fields;

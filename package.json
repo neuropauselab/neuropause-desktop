@@ -1,6 +1,6 @@
 {
   "name": "neuropause-desktop",
-  "version": "1.0.0-rc.16",
+  "version": "1.0.0-rc.30",
   "private": true,
   "description": "NeuroPause Desktop — an AI operating layer for discovering, launching, connecting, and remembering AI work.",
   "license": "UNLICENSED",
@@ -12,7 +12,8 @@
     "packages/*",
     "apps/backend",
     "apps/cloud",
-    "apps/desktop"
+    "apps/desktop",
+    "apps/web"
   ],
   "scripts": {
     "dev": "concurrently -n backend,desktop -c blue,green \"npm:dev:backend\" \"npm:dev:desktop\"",
@@ -34,7 +35,9 @@
     "lint:release": "eslint apps/desktop apps/backend packages/shared packages/companion-protocol packages/cloud-core packages/shared-cloud --max-warnings 0",
     "bootstrap:env": "node scripts/bootstrap-env.cjs",
     "docs:validate": "node scripts/docs-validate.cjs",
-    "docs:build": "node scripts/docs-build.cjs"
+    "docs:build": "node scripts/docs-build.cjs",
+    "verify:workflow-perms": "node scripts/verify-workflow-permissions.cjs",
+    "neuropause:public-launch:verify": "node scripts/public-launch-verify.cjs"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

@@ -68,6 +68,23 @@ export interface BackendReachability {
   lastError: BackendProbeError | null;
 }
 
+/**
+ * The runtime-core initialization state (P13C round 36 — Gate 1).
+ *
+ * `starting` is the boot window: the window is up (a product decision), the
+ * base channels answer, and the ~650 secure runtime channels do not exist yet.
+ * `ready` means `registerSecureHandlers` completed. `failed` means
+ * `initRuntimeCore` threw — the window stays up, and this state is how the
+ * renderer finally gets to SAY so instead of rendering a silently broken shell.
+ * `message` is a pre-sanitized, user-safe sentence — never a stack.
+ */
+export type RuntimeInitState = 'starting' | 'ready' | 'failed';
+
+export interface RuntimeStateDto {
+  state: RuntimeInitState;
+  message: string | null;
+}
+
 /** Real process/runtime telemetry (V5.1). */
 export interface RuntimeTelemetry {
   cpuPercent: number;

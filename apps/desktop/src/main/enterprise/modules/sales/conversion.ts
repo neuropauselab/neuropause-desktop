@@ -26,6 +26,7 @@ import {
   quoteFromRecord,
 } from '@neuropause/shared';
 import type { EnterpriseModuleActionContext } from '../../framework';
+import { childCorrelationMeta, rootMetaIfUnset } from '../../framework';
 
 /** The descriptor action key the Quotes module surfaces for conversion. */
 export const CONVERT_TO_ORDER_ACTION = 'convertToOrder';
@@ -34,6 +35,37 @@ export const CONVERT_TO_INVOICE_ACTION = 'convertToInvoice';
 
 /** Order statuses eligible to be invoiced (goods have at least shipped). */
 const INVOICEABLE_ORDER_STATUSES = new Set(['shipped', 'fulfilled', 'closed']);
+
+/**
+ * ERP Session 28 — serialize invoice conversion per order. `convertOrderToInvoice` reads the
+ * already-invoiced guard, then `await`s the invoice-store load BEFORE it stamps the order with the
+ * new invoice ref, so two concurrent converts (different idempotency keys, which bypass the command
+ * journal's same-key single-flight) could each pass the guard and raise TWO invoices for one order.
+ * Reproduced first (S28 "two different-key InvoiceSalesOrder" test failed with 2 invoices). A
+ * per-order chained-promise latch — the same pattern S24 uses for receipt posting — closes the
+ * check→stamp window. Keyed on the globally-unique order id, so it never serializes across unrelated
+ * orders or tenants.
+ */
+const invoiceConversionChains = new Map<string, Promise<unknown>>();
+/** Test seam — clear the in-memory chains between cases. Never called in production. */
+export function __resetInvoiceConversionChainsForTests(): void {
+  invoiceConversionChains.clear();
+}
+function serializeInvoiceConversion<T>(key: string, run: () => Promise<T>): Promise<T> {
+  const prev = invoiceConversionChains.get(key) ?? Promise.resolve();
+  // Run strictly AFTER the previous conversion of this order settles (success OR failure), so the
+  // already-invoiced guard always sees the committed `convertedInvoice` stamp of the one before it.
+  const result = prev.then(run, run);
+  const tracked = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  invoiceConversionChains.set(key, tracked);
+  void tracked.then(() => {
+    if (invoiceConversionChains.get(key) === tracked) invoiceConversionChains.delete(key);
+  });
+  return result;
+}
 
 const str = (v: unknown): string => (v === null || v === undefined ? '' : String(v));
 
@@ -92,6 +124,9 @@ export async function convertQuoteToOrder(
   const order = ordersModule.store.create({
     title: deriveRecordTitle(ordersModule.descriptor, validation.values),
     fields: validation.values,
+    // Transaction-graph spine: the order is caused by the quote, so it joins (or
+    // starts, if the quote had none) the quote's business transaction.
+    metadata: childCorrelationMeta(quote, QUOTES_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -102,6 +137,10 @@ export async function convertQuoteToOrder(
   // Timeline. The pricing stamps are unaffected by the status/ref change.
   const updatedQuote = quotesModule.store.update(quote.id, {
     fields: { convertedOrder: order.id, status: 'converted' },
+    // Stamp the quote as the transaction root when it is not already part of one,
+    // so a genuine origin self-identifies in a trace (a quote raised from a lead
+    // keeps its inherited chain — `rootMetaIfUnset` returns {} in that case).
+    metadata: rootMetaIfUnset(quote, QUOTES_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -125,19 +164,34 @@ export async function convertOrderToInvoice(
   order: EnterpriseEntity,
   ctx: EnterpriseModuleActionContext,
 ): Promise<EnterpriseModuleActionResult> {
-  // Already invoiced → no-op. Never raise a second invoice.
-  if (str(order.fields.convertedInvoice)) {
-    return { ok: false, message: 'This order has already been invoiced.' };
-  }
-  // Only an order whose goods have shipped/delivered may be invoiced.
-  if (!INVOICEABLE_ORDER_STATUSES.has(str(order.fields.status))) {
-    return { ok: false, message: 'Only a shipped, fulfilled, or closed order can be invoiced.' };
-  }
+  // Serialize per order so the already-invoiced guard sees the committed stamp of any conversion
+  // in flight before it (closes the reproduced check→stamp race). Keyed on the globally-unique id.
+  return serializeInvoiceConversion(order.id, () => convertOrderToInvoiceSerial(order, ctx));
+}
 
+async function convertOrderToInvoiceSerial(
+  order: EnterpriseEntity,
+  ctx: EnterpriseModuleActionContext,
+): Promise<EnterpriseModuleActionResult> {
   const ordersModule = ctx.moduleFor(ORDERS_MODULE_ID);
   const invoiceModule = ctx.moduleFor(FINANCE_MODULE_ID);
   if (!ordersModule || !invoiceModule) {
     return { ok: false, error: 'Sales or Finance module is not available for conversion.' };
+  }
+
+  // Re-read the order FRESH inside the serialized section (never trust the captured snapshot): the
+  // already-invoiced guard must see the `convertedInvoice` stamp committed by any conversion that ran
+  // before this one in the per-order chain — otherwise the latch would serialize but still double-invoice.
+  await ordersModule.store.load();
+  const fresh = ordersModule.store.get(order.id) ?? order;
+
+  // Already invoiced → no-op. Never raise a second invoice.
+  if (str(fresh.fields.convertedInvoice)) {
+    return { ok: false, message: 'This order has already been invoiced.' };
+  }
+  // Only an order whose goods have shipped/delivered may be invoiced.
+  if (!INVOICEABLE_ORDER_STATUSES.has(str(fresh.fields.status))) {
+    return { ok: false, message: 'Only a shipped, fulfilled, or closed order can be invoiced.' };
   }
 
   // Raising an invoice requires the Finance write scope, which is distinct from
@@ -145,7 +199,7 @@ export async function convertOrderToInvoice(
   ctx.authorize(invoiceModule.descriptor.permissions.write);
   await invoiceModule.store.load();
 
-  const o = orderFromRecord(order);
+  const o = orderFromRecord(fresh);
 
   // Draft invoice, subtotal = order total (already final; tax not re-applied).
   const validation = invoiceModule.hooks.validate({
@@ -168,6 +222,10 @@ export async function convertOrderToInvoice(
   const invoice = invoiceModule.store.create({
     title: deriveRecordTitle(invoiceModule.descriptor, validation.values),
     fields: validation.values,
+    // Transaction-graph spine: the invoice is caused by the order, inheriting the
+    // order's correlation — so the invoice (and everything the invoice posts to
+    // the GL) sits in the same transaction as the quote and the order.
+    metadata: childCorrelationMeta(order, ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });
@@ -179,6 +237,9 @@ export async function convertOrderToInvoice(
   // audit + Timeline.
   const updatedOrder = ordersModule.store.update(order.id, {
     fields: { convertedInvoice: invoice.id },
+    // Root the transaction at the order when it was created directly (no quote);
+    // an order raised from a quote keeps its inherited chain (returns {}).
+    metadata: rootMetaIfUnset(order, ORDERS_MODULE_ID),
     actor: ctx.actor(),
     now: ctx.now(),
   });

@@ -36,8 +36,10 @@ import type {
   DocumentLinesResult,
   DocumentLinesView,
 } from '@neuropause/shared';
+import { randomUUID } from 'node:crypto';
 import {
   EmptyRequest,
+  FINANCE_MODULE_ID,
   IpcChannel,
   ModuleActionRequest,
   ModuleCreateRequest,
@@ -52,9 +54,86 @@ import {
   ModuleApproveRequest,
   ModuleLinesRequest,
   ModuleSetLinesRequest,
+  ORDERS_MODULE_ID,
+  PAYMENTS_MODULE_ID,
+  QUOTES_MODULE_ID,
+  VENDOR_PAYMENTS_MODULE_ID,
   deriveRecordTitle,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../ipc/secureBridge';
+
+/**
+ * ERP Session 46 — the ORIGIN BOUNDARY for actions that now have a governed command equivalent.
+ *
+ * S43–S45 routed the O2C lifecycle actions (Ship / Generate-Invoice / Issue / Convert-Quote) through the
+ * governed `platform:command.dispatch` spine, but the RENDERER routing is only a courtesy: the legacy
+ * `enterprise:module.action` door still accepted those same verbs from any authorized dispatcher, so a
+ * caller could bypass the journal/idempotency/event/outbox/audit by hitting the legacy channel directly.
+ *
+ * The fix is a SERVER-SIDE origin discriminator, never a renderer-provided flag:
+ *   • `INTERNAL_ACTION_ORIGIN` is a per-process random token, module-private (NOT in `@neuropause/shared`,
+ *     so no renderer/agent can import it) and unguessable.
+ *   • The command bus (and only the command bus) passes it when it internally invokes `moduleAction` for a
+ *     governed key — it calls `def.handler` DIRECTLY, so the token reaches the handler.
+ *   • The renderer path is `ModuleActionRequest.parse()` at the secure bridge, and that schema is
+ *     `.strict()`, so an `origin` field on a renderer request is REJECTED outright — the marker cannot be
+ *     forged across the IPC boundary.
+ * Result: the governed keys execute ONLY through the command bus; every external invocation is refused.
+ */
+export const INTERNAL_ACTION_ORIGIN = `internal:${randomUUID()}`;
+
+/** Actions that MUST go through the governed command path — refused on the legacy door from an external caller. */
+const GOVERNED_ONLY_ACTIONS: Record<string, ReadonlySet<string>> = {
+  [ORDERS_MODULE_ID]: new Set(['ship', 'convertToInvoice']),
+  [FINANCE_MODULE_ID]: new Set(['issue']),
+  [QUOTES_MODULE_ID]: new Set(['convertToOrder']),
+};
+
+/**
+ * ERP Session 61 (D6) — the FINANCIAL DELETE BOUNDARY. Financial history is never
+ * physically deleted (the delete door is soft-only), but soft-deleting an
+ * economically-active record hides it while its posted GL persists AND, for a
+ * cleared payment, the reconciler's void/delete path would silently reverse it —
+ * a backdoor around the governed reversal. So a record that is economically
+ * active is REFUSED here (independent of `force`) and the caller is directed to
+ * the governed reversal. Scoped to what D4 makes reversible (cleared customer /
+ * vendor payments); the internal command-bus compensation uses `store.softDelete`
+ * DIRECTLY and never passes through this door, so it is unaffected. The predicate
+ * returns a redirect message when the record must not be deleted, else null.
+ */
+const ECONOMIC_DELETE_GUARD: Record<string, (record: { fields: Record<string, unknown> }) => string | null> = {
+  [PAYMENTS_MODULE_ID]: (r) =>
+    String(r.fields.status ?? '') === 'cleared'
+      ? 'A cleared payment carries a posted cash/AR effect — it cannot be deleted. Reverse it through the governed payment reversal so the accounting is compensated and auditable.'
+      : null,
+  [VENDOR_PAYMENTS_MODULE_ID]: (r) =>
+    String(r.fields.status ?? '') === 'cleared'
+      ? 'A cleared vendor payment carries a posted cash/AP effect — it cannot be deleted. Reverse it through the governed payment reversal so the accounting is compensated and auditable.'
+      : null,
+  // ERP Session 64 (the S63 census's STOP-class find) — the REVERSAL RECORD ITSELF is the
+  // evidence D4 produces: deleting one would flip the invoice/bill back to PAID through the
+  // shared reconciler while the booked `${base}-REV` GL entry is never compensated (an
+  // un-reversal wearing a delete), and would destroy a record whose own validate hook declares
+  // it "immutable historical evidence". Refused UNCONDITIONALLY (every reversal row is
+  // economically active by construction — there is no inert status to exempt). Key is the
+  // literal module id (= PAYMENT_REVERSALS_MODULE_ID in finance/paymentReconcile.ts; the
+  // framework does not import from modules/ — ids are stable persisted keys).
+  'finance-payment-reversals': () =>
+    'A payment reversal is immutable historical evidence carrying a posted compensating GL entry — it cannot be deleted. The original payment, the reversal, and their ledger effects are permanent records.',
+  // ERP Session 97 (F-S97-1) — the stock ledger is the AUTHORITATIVE inventory source: a product's
+  // on-hand / reserved / available are re-derived from the movement history, which `list()` excludes
+  // `deleted` from. Soft-deleting a POSTED movement therefore silently changes on-hand stock (and
+  // leaves its already-posted GL orphaned) — a backdoor around the module's own declared immutability
+  // ("corrections by compensating movement, history never rewritten"), which its validate hook enforces
+  // on EDIT but not on DELETE. Refused here (independent of `force`); the coherent correction is void
+  // (which reverses the ledger + GL) or a compensating movement. Key is the literal module id (=
+  // STOCK_MOVEMENTS_MODULE_ID; the framework does not import from modules/ — ids are stable persisted
+  // keys). Void/draft/importer rows carry no live on-hand effect and are unaffected.
+  'inventory-movements': (r) =>
+    String(r.fields.status ?? '') === 'posted'
+      ? 'A posted stock movement is the authoritative inventory ledger — it cannot be deleted (that would silently change on-hand stock and orphan its posted GL). Void it (which reverses the ledger and GL) or post a compensating movement.'
+      : null,
+};
 import { ENTERPRISE_CHANNEL_PERMISSIONS } from '../authzGate';
 import type {
   EnterpriseModule,
@@ -135,7 +214,24 @@ export class EnterpriseModuleRegistry {
     return this.modules.size;
   }
 
-  /** Descriptors + live counts for the registry-list channel. */
+  /**
+   * P13C ROUND 37 — GATE 16. Drain every module store's pending background
+   * write. One registration on the shutdown barrier stands for all ~106
+   * stores, same shape as the one registry entry standing for them above.
+   */
+  async flushAll(): Promise<void> {
+    await Promise.allSettled([...this.modules.values()].map((m) => m.store.flush()));
+  }
+
+  /**
+   * Descriptors + live counts.
+   *
+   * Returns EVERY module — this is the trusted internal view (dashboards,
+   * companion families, aggregates). The IPC list channel filters this by the
+   * CALLER's per-module read permission via `readableSummaries` (GATE 5 B-1):
+   * the record count is a disclosure and must never name a module the caller
+   * cannot read.
+   */
   async summaries(): Promise<EnterpriseModuleSummary[]> {
     const out: EnterpriseModuleSummary[] = [];
     for (const m of this.modules.values()) {
@@ -147,6 +243,52 @@ export class EnterpriseModuleRegistry {
         aiSummary: Boolean(m.hooks.summarize),
         actions: m.hooks.runAction ? (m.descriptor.actions ?? []) : [],
       });
+    }
+    return out;
+  }
+
+  /**
+   * GATE 5 — B-1. The summaries the CALLER is entitled to see, filtered by each
+   * module's own declared read permission. The `EnterpriseModulesList` channel
+   * is gated at the coarse `operations:read` (the right to use the enterprise
+   * surface at all), but a module also declares its OWN read permission and its
+   * record COUNT is a disclosure — "how many employees are there", "which
+   * business systems does this company run" — exactly what `dp:exportable`
+   * refuses. `dp:module.list`/`get` authorize per module one at a time; the LIST
+   * applies the same gate. Deny-by-default: a thrown `authorize` omits the
+   * module rather than surfacing it.
+   */
+  async readableSummaries(
+    authorize: EnterpriseModuleContext['authorize'],
+  ): Promise<EnterpriseModuleSummary[]> {
+    const out: EnterpriseModuleSummary[] = [];
+    for (const m of this.modules.values()) {
+      try {
+        authorize(m.descriptor.permissions.read);
+      } catch {
+        continue;
+      }
+      await m.store.load();
+      out.push({
+        ...m.descriptor,
+        recordCount: m.store.count(),
+        activeCount: m.store.count('active'),
+        aiSummary: Boolean(m.hooks.summarize),
+        actions: m.hooks.runAction ? (m.descriptor.actions ?? []) : [],
+      });
+    }
+    /**
+     * GATE 6 (round 49) — TOTAL FILTERING IS A REFUSAL, NOT AN EMPTY LIST.
+     * With modules registered but NONE readable, returning `[]` made the
+     * Business workspace render "No business areas yet — nothing is shown that
+     * has no real backing", a lie on both counts: the modules exist, and the
+     * reason they are invisible is permissions. Say so. (A genuinely empty
+     * registry — no modules built in — still returns `[]` honestly.)
+     */
+    if (out.length === 0 && this.modules.size > 0) {
+      throw new Error(
+        'None of the business modules are readable with your current permissions.',
+      );
     }
     return out;
   }
@@ -325,9 +467,12 @@ export function buildModuleHandlers(
       channel: IpcChannel.EnterpriseModulesList,
       schema: EmptyRequest,
       requireAuth: true,
-      // Metadata-only listing of available modules — any enterprise reader.
+      // Gated at the coarse enterprise-reader permission here; each module is
+      // ALSO filtered by its own read permission inside `summaries` (GATE 5
+      // B-1), so the list — and its record counts — never names a module the
+      // caller cannot read.
       permission: ENTERPRISE_CHANNEL_PERMISSIONS[IpcChannel.EnterpriseModulesList],
-      handler: () => registry.summaries(),
+      handler: () => registry.readableSummaries((p) => ctx.authorize(p)),
     },
     {
       channel: IpcChannel.EnterpriseModuleList,
@@ -504,6 +649,18 @@ export function buildModuleHandlers(
         const module = resolve(registry, r.moduleId);
         ctx.authorize(module.descriptor.permissions.write);
         await module.store.load();
+        // S55 — 'deleted' via SetStatus was a SECOND delete door: it skipped the Delete
+        // door's dependency assessment, refusal-without-force, and decision record while
+        // producing the same terminal state and the same downstream GL-reversal
+        // consequences. One governed delete path exists; this door refuses and points at
+        // it (measured: no production or test caller used SetStatus-'deleted' — the
+        // refusal strands nothing).
+        if (r.status === 'deleted') {
+          return {
+            ok: false as const,
+            errors: { _: 'Deletion goes through the Delete door (it assesses dependencies and records the decision) — not through a status change.' },
+          };
+        }
         // APPROVAL GATE. This is where a purchase order becomes "approved" or a
         // bill becomes "paid", and until now it went straight to the store: the
         // approval/SoD engine existed, declared policies for these very
@@ -535,7 +692,9 @@ export function buildModuleHandlers(
           now: ctx.now(),
         });
         if (!record) return { ok: false as const, errors: { _: 'Invalid status transition.' } };
-        await fan(module, r.status === 'deleted' ? 'deleted' : 'status_changed', record);
+        // 'deleted' is refused above, so this door only ever fans status_changed —
+        // the compiler proves the old 'deleted' branch unreachable.
+        await fan(module, 'status_changed', record);
         return { ok: true as const, record };
       },
     },
@@ -552,6 +711,14 @@ export function buildModuleHandlers(
         const existing = module.store.get(r.id);
         if (!existing || existing.status === 'deleted') {
           return { ok: false as const, errors: { _: 'Record not found.' } };
+        }
+        // ERP Session 61 (D6) — FINANCIAL DELETE BOUNDARY. An economically-active record (a cleared
+        // payment) must never be deleted through this door — that would hide posted GL and, via the
+        // reconciler's void/delete path, act as a backdoor reversal. Refuse (independent of `force`)
+        // and direct to the governed reversal. History is preserved; the reversal is the only path.
+        const economicRefusal = ECONOMIC_DELETE_GUARD[r.moduleId]?.(existing) ?? null;
+        if (economicRefusal) {
+          return { ok: false as const, errors: { _: economicRefusal } };
         }
         // Governed delete: assess dependencies BEFORE mutating. A record with
         // real relationship links refuses without an explicit force flag and
@@ -608,6 +775,17 @@ export function buildModuleHandlers(
         ctx.authorize(module.descriptor.permissions.write);
         if (!module.hooks.runAction || !(module.descriptor.actions ?? []).some((a) => a.key === r.action)) {
           return { ok: false, error: `Unknown action "${r.action}".` };
+        }
+        // ERP Session 46 — the ORIGIN BOUNDARY. A now-governed action executes ONLY through the command
+        // bus, which passes `INTERNAL_ACTION_ORIGIN` by calling this handler directly. An EXTERNAL caller
+        // (renderer / agent / REST — whose payload was `.strict()`-parsed at the bridge and therefore
+        // CANNOT carry an `origin` field) is refused, so the governed journal/idempotency/event/outbox/
+        // audit path is the only way to perform it. RBAC still applied above; this is an ADDITIONAL gate.
+        if (
+          GOVERNED_ONLY_ACTIONS[r.moduleId]?.has(r.action) &&
+          (p as { origin?: unknown }).origin !== INTERNAL_ACTION_ORIGIN
+        ) {
+          return { ok: false, error: `"${r.action}" must be performed through its governed command, not the legacy action door.` };
         }
         await module.store.load();
         const record = module.store.get(r.id);

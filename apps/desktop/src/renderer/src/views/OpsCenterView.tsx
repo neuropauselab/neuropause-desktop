@@ -9,6 +9,6 @@ import { OpsCenterRoot } from '@renderer/operationsCenter/OpsCenterView';
  * (`ipc.enterpriseIntel.*`) and existing surfaces (search · timeline). This
  * wrapper preserves the export the shell lazy-loads.
  */
-export function OpsCenterView(): JSX.Element {
-  return <OpsCenterRoot />;
+export function OpsCenterView({ onNavigate }: { onNavigate?: (section: string) => void } = {}): JSX.Element {
+  return <OpsCenterRoot onNavigate={onNavigate} />;
 }

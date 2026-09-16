@@ -137,6 +137,8 @@ export const IpcChannel = {
   // ── platform core (event bus / timeline / diagnostics) ──
   PlatformEmit: 'platform:emit',
   ExecutiveCenterSnapshot: 'executiveCenter:snapshot',
+  /** S80 (FG-S80b) — governed on-demand KPI capture for the CURRENT principal; renderer sends nothing. */
+  KpiCapture: 'kpi:capture',
   DecisionList: 'decisions:list',
   DecisionCreateFromRecommendation: 'decisions:createFromRecommendation',
   DecisionSetStatus: 'decisions:setStatus',
@@ -186,6 +188,14 @@ export const IpcChannel = {
   /** Runtime launch-at-login preference (V4.2). */
   RuntimeGetLoginAtStartup: 'runtime:getLoginAtStartup',
   RuntimeSetLoginAtStartup: 'runtime:setLoginAtStartup',
+  /**
+   * Runtime-core init state (P13C round 36 — Gate 1). Served by the BASE
+   * router, which registers before the window opens, so it is answerable in
+   * the exact window it exists to describe. The broadcast fires on the
+   * starting→ready / starting→failed transition.
+   */
+  RuntimeState: 'system:runtimeState',
+  RuntimeStateChanged: 'system:runtimeStateChanged',
   TimelineQuery: 'timeline:query',
   TimelineStats: 'timeline:stats',
   TimelineExport: 'timeline:export',
@@ -204,6 +214,8 @@ export const IpcChannel = {
   ConnectorHealthCheck: 'connectors:health',
   ConnectorLogs: 'connectors:logs',
   ConnectorSyncState: 'connectors:sync-state',
+  /** S115 FG-S114-AUDIT-STATUS — read-only audit-integrity status (SIGNED/UNSIGNED/VERIFICATION_FAILED + algo/keyId/keyVersion). No secrets. */
+  SecurityAuditIntegrityStatus: 'security:auditIntegrity.status',
   ConnectorEventBroadcast: 'connectors:event',
   // P4.1 Connector Runtime v2 — operator controls (command), runtime-state read, and the
   // lifecycle (from→to transition) broadcast the Runtime Supervisor emits.
@@ -216,6 +228,16 @@ export const IpcChannel = {
   M365ActionList: 'connectors:m365.actions',
   M365ActionExecute: 'connectors:m365.execute',
   M365Draft: 'connectors:m365.draft',
+  // FG-1 (Wave-2 Slice 10) — read-only: produce a NeuroPause-validated M365 action proposal for human review.
+  // DATA ONLY. The handler never executes, never sets `confirmed`, and has no path to the certified executor.
+  CapabilityProposeM365Action: 'capability:m365.propose',
+
+  // FG-ERP-LIVE-IPC (ERP Session 22) — the LIVE entry point for the governed platform command bus. A renderer
+  // dispatches a canonical DomainCommand through this ONE channel → the Application Boundary → the command bus
+  // (authorization → policy → workflow → durable transaction → event → outbox → audit). The handler is authenticated
+  // (requireAuth) and performs the FINE per-command RBAC inside the command bus (PERMISSION_FOR_COMMAND); it never
+  // accesses a store directly, never sets identity/tenant from the renderer, and never bypasses the command bus.
+  PlatformCommandDispatch: 'platform:command.dispatch',
 
   // ── unified knowledge layer (UDM) ──
   UnifiedQuery: 'unified:query',
@@ -821,6 +843,7 @@ export const IpcChannel = {
   AiConfigGet: 'aiConfig:get',
   AiConfigHealth: 'aiConfig:health',
   AiConfigDetectOllama: 'aiConfig:detectOllama',
+  AiConfigPullModel: 'aiConfig:pullModel',
   AiConfigSetProvider: 'aiConfig:setProvider',
   AiConfigSetModel: 'aiConfig:setModel',
   AiConfigSetCredential: 'aiConfig:setCredential',
@@ -1168,6 +1191,7 @@ export const INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.WindowClose,
   IpcChannel.RuntimeGetLoginAtStartup,
   IpcChannel.RuntimeSetLoginAtStartup,
+  IpcChannel.RuntimeState,
   IpcChannel.WorkspaceCtxBootstrap,
   IpcChannel.WorkspaceCtxList,
   IpcChannel.WorkspaceCtxCreate,
@@ -1183,6 +1207,7 @@ export const SUBSCRIBABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.ThemeChanged,
   IpcChannel.MenuCommand,
   IpcChannel.TrayCommand,
+  IpcChannel.RuntimeStateChanged,
 ];
 
 /** Runtime-core invokable channels (handled by the secure bridge). */
@@ -1254,6 +1279,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.PluginsContributions,
   IpcChannel.PlatformEmit,
   IpcChannel.ExecutiveCenterSnapshot,
+  IpcChannel.KpiCapture,
   IpcChannel.DecisionList,
   IpcChannel.DecisionCreateFromRecommendation,
   IpcChannel.DecisionSetStatus,
@@ -1303,6 +1329,8 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.M365ActionList,
   IpcChannel.M365ActionExecute,
   IpcChannel.M365Draft,
+  IpcChannel.CapabilityProposeM365Action,
+  IpcChannel.PlatformCommandDispatch,
   IpcChannel.UnifiedQuery,
   IpcChannel.UnifiedGet,
   IpcChannel.UnifiedCounts,
@@ -1339,6 +1367,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.EnterpriseTimelineExport,
   IpcChannel.BriefingGenerate,
   IpcChannel.RecommendationsGenerate,
+  IpcChannel.SecurityAuditIntegrityStatus,
   IpcChannel.FounderAsk,
   IpcChannel.FounderAskV2,
   IpcChannel.FounderSuggestions,
@@ -1781,6 +1810,7 @@ export const RUNTIME_INVOKABLE_CHANNELS: readonly IpcChannelName[] = [
   IpcChannel.AiConfigGet,
   IpcChannel.AiConfigHealth,
   IpcChannel.AiConfigDetectOllama,
+  IpcChannel.AiConfigPullModel,
   IpcChannel.AiConfigSetProvider,
   IpcChannel.AiConfigSetModel,
   IpcChannel.AiConfigSetCredential,

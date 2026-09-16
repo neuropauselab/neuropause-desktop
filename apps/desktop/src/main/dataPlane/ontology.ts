@@ -6,11 +6,18 @@
  * an EXISTING module id and EXISTING descriptor field keys — this layer adds a
  * routing vocabulary, it does not fork the ERP data model.
  *
- * SCOPE (honest): eight canonical entities are implemented, chosen to cover the
- * cross-domain import journey (Finance, CRM, HR, Inventory, Procurement,
- * Projects). The remaining canonical entities named in the Phase 6 charter are
- * NOT implemented here; adding one is a data-only change to ONTOLOGY below,
- * which is the point of the design.
+ * SCOPE (honest): fifteen canonical entities are implemented — the original
+ * eight (Finance, CRM, HR, Inventory, Procurement, Projects), two contributed
+ * by the Medical Device pack, two transaction-class entities added by NP-010
+ * §2 (payment, sales_order), and two AGGREGATION-SHAPED entities added by
+ * NP-011 (journal_entry, bank_statement): their destination modules are
+ * multi-line shapes, so dedicated extractors in aggregations.ts pre-fold the
+ * source (Tally vouchers, bank-transaction tables) into flat rows whose
+ * `Lines (JSON)` cell carries the shared line shapes the modules already
+ * parse. Imported journal entries land as DRAFTS — the `post` action's full
+ * guard is the GL gate. NP-011 also adds vendor_bill (fed flat by the GSTR-2B
+ * extractor; DRAFTS — the `approve` action stays the gate). Adding a flat
+ * entity remains a data-only change below.
  */
 
 export type CanonicalDomain =
@@ -20,6 +27,7 @@ export type CanonicalDomain =
   | 'inventory'
   | 'procurement'
   | 'projects'
+  | 'sales'
   // Contributed by the Medical Device Manufacturing industry pack. A domain,
   // not a tenant: the entities below are what any device manufacturer keeps,
   // and nothing in them names a specific company.
@@ -252,6 +260,118 @@ export const ONTOLOGY: readonly CanonicalEntity[] = [
       { key: 'startDate', label: 'Starts', type: 'date', shape: 'date', synonyms: ['start date', 'starts', 'begin date', 'kickoff'] },
       { key: 'endDate', label: 'Ends', type: 'date', shape: 'date', synonyms: ['end date', 'ends', 'finish date', 'due date', 'target date'] },
       { key: 'percentComplete', label: 'Complete %', type: 'number', synonyms: ['percent complete', 'complete', 'progress', 'completion'] },
+    ],
+  },
+  {
+    // NP-010 §2 — transaction class. Customer receipts from bank/accounting
+    // exports (Zoho/QuickBooks payment CSVs). Money → HIGH, never auto-imported.
+    id: 'payment',
+    label: 'Payment',
+    plural: 'Payments',
+    domain: 'finance',
+    moduleId: 'finance-payments',
+    titleField: 'paymentNumber',
+    risk: 'high',
+    nameHints: ['payment', 'payments', 'receipt', 'receipts', 'collection', 'collections', 'payments received', 'customer payment', 'settlement'],
+    identityKeys: [['paymentNumber'], ['transactionRef'], ['invoiceRef', 'receivedDate', 'amount']],
+    fields: [
+      { key: 'paymentNumber', label: 'Payment #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['payment no', 'payment number', 'payment id', 'receipt no', 'receipt number', 'voucher no', 'reference'] },
+      { key: 'invoiceRef', label: 'Invoice', type: 'text', required: true, synonyms: ['invoice', 'invoice no', 'invoice number', 'against invoice', 'invoice ref', 'bill no', 'bill number'] },
+      { key: 'customer', label: 'Customer', type: 'text', synonyms: ['customer', 'customer name', 'party', 'party name', 'client', 'received from', 'payer'] },
+      { key: 'amount', label: 'Amount', type: 'number', required: true, shape: 'money', synonyms: ['amount', 'payment amount', 'amount received', 'received', 'paid amount', 'value'] },
+      { key: 'currency', label: 'Currency', type: 'text', shape: 'code', synonyms: ['currency', 'curr', 'ccy'] },
+      { key: 'method', label: 'Method', type: 'text', synonyms: ['method', 'payment method', 'mode', 'payment mode', 'pay mode', 'instrument'] },
+      { key: 'receivedDate', label: 'Received', type: 'date', shape: 'date', synonyms: ['payment date', 'received date', 'receipt date', 'date', 'transaction date', 'value date'] },
+      { key: 'transactionRef', label: 'Transaction Ref', type: 'text', shape: 'code', synonyms: ['transaction ref', 'transaction id', 'txn id', 'utr', 'ref no', 'reference no', 'cheque no', 'cheque number'] },
+      { key: 'bankAccount', label: 'Bank Account', type: 'text', synonyms: ['bank account', 'account', 'bank', 'deposit to', 'deposit account'] },
+    ],
+  },
+  {
+    // NP-011 — aggregation-shaped: one row per Tally voucher (or hand-built
+    // journal sheet), ledger lines pre-folded to GlJournalLine JSON. Imports
+    // land as DRAFTS; posting (the GL gate) re-validates everything.
+    id: 'journal_entry',
+    label: 'Journal Entry',
+    plural: 'Journal Entries',
+    domain: 'finance',
+    moduleId: 'finance-journal-entries',
+    titleField: 'entryNumber',
+    risk: 'high',
+    nameHints: ['journal', 'journals', 'journal entry', 'journal entries', 'voucher', 'vouchers', 'tally', 'day book', 'daybook'],
+    identityKeys: [['entryNumber']],
+    fields: [
+      { key: 'entryNumber', label: 'Entry #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['entry number', 'entry no', 'voucher number', 'voucher no', 'journal number', 'journal no', 'je number', 'je no'] },
+      { key: 'entryDate', label: 'Date', type: 'date', shape: 'date', synonyms: ['date', 'entry date', 'voucher date', 'journal date'] },
+      { key: 'memo', label: 'Memo', type: 'text', synonyms: ['memo', 'narration', 'description', 'particulars'] },
+      { key: 'lines', label: 'Lines (JSON)', type: 'text', required: true, synonyms: ['lines json', 'lines', 'journal lines', 'ledger entries json', 'entries json'] },
+    ],
+  },
+  {
+    // NP-011 — purchase-side documents from GST return files (GSTR-2B) or any
+    // flat purchase register. Imports are DRAFTS; the `approve` action is the
+    // gate, and the exact filing amounts ride in Notes verbatim.
+    id: 'vendor_bill',
+    label: 'Vendor Bill',
+    plural: 'Vendor Bills',
+    domain: 'finance',
+    moduleId: 'finance-vendor-bills',
+    titleField: 'billNumber',
+    risk: 'high',
+    nameHints: ['vendor bill', 'vendor bills', 'purchase register', 'purchases', 'gstr', 'gstr 2b', 'gstr2b', 'supplier invoice', 'supplier invoices', 'bills'],
+    identityKeys: [['billNumber', 'vendorGstin'], ['billNumber']],
+    fields: [
+      { key: 'billNumber', label: 'Bill #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['bill number', 'bill no', 'invoice number', 'invoice no', 'inum', 'document number'] },
+      { key: 'vendor', label: 'Vendor', type: 'text', required: true, synonyms: ['vendor', 'vendor name', 'supplier', 'supplier name', 'trade name', 'party', 'party name'] },
+      { key: 'vendorGstin', label: 'Vendor GSTIN', type: 'text', shape: 'code', synonyms: ['vendor gstin', 'gstin', 'ctin', 'supplier gstin', 'gst number'] },
+      { key: 'amount', label: 'Subtotal', type: 'number', required: true, shape: 'money', synonyms: ['subtotal', 'taxable value', 'txval', 'amount', 'net amount', 'taxable amount'] },
+      { key: 'taxRate', label: 'Tax Rate %', type: 'number', synonyms: ['tax rate', 'gst rate', 'tax percent', 'tax %'] },
+      { key: 'billDate', label: 'Bill Date', type: 'date', shape: 'date', synonyms: ['bill date', 'invoice date', 'date', 'document date'] },
+      { key: 'dueDate', label: 'Due', type: 'date', shape: 'date', synonyms: ['due date', 'due', 'payment due'] },
+      { key: 'notes', label: 'Notes', type: 'text', synonyms: ['notes', 'note', 'remarks', 'source amounts'] },
+    ],
+  },
+  {
+    // NP-011 — aggregation-shaped: one row per statement, transactions
+    // pre-folded to BankStatementLine JSON (deposits positive). Reconciliation
+    // stays the module's deterministic action.
+    id: 'bank_statement',
+    label: 'Bank Statement',
+    plural: 'Bank Statements',
+    domain: 'finance',
+    moduleId: 'finance-bank-statements',
+    titleField: 'statementNumber',
+    risk: 'high',
+    nameHints: ['bank statement', 'bank statements', 'statement', 'bank', 'account statement', 'passbook'],
+    identityKeys: [['statementNumber']],
+    fields: [
+      { key: 'statementNumber', label: 'Statement #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['statement number', 'statement no', 'stmt no', 'stmt'] },
+      { key: 'bankAccount', label: 'Bank Account', type: 'text', required: true, synonyms: ['bank account', 'account', 'account number', 'bank'] },
+      { key: 'statementDate', label: 'Statement Date', type: 'date', shape: 'date', synonyms: ['statement date', 'date', 'period end', 'as of'] },
+      { key: 'lines', label: 'Lines (JSON)', type: 'text', required: true, synonyms: ['lines json', 'lines', 'transactions json', 'transactions'] },
+    ],
+  },
+  {
+    // NP-010 §2 — transaction class. Closes the recorded limitation where an
+    // orders CSV classified as CUSTOMERS and imported junk customer records
+    // (see importToRelated.test.ts). Revenue-bearing document → HIGH.
+    id: 'sales_order',
+    label: 'Sales Order',
+    plural: 'Sales Orders',
+    domain: 'sales',
+    moduleId: 'sales-orders',
+    titleField: 'orderNumber',
+    risk: 'high',
+    nameHints: ['sales order', 'sales orders', 'order', 'orders', 'order book', 'open orders', 'so'],
+    identityKeys: [['orderNumber']],
+    fields: [
+      { key: 'orderNumber', label: 'Order #', type: 'text', required: true, shape: 'code', identity: true, synonyms: ['order no', 'order number', 'so no', 'so number', 'sales order', 'sales order no', 'order id', 'document number'] },
+      { key: 'customer', label: 'Customer', type: 'text', required: true, synonyms: ['customer', 'customer name', 'party', 'party name', 'client', 'buyer', 'account'] },
+      { key: 'orderDate', label: 'Order Date', type: 'date', shape: 'date', synonyms: ['order date', 'so date', 'date', 'document date', 'booking date'] },
+      { key: 'expectedDeliveryDate', label: 'Expected Delivery', type: 'date', shape: 'date', synonyms: ['delivery date', 'expected delivery', 'ship by', 'promised date', 'due date'] },
+      { key: 'product', label: 'Product (SKU)', type: 'text', shape: 'code', synonyms: ['product', 'sku', 'item', 'item code', 'product code', 'material'] },
+      { key: 'orderedQty', label: 'Ordered Qty', type: 'number', synonyms: ['qty', 'quantity', 'ordered qty', 'order quantity', 'order qty'] },
+      { key: 'warehouse', label: 'Warehouse', type: 'text', synonyms: ['warehouse', 'location', 'site', 'store'] },
+      { key: 'total', label: 'Total', type: 'number', shape: 'money', synonyms: ['total', 'order total', 'amount', 'order value', 'grand total', 'value'] },
     ],
   },
   {

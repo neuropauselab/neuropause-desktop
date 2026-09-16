@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-08-20",
+  "head": "8ec36f6",
+  "public_experience": "PARTIAL — website files implemented, deploy state UNKNOWN, 11 claims FAIL the §31 truthfulness bar (F-MR-1); the one certified capability is not advertised",
+  "personal_experience": "IMPLEMENTED — 15-section curation, LIVE honest-empty / GATED per census",
+  "professional_experience": "IMPLEMENTED — 8 platform sections hidden, rest shows",
+  "enterprise_experience": "PARTIAL — full nav reveals the 14 Preview-labeled RENDERS-ONLY surfaces; seeded org inside labels",
+  "connector_experience": "PARTIAL — connection-state UI implemented and honest; capability CERTIFICATION dimension MISSING renderer-side (F-MR-5); behavior still safe (nothing executes without confirm)",
+  "proposal_experience": "IMPLEMENTED — mock-only beyond the one live send; FG-9 eight fields rendered verbatim",
+  "approval_experience": "IMPLEMENTED — two-step confirm, single-confirmation architecture",
+  "verification_experience": "IMPLEMENTED display — five truthful states; renderer ceiling ACKNOWLEDGED; EXTERNALLY_OBSERVED honest 0 until recordVerification production-fed",
+  "history_experience": "PARTIAL — HoldsView lifecycle real; ActionRecord query main-side only, no renderer surface (S34a fence; QUEUED PROPOSAL per operator ruling)",
+  "unknown_state_experience": "IMPLEMENTED display — OUTCOME_UNKNOWN distinct + no-blind-retry; reconciliation loop PARTIAL (S22 not shipped; holds resolve manually)",
+  "evidence": [
+    "certification/APP-LIVELINESS-CENSUS-2026-08-19.md (47/47, BROKEN 0)",
+    "certification/LAUNCH-READINESS.md",
+    "certification/NEUROPAUSE-OS-MASTER-READINESS-REPORT.md §B/§E"
+  ]
+}

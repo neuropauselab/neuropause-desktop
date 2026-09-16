@@ -1,0 +1,25 @@
+{
+  "ARTIFACT": "13_ZIP_INSTALLATION",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "zip_sha256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+  "extracted": true,
+  "app_bundle_digest": {
+    "digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+    "file_count": 314
+  },
+  "identity_equals_dmg": {
+    "status": "PASS",
+    "checks": 1
+  },
+  "startup": "PASS",
+  "classification": "MEASURED"
+}

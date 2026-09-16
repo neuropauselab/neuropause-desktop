@@ -17,7 +17,11 @@ import { attachLogFileSink, createLogger } from './logger';
 import { createBoundedLog } from './storage/boundedLog';
 import { installContentSecurityPolicy } from './security/csp';
 import { registerIpcHandlers, setAllowedSenderOrigins } from './ipc/router';
+import { registerEarlyReachabilityHandler } from './ipc/earlyReachability';
+import { markRuntimeFailed, markRuntimeReady, safeInitFailureMessage } from './runtimeReadiness';
+import { registerShutdownFlush, runShutdownFlush } from './shutdownFlush';
 import { authService } from './auth/authService';
+import { onBackendReachable } from './backendReachabilityHub';
 import { createMainWindow, rendererDevUrl } from './window';
 import { buildAppMenu } from './menu';
 import { initRuntimeCore } from './runtimeCore';
@@ -25,6 +29,40 @@ import { startupMetrics } from './diagnostics/startupMetrics';
 import { RuntimeService, setActiveRuntimeService } from './runtimeService';
 
 const log = createLogger('main');
+
+/**
+ * GATE 1 (round 48) — BOOT-WINDOW CRASH CAPTURE.
+ *
+ * Before this, the main process had NO `uncaughtException`/`unhandledRejection`
+ * handlers: a crash during the boot window (or any time after) was a silent
+ * process death — no log line, no flush, nothing for a support bundle to read.
+ * Both handlers are LOCAL-ONLY (they write to the app log, never send
+ * anything anywhere — crash-report consent is a separate, opt-in toggle and is
+ * untouched). An uncaught exception quits through `app.quit()` so the Gate-16
+ * flush barrier still drains pending writes on the way down — strictly better
+ * than the default hard crash. The `crashed` latch prevents a quit loop if the
+ * quit path itself throws. Rejections are logged, never fatal (Node warns by
+ * default; a background subsystem's failed promise must not take the app down).
+ */
+let crashed = false;
+process.on('uncaughtException', (err) => {
+  try {
+    log.error('Uncaught exception (main process)', err);
+  } catch {
+    /* the logger itself may be the casualty — still attempt the orderly quit */
+  }
+  if (!crashed) {
+    crashed = true;
+    app.quit();
+  }
+});
+process.on('unhandledRejection', (reason) => {
+  try {
+    log.error('Unhandled rejection (main process)', reason);
+  } catch {
+    /* never rethrow from a crash handler */
+  }
+});
 
 let mainWindow: BrowserWindow | null = null;
 let runtimeService: RuntimeService | null = null;
@@ -55,7 +93,6 @@ function broadcast<C extends IpcBroadcastChannelName>(
 function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     mainWindow = createMainWindow();
-  startupMetrics.mark('window-created');
     return;
   }
   if (mainWindow.isMinimized()) mainWindow.restore();
@@ -76,6 +113,9 @@ function wireEventBridges(): void {
   });
 }
 
+// Wave-2 Slice-14 — build-time constant (see electron.vite.config.ts `define`); false in every release build.
+declare const __NP_E2E__: boolean;
+
 async function bootstrap(): Promise<void> {
   startupMetrics.mark('app-ready');
   installContentSecurityPolicy();
@@ -85,9 +125,19 @@ async function bootstrap(): Promise<void> {
   setAllowedSenderOrigins(devUrl ? [new URL(devUrl).origin] : []);
 
   registerIpcHandlers();
+  // P13C O-3 — the reachability channel must answer before the window can ask.
+  // Runtime core replaces this with the sampler-backed handler when it is up.
+  registerEarlyReachabilityHandler();
   wireEventBridges();
 
   mainWindow = createMainWindow();
+  // The mark belongs at the PRIMARY creation site. It used to sit only inside
+  // the tray-recreation branch of showMainWindow(), so a normal launch never
+  // recorded time-to-first-window — the one number startup diagnostics exist
+  // to capture. createMainWindow() is called from three sites; marking here
+  // and not in the recreation paths keeps the metric meaning "first window of
+  // this process", which is what boot analysis needs.
+  startupMetrics.mark('window-created');
 
   // Native menu bar: its accelerators dispatch commands to the renderer.
   Menu.setApplicationMenu(buildAppMenu((payload) => broadcast(IpcChannel.MenuCommand, payload)));
@@ -116,7 +166,10 @@ async function bootstrap(): Promise<void> {
       },
       restartRuntime: () => {
         app.relaunch();
-        app.exit(0);
+        // `app.quit()`, not `app.exit(0)`: exit() skips `before-quit`, which
+        // is where pending store flushes drain. A restart that loses the
+        // 300ms-debounced session snapshot is a restart that forgets state.
+        app.quit();
       },
       exit: () => app.quit(),
     },
@@ -128,6 +181,38 @@ async function bootstrap(): Promise<void> {
   // Attempt to silently restore a prior session from the keychain.
   await authService.restoreSession();
 
+  // P13C Gate 2 — re-restore on reachability recovery. If the launch above
+  // degraded to device-local mode because the backend was unreachable, retry the
+  // cloud restore the moment the backend becomes reachable again. `retryCloudRestore`
+  // is a no-op unless the app is in local mode with a stored token, and is
+  // single-flighted, so this can never disturb an authenticated/logged-out user
+  // or re-send the rotating refresh token.
+  onBackendReachable(() => {
+    void authService.retryCloudRestore();
+  });
+
+  // NP-007 (compile-stripped like the seed itself): the e2e principal must be established BETWEEN restoreSession and
+  // the runtime/enterprise bootstrap — on a fresh profile, S17 local mode has just entered, and if the bootstrap runs
+  // first it binds the org owner row to the LOCAL principal, leaving the later-seeded session permanently
+  // not_a_member (the 19 Aug 2026 ceremony divergence; reproduced in e2e/freshProfileBootstrap.e2e.cjs). Mode
+  // resolution HARD-FAILS here, before any init, preserving the original coupling semantics.
+  let e2eMode: 'full-e2e' | 'app-principal' | 'off' = 'off';
+  if (__NP_E2E__) {
+    try {
+      const { resolveE2eMode } = await import('./e2e/e2eMode');
+      e2eMode = resolveE2eMode(process.env); // HARD-FAILS (throws) on an invalid flag coupling — see e2eMode.ts
+      if (e2eMode !== 'off') {
+        const { installE2eSeedPrincipal } = await import('./e2e/e2eSeed');
+        await installE2eSeedPrincipal(e2eMode);
+      }
+    } catch (err) {
+      // HARD-FAIL at startup: an invalid mode coupling (or a seed failure) must NOT run.
+      log.error('E2E mode/seed failure — exiting', err);
+      app.exit(1);
+      return;
+    }
+  }
+
   // Bring up the trusted execution layer: secure catalog IPC, the Local
   // Application Registry, the NeuroPause Package Service, the runtime, and the
   // background services. Failures here must not take down the window.
@@ -135,8 +220,50 @@ async function bootstrap(): Promise<void> {
     await initRuntimeCore({ broadcast });
     startupMetrics.mark('runtime-core-ready');
     log.info('Startup complete', startupMetrics.snapshot());
+    /**
+     * P13C ROUND 36 — GATE 1. The renderer has been up for seconds against
+     * base channels only; this transition + broadcast is what lets it retry
+     * anything that raced the ~650 secure channels (the sticky `xp:profile.get`
+     * class) the moment they exist.
+     */
+    broadcast(IpcChannel.RuntimeStateChanged, markRuntimeReady());
   } catch (err) {
     log.error('Runtime core failed to initialize', err);
+    /**
+     * P13C ROUND 36 — GATE 1. The window deliberately stays up, but the
+     * failure is no longer SILENT: the renderer gets the state over the base
+     * router (which registered before the window) and shows a real failure
+     * notice instead of rendering a complete UI over ~650 dead channels. The
+     * message is the sanitized first line only — the full error is in the log.
+     */
+    broadcast(IpcChannel.RuntimeStateChanged, markRuntimeFailed(safeInitFailureMessage(err)));
+  }
+
+  // Wave-2 Slice-14 — E2E LATE seams (mock Graph + fake governed account; they need the initialized runtime).
+  // `__NP_E2E__` folds to `false` in every release build, so this branch and its dynamic import are dead-code-
+  // eliminated (never shipped). The mode was resolved (and the PRINCIPAL seeded) BEFORE the bootstrap — NP-007.
+  if (__NP_E2E__ && e2eMode !== 'off') {
+    try {
+      const { installE2eSeeds } = await import('./e2e/e2eSeed');
+      await installE2eSeeds(e2eMode);
+      // Anti-masquerade stamp: window title carries `-e2e` + the mode so a seeded build is visibly not a release.
+      mainWindow?.setTitle(`NeuroPause -e2e (${e2eMode} — not for release)`);
+    } catch (err) {
+      // HARD-FAIL at startup: a seed failure must NOT run.
+      log.error('E2E mode/seed failure — exiting', err);
+      app.exit(1);
+    }
+  }
+
+  // Wave-2 Slice-16 — in-session read-back verification runner. Compile-stripped from release (__NP_E2E__ false);
+  // NEUROPAUSE_VERIFY_S15-gated so a normal launch never runs it. READ-ONLY (Sent Items + Inbox of the own mailbox).
+  if (__NP_E2E__ && process.env.NEUROPAUSE_VERIFY_S15 === '1') {
+    try {
+      const { runS16Verification } = await import('./e2e/s16VerifyRun');
+      await runS16Verification();
+    } catch (err) {
+      log.error('S16 verification run failed', err);
+    }
   }
 }
 
@@ -146,10 +273,11 @@ if (!gotLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+    // `showMainWindow` handles all three states this handler used to get
+    // wrong: a destroyed reference (macOS keeps the process alive with no
+    // window — `isMinimized()` on it THROWS), a closed window (recreate),
+    // and a minimized one (restore + show + focus).
+    showMainWindow();
   });
 
   app
@@ -163,6 +291,8 @@ if (!gotLock) {
         keep: 2,
       });
       attachLogFileSink((line) => appLog.append(line));
+      // Round 37 — Gate 16: the log's own buffered tail drains at quit too.
+      registerShutdownFlush('app-log', () => appLog.flush());
       return bootstrap();
     })
     .catch((err) => {
@@ -180,6 +310,35 @@ if (!gotLock) {
   // Follow platform convention: stay resident on macOS until Cmd+Q.
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
+  });
+
+  /**
+   * P13C ROUND 37 — GATE 16. THE SHUTDOWN FLUSH BARRIER.
+   *
+   * 37 stores flush through coalesced background writers; before this, only
+   * ONE had a shutdown hook and everything else raced app exit — up to a
+   * debounce/interval of user state lost on every quit. `will-quit` fires
+   * after all windows are gone and before exit: the first pass defers the
+   * quit, drains every registered flush (time-boxed, failure-isolated —
+   * shutdown is not the moment to refuse), then quits for real.
+   */
+  let shutdownFlushed = false;
+  app.on('will-quit', (event) => {
+    if (shutdownFlushed) return;
+    event.preventDefault();
+    void runShutdownFlush()
+      .then((summary) => {
+        if (summary.failed.length > 0 || summary.timedOut.length > 0) {
+          log.warn('Shutdown flush completed with losses', summary);
+        } else {
+          log.info('Shutdown flush complete', summary);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        shutdownFlushed = true;
+        app.quit();
+      });
   });
 }
 

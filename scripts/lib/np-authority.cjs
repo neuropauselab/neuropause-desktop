@@ -1,0 +1,256 @@
+/**
+ * scripts/lib/np-authority.cjs — np-authority/1 (Model E) release-authority admission predicate.
+ *
+ * PORT of the verified forensic instrument, with IDENTICAL semantics (same DENY/UNKNOWN codes, same
+ * evaluation order, same canonical bytes, same signed-field set):
+ *   source : NP-GLOBAL-PILOT-007B/R6.2-41/NP-R34.2-B.38_FULL_EVIDENCE/scripts/b38-authority.cjs
+ *   sha256 : dbb629b85eb7a48c00bb09fc699e2891cc11775b1c3e50041fb25a38dc727901   (shasum -a 256)
+ * Differences from the source are non-semantic only: `require('node:crypto')` instead of
+ * `require('crypto')`, one statement per line, and comments. No predicate was added, removed,
+ * reordered or re-typed. CommonJS; no dependency beyond node:crypto.
+ *
+ * admitAuthority(authority, actual, trust)
+ *   `authority` — the externally issued np-authority/1 object (parsed JSON).
+ *   `actual`    — what the platform MEASURED: repository id, tag object → commit → tree, manifest bytes,
+ *                 population, policy, build policy, run identity, admission/deployment time, the
+ *                 deployment review record and the protected-environment capture.
+ *   `trust`     — the trust list held outside the subject: { schemaVersion, trustedIssuers,
+ *                 signatureAlgorithm, verifySignature(issuer, bytes, sig) => boolean, scope, tagPattern,
+ *                 allowedReviewers, consumedNonces, deploymentTimeValidity }.
+ *   Returns { verdict: 'ALLOW' | 'DENY' | 'UNKNOWN', code, detail }. Only verdict === 'ALLOW' with
+ *   code === 'AUTHORITY_ADMITTED' admits; every other result (including UNKNOWN) is a non-admit.
+ *
+ * attestationAuthorizes(verification, admitted, artifact)
+ *   An artifact attestation is provenance; it becomes AUTHORIZATION only if its subject set includes
+ *   the admitted authority's digest (admitted.detail.authority_subject_digest).
+ *
+ * Every synthetic authority used in tests carries authority_origin = 'FORENSIC_SYNTHETIC_ONLY',
+ * real_authority = false, production_validity = false.
+ */
+'use strict';
+
+const crypto = require('node:crypto');
+
+const H = (b) => crypto.createHash('sha256').update(b).digest('hex');
+const hex40 = (s) => typeof s === 'string' && /^[0-9a-f]{40}$/.test(s);
+const hex64 = (s) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
+const plain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+/** Canonical JSON: keys sorted at every depth, `undefined` members dropped, arrays kept in order. */
+function canon(o) {
+  const seen = new WeakSet();
+  const f = (v, d) => {
+    if (d > 64) throw new Error('depth');
+    if (v === null || typeof v !== 'object') return v;
+    if (seen.has(v)) throw new Error('cycle');
+    seen.add(v);
+    if (Array.isArray(v)) return v.map((x) => f(x, d + 1));
+    const r = {};
+    for (const k of Object.keys(v).sort()) if (v[k] !== undefined) r[k] = f(v[k], d + 1);
+    return r;
+  };
+  return JSON.stringify(f(o, 0));
+}
+
+const R = (verdict, code, detail) => ({ verdict, code, detail: detail === undefined ? null : detail });
+
+/** Fields covered by the issuer's signature (canonical bytes of exactly these, in canonical key order). */
+const SIGNED_FIELDS = [
+  'authority_id',
+  'authority_schema_version',
+  'issuer_identity',
+  'subject_repository',
+  'subject_ref',
+  'subject_commit',
+  'subject_tree',
+  'candidate_tag',
+  'manifest_digest',
+  'population_digest',
+  'policy_digest',
+  'build_policy_digest',
+  'allowed_workflow',
+  'allowed_environment',
+  'allowed_channels',
+  'allowed_artifact_classes',
+  'scope',
+  'effective_from',
+  'effective_until',
+  'reviewer_identity',
+  'reviewer_decision',
+  'decision_timestamp',
+  'decision_nonce',
+];
+
+/** Fields that must be present and non-empty (B38_AUTHORITY_OBJECT_CONTRACT §6 REQUIRED). */
+const REQUIRED = [
+  'authority_id',
+  'authority_schema_version',
+  'issuer_identity',
+  'subject_repository',
+  'subject_commit',
+  'subject_tree',
+  'manifest_digest',
+  'population_digest',
+  'policy_digest',
+  'allowed_workflow',
+  'allowed_environment',
+  'scope',
+  'effective_from',
+  'effective_until',
+  'reviewer_identity',
+  'reviewer_decision',
+  'decision_timestamp',
+  'decision_nonce',
+  'signature',
+  'signature_algorithm',
+];
+
+function signingBytes(a) {
+  const o = {};
+  for (const k of SIGNED_FIELDS) if (a[k] !== undefined) o[k] = a[k];
+  return Buffer.from(canon(o));
+}
+
+function admitAuthority(authority, actual, trust) {
+  try {
+    const a = authority;
+    const x = actual;
+    const t = plain(trust) ? trust : {};
+    if (a === undefined || a === null) return R('DENY', 'AUTHORITY_ABSENT'); // A18: attestation without authority
+    if (!plain(a)) return R('UNKNOWN', 'AUTHORITY_MALFORMED');
+    if (!plain(x)) return R('UNKNOWN', 'ACTUAL_UNMEASURED');
+    if (a.authority_origin === 'FORENSIC_SYNTHETIC_ONLY' && a.real_authority !== false) {
+      return R('DENY', 'SYNTHETIC_MISLABELLED');
+    }
+    if (a.authority_schema_version !== t.schemaVersion) return R('DENY', 'SCHEMA_VERSION_UNSUPPORTED');
+    const missing = REQUIRED.filter((k) => a[k] === undefined || a[k] === null || a[k] === '');
+    if (missing.length) return R('DENY', 'AUTHORITY_INCOMPLETE', missing);
+
+    // ---- issuer independence: trust list held outside the subject; issuer ∉ subject principals ----
+    if (!Array.isArray(t.trustedIssuers) || !t.trustedIssuers.includes(a.issuer_identity)) {
+      return R('DENY', 'ISSUER_UNTRUSTED');
+    }
+    const subjectPrincipals = new Set(
+      [x.run && x.run.initiator, x.run && x.run.tag_pusher, x.run && x.run.workflow_author].filter(Boolean),
+    );
+    if (subjectPrincipals.has(a.issuer_identity)) return R('DENY', 'ISSUER_IS_SUBJECT'); // circular authority
+    if (a.issuer_identity === a.reviewer_identity) return R('DENY', 'ISSUER_IS_REVIEWER');
+
+    // ---- signature: algorithm fixed by verifier; key held outside the subject; verifies over canonical signed fields ----
+    if (a.signature_algorithm !== t.signatureAlgorithm) return R('DENY', 'SIGNATURE_ALGORITHM_REJECTED');
+    if (typeof t.verifySignature !== 'function') return R('UNKNOWN', 'VERIFIER_UNAVAILABLE');
+    if (t.verifySignature(a.issuer_identity, signingBytes(a), a.signature) !== true) {
+      return R('DENY', 'SIGNATURE_INVALID'); // A17 subject-generated signature
+    }
+
+    // ---- subject binding: every identity compared to a MEASUREMENT ----
+    if (a.subject_repository !== x.repository_id) return R('DENY', 'REPOSITORY_MISMATCH');
+    if (
+      !x.candidate ||
+      !hex40(x.candidate.commit) ||
+      !hex40(x.candidate.tree) ||
+      x.candidate.measured_from !== 'git_objects'
+    ) {
+      return R('UNKNOWN', 'CANDIDATE_UNMEASURED');
+    }
+    if (a.subject_ref !== undefined && a.subject_ref !== x.candidate.ref) return R('DENY', 'REF_MISMATCH');
+    if (a.candidate_tag !== undefined && a.candidate_tag !== x.candidate.tag) return R('DENY', 'TAG_MISMATCH');
+    if (a.subject_commit !== x.candidate.commit) return R('DENY', 'COMMIT_MISMATCH'); // A01/A02/A12
+    if (a.subject_tree !== x.candidate.tree) return R('DENY', 'TREE_MISMATCH'); // A03/A13
+    if (!Buffer.isBuffer(x.manifest_bytes) || a.manifest_digest !== H(x.manifest_bytes)) {
+      return R('DENY', 'MANIFEST_MISMATCH'); // A04/A14
+    }
+    if (!Array.isArray(x.population) || a.population_digest !== H(Buffer.from(canon(x.population)))) {
+      return R('DENY', 'POPULATION_MISMATCH'); // A05/A15
+    }
+    if (!plain(x.policy) || a.policy_digest !== H(Buffer.from(canon(x.policy)))) {
+      return R('DENY', 'POLICY_MISMATCH'); // A06/A15
+    }
+    if (
+      a.build_policy_digest !== undefined &&
+      (!plain(x.build_policy) || a.build_policy_digest !== H(Buffer.from(canon(x.build_policy))))
+    ) {
+      return R('DENY', 'BUILD_POLICY_MISMATCH');
+    }
+    if (!x.run || a.allowed_workflow !== x.run.workflow_ref) return R('DENY', 'WORKFLOW_MISMATCH'); // A07
+    if (a.scope !== t.scope) return R('DENY', 'SCOPE_MISMATCH');
+
+    // ---- temporal validity + replay ----
+    const from = Date.parse(a.effective_from);
+    const until = Date.parse(a.effective_until);
+    const dec = Date.parse(a.decision_timestamp);
+    if (![from, until, dec].every(Number.isFinite)) return R('DENY', 'TEMPORAL_FIELDS_MALFORMED');
+    const tAdm = Number.isFinite(x.admission_time) ? x.admission_time : NaN;
+    const tDep = Number.isFinite(x.deployment_time) ? x.deployment_time : tAdm;
+    if (!Number.isFinite(tAdm)) return R('UNKNOWN', 'ADMISSION_TIME_UNMEASURED');
+    if (dec > tAdm) return R('DENY', 'DECISION_AFTER_ADMISSION');
+    if (tAdm < from || tAdm > until) return R('DENY', 'AUTHORITY_NOT_VALID_AT_ADMISSION'); // A08
+    if (t.deploymentTimeValidity !== false && (tDep < from || tDep > until)) {
+      return R('DENY', 'AUTHORITY_EXPIRED_BEFORE_DEPLOYMENT'); // A09 (contract: deployment-time validity required)
+    }
+    if (typeof a.decision_nonce !== 'string' || a.decision_nonce.length < 16) return R('DENY', 'NONCE_WEAK');
+    if (Array.isArray(t.consumedNonces) && t.consumedNonces.includes(a.decision_nonce)) {
+      return R('DENY', 'AUTHORITY_REPLAYED');
+    }
+
+    // ---- reviewer: decision, identity from the platform's review record (not from the object alone), separation ----
+    if (a.reviewer_decision !== 'approved') return R('DENY', 'REVIEWER_NOT_APPROVED');
+    const rv = x.review;
+    if (!plain(rv) || rv.source !== 'deployment_review_api' || rv.captured_by_verifier !== true) {
+      return R('UNKNOWN', 'REVIEW_RECORD_UNCAPTURED');
+    }
+    if (rv.approver !== a.reviewer_identity) return R('DENY', 'REVIEWER_IDENTITY_MISMATCH'); // A16
+    if (subjectPrincipals.has(rv.approver)) return R('DENY', 'REVIEWER_IS_SUBJECT'); // separation
+    if (rv.run_id !== x.run.run_id || rv.run_attempt !== x.run.run_attempt) return R('DENY', 'REVIEW_RUN_MISMATCH');
+    if (rv.approved_subject_digest !== H(signingBytes(a))) {
+      return R('DENY', 'REVIEW_NOT_BOUND_TO_AUTHORITY_SUBJECT'); // A20: approval exists but subject not bound
+    }
+    if (Array.isArray(t.allowedReviewers) && !t.allowedReviewers.includes(rv.approver)) {
+      return R('DENY', 'REVIEWER_NOT_ALLOWED');
+    }
+
+    // ---- environment: name in authority must be a PROTECTED environment, captured independently ----
+    const env = x.environment;
+    if (!plain(env) || env.source !== 'admin_api_capture' || env.captured_by_verifier !== true) {
+      return R('UNKNOWN', 'ENVIRONMENT_UNCAPTURED');
+    }
+    if (env.name !== a.allowed_environment) return R('DENY', 'ENVIRONMENT_MISMATCH');
+    if (env.exists !== true) return R('DENY', 'ENVIRONMENT_ABSENT'); // A19
+    if (env.required_reviewers !== true || env.prevent_self_review !== true) {
+      return R('DENY', 'ENVIRONMENT_UNPROTECTED');
+    }
+    if (t.tagPattern && env.deployment_tag_pattern !== t.tagPattern) {
+      return R('DENY', 'ENVIRONMENT_TAG_POLICY_MISMATCH');
+    }
+    return R('ALLOW', 'AUTHORITY_ADMITTED', { authority_subject_digest: H(signingBytes(a)) });
+  } catch (e) {
+    return R('UNKNOWN', 'EXCEPTION', String((e && e.message) || e).slice(0, 120));
+  }
+}
+
+// downstream relation: an artifact attestation is provenance; it becomes AUTHORIZATION only if its subject set
+// includes the admitted authority's digest
+function attestationAuthorizes(verification, admitted, artifact) {
+  try {
+    if (!plain(admitted) || admitted.verdict !== 'ALLOW') return R('DENY', 'NO_ADMITTED_AUTHORITY'); // A18
+    if (verification === undefined || verification === null) return R('UNKNOWN', 'ATTESTATION_ABSENT');
+    if (!plain(verification) || verification.verified !== true || verification.source === 'artifact_metadata') {
+      return R('DENY', 'ATTESTATION_INVALID');
+    }
+    if (!plain(artifact) || !Buffer.isBuffer(artifact.bytes)) return R('UNKNOWN', 'ARTIFACT_UNMEASURED');
+    if (!Array.isArray(verification.subjects) || !verification.subjects.includes(H(artifact.bytes))) {
+      return R('DENY', 'ATTESTATION_SUBJECT_MISMATCH'); // A10
+    }
+    if (!verification.subjects.includes(admitted.detail.authority_subject_digest)) {
+      return R('DENY', 'ATTESTATION_DOES_NOT_BIND_AUTHORITY'); // A11 / §9 condition
+    }
+    if (verification.commit !== undefined && verification.commit !== artifact.commit) {
+      return R('DENY', 'ATTESTATION_COMMIT_MISMATCH');
+    }
+    return R('ALLOW', 'ATTESTATION_BOUND_TO_AUTHORITY');
+  } catch (e) {
+    return R('UNKNOWN', 'EXCEPTION', String((e && e.message) || e).slice(0, 120));
+  }
+}
+
+module.exports = { admitAuthority, attestationAuthorizes, signingBytes, canon, H, SIGNED_FIELDS, REQUIRED, hex40, hex64, plain };

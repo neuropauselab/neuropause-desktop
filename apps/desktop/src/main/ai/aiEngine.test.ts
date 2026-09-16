@@ -24,9 +24,14 @@ describe('pricing', () => {
   it('unknown models cost 0', () => {
     expect(computeCostUsd('gpt-some-future-model', 1000, 1000)).toBe(0);
   });
-  it('keeps every priced model on the 1:5 input:output ratio', () => {
-    for (const price of Object.values(MODEL_PRICING)) {
-      expect(price.output).toBeCloseTo(price.input * 5, 12);
+  it('keeps every priced model on its vendor list-price ratio', () => {
+    // The ratio is a typo-catcher for the table, and it is VENDOR-specific:
+    // Anthropic's published rates are 1:5 across the catalog; OpenAI's
+    // (added round 34) are 1:4. Asserting 1:5 on gpt-* would require faking
+    // OpenAI's real prices, which is the opposite of what this test is for.
+    for (const [model, price] of Object.entries(MODEL_PRICING)) {
+      const ratio = model.startsWith('gpt-') ? 4 : 5;
+      expect(price.output).toBeCloseTo(price.input * ratio, 12);
     }
   });
 });

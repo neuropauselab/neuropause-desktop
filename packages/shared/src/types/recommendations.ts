@@ -54,6 +54,12 @@ export interface Recommendation {
   affectedSystems?: string[];
   /** 0..1 confidence in the underlying evidence. */
   confidence?: number;
+  /** Advisory evidence-trust assessment (S108, FG-S108-TRUST). Display-only; never authority. */
+  trust?: {
+    score: number;
+    band: 'low' | 'moderate' | 'high';
+    caveats: string[];
+  };
 }
 
 export interface RecommendationQuery {

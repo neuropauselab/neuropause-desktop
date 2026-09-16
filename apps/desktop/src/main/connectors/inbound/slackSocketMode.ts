@@ -14,6 +14,7 @@
  * is configured.
  */
 import { createLogger } from '../../logger';
+import { safeDetail } from '../../memory/semanticFailure';
 
 const log = createLogger('slack-socket');
 
@@ -71,7 +72,16 @@ export class SlackSocketMode {
     try {
       url = await this.deps.openConnection(this.deps.appToken);
     } catch (err) {
-      log.warn('apps.connections.open failed; will retry', { err });
+      /**
+       * NP-013 — the opener is INJECTED and holds the xapp- app token; a
+       * future implementation (or an undici cause chain) could echo it into
+       * the Error. Per the mailer idiom, the message is redacted AT THE CALL
+       * SITE through the existing `safeDetail` rule (Bearer, URL query,
+       * token-like runs) rather than logging the whole Error verbatim.
+       */
+      log.warn('apps.connections.open failed; will retry', {
+        error: safeDetail(err instanceof Error ? err.message : String(err), 'no detail'),
+      });
       this.scheduleReconnect();
       return;
     }
@@ -89,7 +99,11 @@ export class SlackSocketMode {
     } catch (err) {
       // A socket-construction failure (e.g. no WebSocket implementation) must degrade to a bounded
       // retry like every other openOnce failure — never escape as an unhandled rejection.
-      log.warn('Slack socket construction failed; will retry', { err });
+      // NP-013: `url` is the short-lived WSS ticket (wss://…?ticket=… — a bearer-ish one-time
+      // credential) and some ctor errors echo their URL argument; `safeDetail` strips the query.
+      log.warn('Slack socket construction failed; will retry', {
+        error: safeDetail(err instanceof Error ? err.message : String(err), 'no detail'),
+      });
       this.scheduleReconnect();
     }
   }

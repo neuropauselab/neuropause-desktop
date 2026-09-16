@@ -19,8 +19,10 @@ import type {
   EnterpriseModuleSummary,
   EnterpriseTimelineEntry,
   FavoriteItem,
+  PersonalizationState,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { useToast } from '@renderer/state/ToastProvider';
 import { cn } from '@renderer/lib/cn';
 import { Card } from '@renderer/components/ui/Card';
 import { Button } from '@renderer/components/ui/Button';
@@ -116,6 +118,7 @@ function FamilyLanding({ family, onOpen }: { family: BusinessFamilyGroup; onOpen
   const [recent, setRecent] = useState<{ entity: EnterpriseEntity; module: EnterpriseModuleSummary }[] | null>(null);
   const [activity, setActivity] = useState<EnterpriseTimelineEntry[] | null>(null);
   const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+  const { error: raiseError } = useToast();
 
   // Load recent records + recent activity + favorites for this family — all from existing IPC.
   useEffect(() => {
@@ -158,16 +161,37 @@ function FamilyLanding({ family, onOpen }: { family: BusinessFamilyGroup; onOpen
   }, [familyKey]);
 
   const toggleFavorite = useCallback(
-    async (m: EnterpriseModuleSummary) => {
-      const state = await ipc.enterprise.personalization
-        .favorite({ id: businessFavoriteId(m.id), kind: BUSINESS_FAVORITE_KIND, label: m.title, tab: 'business' })
-        .catch(() => null);
-      if (state) {
-        const ids = new Set(moduleIds);
-        setFavorites(state.favorites.filter((f) => f.kind === BUSINESS_FAVORITE_KIND && ids.has(moduleIdFromBusinessFavorite(f.id))));
+    async (m: EnterpriseModuleSummary, wasFavorite: boolean) => {
+      // D-7b Site 4 — a refused favorite must SPEAK. `personalization.favorite`
+      // is `dashboard:read` + requireAuth, so a not-signed-in / non-member /
+      // under-permissioned actor is REJECTED at the secure-bridge boundary; the
+      // old `.catch(() => null)` + `if (state)` guard swallowed it, so the star
+      // click did nothing and said nothing. The `try` is scoped to the awaited
+      // write alone, so the success `setFavorites` below can never raise a false
+      // failure toast — and the star (derived from `favorites`) is never updated
+      // optimistically, so on failure it correctly stays put.
+      let state: PersonalizationState;
+      try {
+        state = await ipc.enterprise.personalization.favorite({
+          id: businessFavoriteId(m.id),
+          kind: BUSINESS_FAVORITE_KIND,
+          label: m.title,
+          tab: 'business',
+        });
+      } catch (err) {
+        // Verbatim boundary message (the D-6 `invoke` wrapper already restored the
+        // clean text); a persistent, announced (role="alert") error toast, keyed
+        // per module so failures on different modules don't overwrite one another.
+        raiseError(wasFavorite ? `Couldn’t remove ${m.title} from favorites` : `Couldn’t favorite ${m.title}`, {
+          message: err instanceof Error && err.message ? err.message : 'The request failed.',
+          dedupeKey: `business-favorite:${m.id}`,
+        });
+        return;
       }
+      const ids = new Set(moduleIds);
+      setFavorites(state.favorites.filter((f) => f.kind === BUSINESS_FAVORITE_KIND && ids.has(moduleIdFromBusinessFavorite(f.id))));
     },
-    [moduleIds],
+    [moduleIds, raiseError],
   );
 
   const favoriteModuleIds = useMemo(
@@ -239,7 +263,7 @@ function FamilyLanding({ family, onOpen }: { family: BusinessFamilyGroup; onOpen
                   <button
                     type="button"
                     aria-label={fav ? `Unfavorite ${m.title}` : `Favorite ${m.title}`}
-                    onClick={() => void toggleFavorite(m)}
+                    onClick={() => void toggleFavorite(m, fav)}
                     className={cn('rounded p-1 transition-colors', fav ? 'text-accent' : 'text-faint hover:text-muted')}
                   >
                     <Icon name={fav ? 'star-fill' : 'star'} size={14} />

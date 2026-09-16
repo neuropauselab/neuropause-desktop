@@ -39,17 +39,40 @@ export function WelcomeView() {
   const [fbState, setFbState] = useState<'idle' | 'sending' | 'sent'>('idle');
   const [exportMsg, setExportMsg] = useState('');
   const [pilot, setPilot] = useState<PilotStatus | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  /**
+   * D-7 — the ACTION channel, deliberately separate from `statusError`.
+   *
+   * `statusError` means "the checklist could not be LOADED" and renders inside
+   * the `{status ? ... : statusError ? ...}` ternary, i.e. only when there is no
+   * checklist. A failed WRITE happens while the checklist is showing, so that arm
+   * is never reached -- reusing that state would have set a value nothing renders.
+   * One channel for every action on this view, named for the action, not the step.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [statusNonce, setStatusNonce] = useState(0);
 
   useEffect(() => {
+    /**
+     * P13C ROUND 36 — GATE 12. A failed status read used to leave `status`
+     * null FOREVER: the page said "Loading your checklist…" indefinitely
+     * under a fabricated "0 of 0 done" header. The failure now lands in an
+     * error branch with a retry; `statusError` and the loading state are
+     * mutually exclusive by construction.
+     */
+    setStatusError(null);
     ipc.onboarding
       .status()
       .then(setStatus)
-      .catch((err) => log.warn('Onboarding status unavailable', err));
+      .catch((err: unknown) => {
+        log.warn('Onboarding status unavailable', err);
+        setStatusError(err instanceof Error && err.message ? err.message : 'The checklist could not be loaded.');
+      });
     ipc.pilot
       .status()
       .then(setPilot)
       .catch((err) => log.warn('Pilot status unavailable', err));
-  }, []);
+  }, [statusNonce]);
 
   const goTo = (id: SectionId): void => {
     setSection(id);
@@ -57,12 +80,14 @@ export function WelcomeView() {
 
   const complete = async (step: OnboardingStepId, section?: SectionId) => {
     setBusy(true);
+    setActionError(null);
     try {
       const next = await ipc.onboarding.completeStep(step);
       setStatus(next);
       if (section) goTo(section);
     } catch (err) {
       log.warn('Could not complete step', err);
+      setActionError('That step could not be marked done. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -70,10 +95,12 @@ export function WelcomeView() {
 
   const restartTour = async () => {
     setBusy(true);
+    setActionError(null);
     try {
       setStatus(await ipc.onboarding.reset());
     } catch (err) {
       log.warn('Could not reset onboarding', err);
+      setActionError('The tour could not be restarted. Nothing was changed.');
     } finally {
       setBusy(false);
     }
@@ -94,12 +121,24 @@ export function WelcomeView() {
         The Operations view carries diagnostics and the support bundle.
       </p>
 
+      {actionError !== null && (
+        <div
+          role="alert"
+          className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger"
+        >
+          {actionError}
+        </div>
+      )}
+
       <div className="surface rounded-2xl p-5">
         <div className="mb-4 flex items-center justify-between">
           <span className="text-sm font-medium text-ink">Getting started</span>
-          <span className="text-xs text-muted">
-            {done} of {total} done
-          </span>
+          {/* The count exists only when the checklist does — never "0 of 0". */}
+          {status !== null && (
+            <span className="text-xs text-muted">
+              {done} of {total} done
+            </span>
+          )}
         </div>
 
         {status ? (
@@ -151,6 +190,17 @@ export function WelcomeView() {
               );
             })}
           </ul>
+        ) : statusError !== null ? (
+          <div role="alert" className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+            Your checklist could not be loaded — {statusError}{' '}
+            <button
+              type="button"
+              onClick={() => setStatusNonce((n) => n + 1)}
+              className="ml-1 underline underline-offset-2"
+            >
+              Retry
+            </button>
+          </div>
         ) : (
           <p className="text-sm text-muted">Loading your checklist…</p>
         )}
@@ -249,19 +299,33 @@ export function WelcomeView() {
             disabled={!pilot}
             onClick={() => {
               if (!pilot) return;
+              setActionError(null); // clear any stale action error before this write (matches complete/restartTour)
               const next = !pilot.enabled;
               ipc.pilot
                 .setEnabled(next)
                 .then((p) => {
                   setPilot(p);
                   if (next) {
+                    // D-7b Site 5 — the toggle already SUCCEEDED here (setEnabled resolved,
+                    // setPilot ran, the badge shows "On"); only the secondary "mark the
+                    // pilot step done" write can still fail. The old `.catch(() => undefined)`
+                    // swallowed it, so the checklist step silently stayed incomplete and
+                    // reappeared unchecked on reload. Surface it through the same
+                    // `actionError` role="alert" slot the other writes use — with a message
+                    // that does NOT claim the toggle failed (it did not).
                     ipc.onboarding
                       .completeStep('pilot')
                       .then(setStatus)
-                      .catch(() => undefined);
+                      .catch((err) => {
+                        log.warn('Could not mark the pilot step done', err);
+                        setActionError('Pilot mode is on, but the setup step could not be marked done. Please try again.');
+                      });
                   }
                 })
-                .catch((err) => log.warn('Could not update pilot mode', err));
+                .catch((err) => {
+                  log.warn('Could not update pilot mode', err);
+                  setActionError('Pilot mode could not be changed. It is unchanged.');
+                });
             }}
           >
             {pilot?.enabled ? 'Leave pilot' : 'Join pilot'}

@@ -1,0 +1,18 @@
+{
+  "ARTIFACT": "16_ARM64_TO_UNIVERSAL_UPDATE",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "model": "rc.29 arm64 → rc.30 universal",
+  "feed_names_contain_arm64": false,
+  "filterFilesForArch_note": "electron-updater MacUpdater drops URLs containing \"arm64\" on x64; universal names carry neither token (DECLARED from electron-updater source)",
+  "live_transition": "NOT_MEASURED",
+  "classification": "NOT_MEASURED"
+}

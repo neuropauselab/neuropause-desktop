@@ -1,0 +1,1254 @@
+diff --git a/apps/desktop/src/main/enterprise/index.ts b/apps/desktop/src/main/enterprise/index.ts
+index 1c96cd1..cd6f26f 100644
+--- a/apps/desktop/src/main/enterprise/index.ts
++++ b/apps/desktop/src/main/enterprise/index.ts
+@@ -364,6 +364,23 @@ export interface EnterpriseSubsystem {
+  * before the stores load because `isLoaded()` is the first thing it checks — an
+  * unread store refuses rather than answering from empty maps.
+  */
++/**
++ * P13C ROUND 31 — W-10. HOW OFTEN THE REFUSAL DIAGNOSTIC IS ALLOWED TO SPEAK.
++ *
++ * `resolveFull()` is on the read path of every scoped store, so an install that
++ * cannot resolve its tenant refuses hundreds of times a minute. Logging each one
++ * would bury the line that matters under its own repetitions and turn a support
++ * bundle into a 200 MB file nobody opens.
++ *
++ * The policy: the TRANSITION always prints, because that is the measurement —
++ * the moment resolution stopped working and how long it had been working. After
++ * that, one line per reason per minute, each carrying how many it stands for, so
++ * the log says "still refusing, 4 100 times since the last line" rather than
++ * saying it 4 100 times. Recovery always prints, because it closes the bracket.
++ */
++const REFUSAL_LOG_INTERVAL_MS = 60_000;
++const refusalLogState = new Map<string, { lastAtMs: number; suppressed: number }>();
++
+ const tenantContext = createTenantContextResolver({
+   sessionEmail: () => {
+     const st = authService.getStatus();
+@@ -376,6 +393,46 @@ const tenantContext = createTenantContextResolver({
+   usersFor: (orgId) => orgStore.usersFor(orgId),
+   rolesFor: (orgId) => orgStore.rolesFor(orgId),
+   ownerMember: () => orgStore.user(OWNER_USER_ID),
++  /**
++   * WHY THIS MOVED HERE FROM THE AUTHORIZATION GATE.
++   *
++   * Round 28 wired the same diagnostic into `createAuthorize`, and on the
++   * machine it was written for it printed nothing at all while five screens
++   * were showing the refusal. `livesync:status` takes the refusal from
++   * `resolveFull()` and throws it; it never reaches the gate. Neither does any
++   * caller that reads `scope()`, sees null, and gives up. Instrumenting a
++   * caller measures that caller — and there are many callers and one resolver.
++   *
++   * The payload is redacted inside the resolver, so no address can reach this
++   * function to be logged by accident.
++   */
++  onRefusal: (d) => {
++    const nowMs = Date.now();
++    const state = refusalLogState.get(d.reason);
++    if (!d.firstRefusalAfterSuccess && state !== undefined) {
++      if (nowMs - state.lastAtMs < REFUSAL_LOG_INTERVAL_MS) {
++        state.suppressed += 1;
++        return;
++      }
++    }
++    const suppressed = state?.suppressed ?? 0;
++    refusalLogState.set(d.reason, { lastAtMs: nowMs, suppressed: 0 });
++    log.warn(
++      d.firstRefusalAfterSuccess
++        ? 'Tenant resolution LOST — first refusal after a working session'
++        : 'Tenant refused',
++      { ...d, suppressedSinceLastLine: suppressed },
++    );
++  },
++  /**
++   * The other end of the interval. Today a restart is what produces this; when
++   * the root cause is fixed it will stop appearing, which is the regression
++   * signal.
++   */
++  onRecovered: (r) => {
++    refusalLogState.clear();
++    log.warn('Tenant resolution RECOVERED', r);
++  },
+ });
+ 
+ /**
+@@ -750,52 +807,23 @@ export async function initEnterprise(deps: EnterpriseDeps): Promise<EnterpriseSu
+      * on a request that succeeds.
+      */
+     tenantRefusal: () => {
+-      const resolved = tenantContext.resolveFull();
+-      if (resolved.ok) return null;
+       /**
+-       * P13C ROUND 28 — W-7. WHY THE MEMBERSHIP MATCH FAILED, WITHOUT THE ADDRESSES.
++       * P13C ROUND 31 — W-10. The Round 28 diagnostic that used to live here is
++       * gone, and its removal is the point rather than a tidy-up.
+        *
+-       * `not_a_member` fired on an install whose signed-in account IS the
+-       * claimed owner, which the resolver's own logic says is impossible. The
+-       * inputs to that comparison were invisible: the renderer shows the email
+-       * IT cached at sign-in, the resolver reads `authService.getStatus()` in
+-       * the MAIN process, and nothing ever printed either one.
++       * It re-read `authService.getStatus()`, the org store and the workspace
++       * store AFTER `resolveFull()` had already returned — a second sample of
++       * four mutable singletons. If any of them changed in between, the log
++       * described a state that had not produced the refusal it claimed to
++       * explain, and there would have been no way to tell from the output. It
++       * also only fired for callers that came through this gate, which the
++       * failing caller did not.
+        *
+-       * Logged as PREDICATES, never as addresses. `sessionMatchesOwner` is the
+-       * entire question — if it is false while the UI shows the owner's own
+-       * address, the two sessions have diverged and this is an auth defect, not
+-       * a tenancy one. Domains are kept because a mismatch between accounts at
+-       * the same domain and at different domains are different bugs; local
+-       * parts are reduced to a length so no address is reconstructable from a
+-       * support bundle.
++       * The resolver now reports from the values it actually used, on every
++       * path. This function is back to one job: pass the refusal through.
+        */
+-      if (resolved.refusal.reason === 'not_a_member') {
+-        const st = authService.getStatus();
+-        const sessionEmail =
+-          st.state === 'authenticated' ? (st.session.user.email ?? null) : null;
+-        const owner = orgStore.user(OWNER_USER_ID);
+-        const wsId = workspaceStore.activeWorkspaceIdOrNull();
+-        const ws = wsId === null ? null : workspaceStore.get(wsId);
+-        const orgId = ws?.organizationId ?? null;
+-        const members = orgId === null ? [] : orgStore.usersFor(orgId);
+-        const shape = (e: string | null): string | null =>
+-          e === null ? null : `${e.trim().toLowerCase().split('@')[0]?.length ?? 0}@${e.trim().toLowerCase().split('@')[1] ?? ''}`;
+-        const norm = (e: string | null): string | null => (e === null ? null : e.trim().toLowerCase());
+-        log.warn('Tenant refused: not_a_member — comparison inputs', {
+-          authState: st.state,
+-          sessionEmailShape: shape(sessionEmail),
+-          ownerEmailShape: shape(owner?.email ?? null),
+-          sessionMatchesOwner:
+-            sessionEmail !== null && norm(sessionEmail) === norm(owner?.email ?? null),
+-          ownerExists: owner !== null,
+-          ownerOrgMatches: owner !== null && orgId !== null && owner.orgId === orgId,
+-          activeWorkspaceId: wsId,
+-          workspaceOrgId: orgId,
+-          memberCount: members.length,
+-          humanMembersWithEmail: members.filter((m) => m.kind === 'human' && m.email !== null).length,
+-        });
+-      }
+-      return resolved.refusal;
++      const resolved = tenantContext.resolveFull();
++      return resolved.ok ? null : resolved.refusal;
+     },
+     activeOrgId: authorizationOrgId,
+     usersFor: (orgId) => orgStore.usersFor(orgId),
+diff --git a/apps/desktop/src/main/enterprise/org/orgStore.ts b/apps/desktop/src/main/enterprise/org/orgStore.ts
+index 5519c20..5d7136e 100644
+--- a/apps/desktop/src/main/enterprise/org/orgStore.ts
++++ b/apps/desktop/src/main/enterprise/org/orgStore.ts
+@@ -520,7 +520,32 @@ export class OrgStore extends EventEmitter {
+     // membership is decided by email on this row. Was `this.users.get(id)`.
+     const user = this.ownedUser(id);
+     if (!user) return null;
+-    const next: OrgUser = { ...user, ...patch, updatedAt: new Date().toISOString() };
++    /**
++     * P13C ROUND 31 — O-11. A PARTIAL PATCH MEANS "THESE FIELDS", NOT "THESE
++     * FIELDS PLUS UNDEFINED FOR THE REST".
++     *
++     * Object spread copies own enumerable keys REGARDLESS of value, so
++     * `{ ...user, ...{ email: undefined } }` SETS `email` to `undefined` — it
++     * does not leave the previous value alone. Every caller builds its patch as
++     * an object literal (see the `EnterpriseOrgUpdateUser` handler), so a
++     * request that simply omits a field arrives here carrying that field with
++     * the value `undefined`, and erases it.
++     *
++     * On the owner row that is not cosmetic. `email` is the key membership is
++     * decided by; `JSON.stringify` drops undefined, so the erasure survives a
++     * restart; and the resolver's `m.email !== null` check then called `.trim()`
++     * on it. One optional field left out of one member edit could take tenant
++     * resolution down for every subsequent request in the process.
++     *
++     * Deleting the key is right rather than coercing to null, because null is a
++     * MEANINGFUL value here — an unclaimed owner — so a patch that genuinely
++     * wants to clear a field says `null` and still can.
++     */
++    const applied: Record<string, unknown> = {};
++    for (const [k, v] of Object.entries(patch)) {
++      if (v !== undefined) applied[k] = v;
++    }
++    const next: OrgUser = { ...user, ...applied, updatedAt: new Date().toISOString() };
+     this.users.set(id, next);
+     this.touch();
+     return next;
+diff --git a/apps/desktop/src/main/tenancy/ownerRowIntegrity.test.ts b/apps/desktop/src/main/tenancy/ownerRowIntegrity.test.ts
+new file mode 100644
+index 0000000..eb7d0a9
+--- /dev/null
++++ b/apps/desktop/src/main/tenancy/ownerRowIntegrity.test.ts
+@@ -0,0 +1,246 @@
++/**
++ * P13C ROUND 31 — O-11. AN OMITTED FIELD ERASED THE ONE IT WAS NOT SENT FOR.
++ *
++ * `orgStore.updateUser` applied its patch with `{ ...user, ...patch }`. Object
++ * spread copies own enumerable keys REGARDLESS of value, and the only caller —
++ * the `enterprise:org.updateUser` IPC handler — builds its patch as an object
++ * LITERAL naming all six fields:
++ *
++ *     const patch = guardOwnerUserPatch(r.id, OWNER_USER_ID, {
++ *       name: r.name, email: r.email, title: r.title,
++ *       unitId: r.unitId, roleIds: r.roleIds, status: r.status,
++ *     });
++ *
++ * `EnterpriseOrgUpdateUserRequest` declares every one of those optional, so a
++ * request that renames a member and says nothing about their address arrives
++ * here as `{ name: 'X', email: undefined, … }` — and writes `email: undefined`.
++ *
++ * WHY THAT IS NOT A COSMETIC BUG
++ *
++ *   1. Membership is decided by matching the signed-in address against this
++ *      field. Erasing it removes the person from their own organization.
++ *   2. `JSON.stringify` omits undefined, so the erasure is written to disk and
++ *      survives every restart. Nothing else in this program that breaks tenant
++ *      resolution is persistent.
++ *   3. `tenantContext.resolveFull()` tested it with `m.email !== null` — true
++ *      for undefined — and then called `.trim()` on it. A TypeError out of the
++ *      one function whose documented contract is that it never throws.
++ *
++ * On the seeded owner row all three compound: it is the root of first-claim-wins.
++ *
++ * The fix is deliberately in the STORE and not in the handler. Fixing the caller
++ * fixes one caller; `updateUser` is public and `Partial<Pick<…>>` already means
++ * "these fields", so honouring that is the store's job.
++ */
++import { afterEach, beforeEach, describe, expect, it } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++import { randomUUID } from 'node:crypto';
++import type { Organization, OrgUser, TenantScope, Workspace } from '@neuropause/shared';
++import { OrgStore } from '../enterprise/org/orgStore';
++import { OWNER_USER_ID } from '../enterprise/org/seed';
++import { createTenantContextResolver } from './tenantContext';
++
++const dirs: string[] = [];
++let store: OrgStore;
++let storePath = '';
++let who: TenantScope | null = null;
++let ORG_A = '';
++
++const as = (tenantId: string): TenantScope => ({ tenantId, workspaceId: `ws-${tenantId}` });
++
++beforeEach(async () => {
++  const dir = join(tmpdir(), `np-owner-${randomUUID()}`);
++  await fs.mkdir(dir, { recursive: true });
++  dirs.push(dir);
++  storePath = join(dir, 'org.json');
++  store = new OrgStore(storePath);
++  store.bindScope(() => who);
++  await store.load();
++  ORG_A = store.defaultOrg().id;
++  who = null;
++});
++
++afterEach(async () => {
++  for (const d of dirs.splice(0)) {
++    await fs.rm(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
++  }
++});
++
++/** The patch the IPC handler actually builds: every key present, most undefined. */
++function handlerShapedPatch(over: Record<string, unknown>): Record<string, unknown> {
++  return {
++    name: undefined,
++    email: undefined,
++    title: undefined,
++    unitId: undefined,
++    roleIds: undefined,
++    status: undefined,
++    ...over,
++  };
++}
++
++describe('O-11 — an omitted field is left alone, not erased', () => {
++  it('renaming the owner does not erase the address membership is decided by', () => {
++    who = as(ORG_A);
++    store.setOwnerIdentity('Dishant', 'owner@neuropause033.test');
++    expect(store.user(OWNER_USER_ID)?.email).toBe('owner@neuropause033.test');
++
++    // The exact shape `enterprise:org.updateUser` sends for a rename.
++    const next = store.updateUser(OWNER_USER_ID, handlerShapedPatch({ name: 'Dishant D' }));
++
++    expect(next?.name).toBe('Dishant D');
++    expect(next?.email).toBe('owner@neuropause033.test');
++    // Not merely non-null: the key must still be a string, or JSON drops it.
++    expect(typeof next?.email).toBe('string');
++  });
++
++  it('the erasure would have survived a restart, so the round trip is asserted', async () => {
++    who = as(ORG_A);
++    store.setOwnerIdentity('Dishant', 'owner@neuropause033.test');
++    store.updateUser(OWNER_USER_ID, handlerShapedPatch({ title: 'Founder' }));
++    await store.flush();
++
++    const reloaded = new OrgStore(storePath);
++    reloaded.bindScope(() => who);
++    await reloaded.load();
++    expect(reloaded.user(OWNER_USER_ID)?.email).toBe('owner@neuropause033.test');
++  });
++
++  it('an explicit null still clears the field — null is a meaningful value here', () => {
++    // An UNCLAIMED owner is `email: null`, and first-claim-wins depends on being
++    // able to express it. Dropping undefined must not also drop null.
++    who = as(ORG_A);
++    store.setOwnerIdentity('Dishant', 'owner@neuropause033.test');
++    const next = store.updateUser(OWNER_USER_ID, handlerShapedPatch({ email: null }));
++    expect(next?.email).toBeNull();
++  });
++
++  it('every other optional field is protected the same way, not just email', () => {
++    who = as(ORG_A);
++    const created = store.createUser({
++      orgId: ORG_A,
++      name: 'Ada',
++      email: 'ada@example.test',
++      title: 'Ops',
++    });
++    const before = store.user(created.id) as OrgUser;
++
++    const next = store.updateUser(created.id, handlerShapedPatch({ title: 'Lead' }));
++
++    expect(next?.title).toBe('Lead');
++    expect(next?.name).toBe(before.name);
++    expect(next?.email).toBe(before.email);
++    expect(next?.unitId).toBe(before.unitId);
++    expect(next?.roleIds).toEqual(before.roleIds);
++    expect(next?.status).toBe(before.status);
++  });
++
++  it('a real change is still applied — the guard is not a no-op', () => {
++    who = as(ORG_A);
++    const created = store.createUser({
++      orgId: ORG_A,
++      name: 'Ada',
++      email: 'ada@example.test',
++      title: 'Ops',
++    });
++    const next = store.updateUser(
++      created.id,
++      handlerShapedPatch({ name: 'Ada L', email: 'ada.l@example.test', status: 'suspended' }),
++    );
++    expect(next?.name).toBe('Ada L');
++    expect(next?.email).toBe('ada.l@example.test');
++    expect(next?.status).toBe('suspended');
++  });
++});
++
++describe('O-11 — the resolver refuses a corrupt row instead of throwing on it', () => {
++  const NOW = '2026-01-01T00:00:00.000Z';
++  const ORG: Organization = {
++    id: 'org-a',
++    name: 'A',
++    slug: 'a',
++    description: '',
++    type: 'business',
++    status: 'active',
++    createdAt: NOW,
++    updatedAt: NOW,
++    metadata: {},
++  };
++  const WS: Workspace = {
++    id: 'ws-a',
++    name: 'A',
++    organizationId: 'org-a',
++    isolation: 'isolated',
++    createdAt: NOW,
++    updatedAt: NOW,
++  };
++  const base: OrgUser = {
++    id: 'user-a',
++    orgId: 'org-a',
++    name: 'Ada',
++    email: 'ada@example.test',
++    title: null,
++    kind: 'human',
++    workerId: null,
++    unitId: null,
++    roleIds: [],
++    status: 'active',
++    createdAt: NOW,
++    updatedAt: NOW,
++  };
++
++  const resolverOver = (members: OrgUser[], owner: OrgUser | null) =>
++    createTenantContextResolver({
++      sessionEmail: () => 'ada@example.test',
++      isLoaded: () => true,
++      activeWorkspaceId: () => 'ws-a',
++      workspace: (id) => (id === 'ws-a' ? WS : null),
++      organization: (id) => (id === 'org-a' ? ORG : null),
++      usersFor: () => members,
++      rolesFor: () => [],
++      ownerMember: () => owner,
++    });
++
++  it('a member row whose email is undefined does not throw resolveFull', () => {
++    // The state O-11 produced on disk: the key is simply absent.
++    const corrupt = { ...base } as Partial<OrgUser>;
++    delete corrupt.email;
++
++    const r = resolverOver([corrupt as OrgUser], null);
++    expect(() => r.resolveFull()).not.toThrow();
++    // `resolve()` documents that it never throws. That has to be true.
++    expect(() => r.resolve()).not.toThrow();
++    expect(() => r.scope()).not.toThrow();
++
++    const res = r.resolveFull();
++    expect(res.ok).toBe(false);
++    if (!res.ok) expect(res.refusal.reason).toBe('not_a_member');
++  });
++
++  it('a corrupt row does not become claimable by whoever signs in next', () => {
++    // The tempting relaxation is to treat a non-string email as "unclaimed" and
++    // let the owner fallback take it. That converts a data fault into a tenant
++    // takeover, so the fallback is left strict on purpose.
++    const corruptOwner = { ...base, id: OWNER_USER_ID } as Partial<OrgUser>;
++    delete corruptOwner.email;
++
++    const res = resolverOver([], corruptOwner as OrgUser).resolveFull();
++    expect(res.ok).toBe(false);
++    if (!res.ok) expect(res.refusal.reason).toBe('not_a_member');
++  });
++
++  it('a genuinely unclaimed owner is still claimed — first-run is unchanged', () => {
++    const unclaimed: OrgUser = { ...base, id: OWNER_USER_ID, email: null };
++    const res = resolverOver([], unclaimed).resolveFull();
++    expect(res.ok).toBe(true);
++    if (res.ok) expect(res.value.member.id).toBe(OWNER_USER_ID);
++  });
++
++  it('a healthy member still resolves — the predicate change denies nothing real', () => {
++    const res = resolverOver([base], null).resolveFull();
++    expect(res.ok).toBe(true);
++    if (res.ok) expect(res.value.member.id).toBe('user-a');
++  });
++});
+diff --git a/apps/desktop/src/main/tenancy/refusalDiagnostic.test.ts b/apps/desktop/src/main/tenancy/refusalDiagnostic.test.ts
+new file mode 100644
+index 0000000..f0cc4a5
+--- /dev/null
++++ b/apps/desktop/src/main/tenancy/refusalDiagnostic.test.ts
+@@ -0,0 +1,453 @@
++/**
++ * P13C ROUND 31 — W-10. THE INSTRUMENTATION HAS TO BE WHERE THE DECISION IS.
++ *
++ * Round 28 added a diagnostic that logged why a `not_a_member` refusal had
++ * happened, wired into `createAuthorize` in `enterprise/index.ts`. On the
++ * Windows machine that motivated it, it printed nothing — not once, across a
++ * run in which the renderer showed the refusal on five separate screens.
++ *
++ * The reason is worth stating plainly, because it is a class of mistake and not
++ * a typo. `livesync:status` obtains the refusal from `resolveFull()` and throws
++ * it directly; it never calls `createAuthorize`. So does every other caller that
++ * reads `scope()` and finds null. Hooking the gate measures the gate. There are
++ * many callers and exactly one resolver, and the resolver is the thing that
++ * decides, so the resolver is where the measurement belongs.
++ *
++ * WHAT THESE TESTS PIN
++ *
++ *   1. Every one of the eight refusals reports itself. Not seven.
++ *   2. No address survives into the payload, for any of them.
++ *   3. The transition — first refusal after a success, and the recovery — is
++ *      observable, because "how long did it work before it stopped" was the
++ *      question nobody in the process could answer.
++ *   4. A hook that throws changes nothing. Instrumentation is not load-bearing.
++ *   5. Structurally: no refusal path can bypass the hook, checked against the
++ *      source, because a ninth reason added in six months will not remember.
++ */
++import { readFileSync } from 'node:fs';
++import { join } from 'node:path';
++import { beforeEach, describe, expect, it } from 'vitest';
++import type { Organization, OrgRole, OrgUser, TenantRefusal, Workspace } from '@neuropause/shared';
++import {
++  createTenantContextResolver,
++  redactedEmailShape,
++  type TenantContextDeps,
++  type TenantRecovery,
++  type TenantRefusalDiagnostic,
++} from './tenantContext';
++
++const NOW = '2026-01-01T00:00:00.000Z';
++const SESSION_EMAIL = 'dishant.dobariya@neuropause033.com';
++
++const ORG: Organization = {
++  id: 'org-a',
++  name: 'Tenant A',
++  slug: 'a',
++  description: '',
++  type: 'business',
++  status: 'active',
++  createdAt: NOW,
++  updatedAt: NOW,
++  metadata: {},
++};
++
++const WS: Workspace = {
++  id: 'ws-a',
++  name: 'A',
++  organizationId: 'org-a',
++  isolation: 'isolated',
++  createdAt: NOW,
++  updatedAt: NOW,
++};
++
++const ROLE: OrgRole = {
++  id: 'role-a',
++  orgId: 'org-a',
++  name: 'Manager',
++  description: '',
++  permissions: ['crm:read'],
++  builtIn: false,
++  createdAt: NOW,
++  updatedAt: NOW,
++};
++
++const MEMBER: OrgUser = {
++  id: 'user-a',
++  orgId: 'org-a',
++  name: 'Ada',
++  email: SESSION_EMAIL,
++  title: 'Ops',
++  kind: 'human',
++  workerId: null,
++  unitId: null,
++  roleIds: ['role-a'],
++  status: 'active',
++  createdAt: NOW,
++  updatedAt: NOW,
++};
++
++/** The eight. If the union grows, this array is the thing that must fail first. */
++const ALL_REASONS: TenantRefusal['reason'][] = [
++  'not_loaded',
++  'not_signed_in',
++  'no_workspace',
++  'workspace_orphaned',
++  'tenant_not_operable',
++  'not_a_member',
++  'member_inactive',
++  'not_in_workspace',
++];
++
++describe('W-10 — every tenant refusal reports itself from inside the resolver', () => {
++  let email: string | null;
++  let loaded: boolean;
++  let activeWs: string | null;
++  let orgs: Map<string, Organization>;
++  let workspaces: Map<string, Workspace>;
++  let members: OrgUser[];
++  let owner: OrgUser | null;
++  let clockMs: number;
++  let seen: TenantRefusalDiagnostic[];
++  let recoveries: TenantRecovery[];
++
++  const make = (over: Partial<TenantContextDeps> = {}) =>
++    createTenantContextResolver({
++      sessionEmail: () => email,
++      isLoaded: () => loaded,
++      activeWorkspaceId: () => activeWs,
++      workspace: (id) => workspaces.get(id) ?? null,
++      organization: (id) => orgs.get(id) ?? null,
++      usersFor: (orgId) => members.filter((m) => m.orgId === orgId),
++      rolesFor: (orgId) => (orgId === 'org-a' ? [ROLE] : []),
++      ownerMember: () => owner,
++      now: () => clockMs,
++      onRefusal: (d) => {
++        seen.push(d);
++      },
++      onRecovered: (r) => {
++        recoveries.push(r);
++      },
++      ...over,
++    });
++
++  /** Put the fixture into the state that produces exactly one named refusal. */
++  const arrange = (reason: TenantRefusal['reason']): void => {
++    switch (reason) {
++      case 'not_loaded':
++        loaded = false;
++        break;
++      case 'not_signed_in':
++        email = null;
++        break;
++      case 'no_workspace':
++        activeWs = null;
++        break;
++      case 'workspace_orphaned':
++        orgs.delete('org-a');
++        break;
++      case 'tenant_not_operable':
++        orgs.set('org-a', { ...ORG, status: 'suspended' });
++        break;
++      case 'not_a_member':
++        // A claimed owner at a different address: the fallback does not apply,
++        // which is precisely the branch the Windows install lands in.
++        members = [];
++        owner = { ...MEMBER, id: 'user-owner', email: 'someone.else@example.com' };
++        break;
++      case 'member_inactive':
++        members = [{ ...MEMBER, status: 'suspended' }];
++        break;
++      case 'not_in_workspace':
++        members = [{ ...MEMBER, workspaceIds: ['ws-other'] }];
++        break;
++    }
++  };
++
++  beforeEach(() => {
++    email = SESSION_EMAIL;
++    loaded = true;
++    activeWs = 'ws-a';
++    orgs = new Map([[ORG.id, ORG]]);
++    workspaces = new Map([[WS.id, WS]]);
++    members = [MEMBER];
++    owner = { ...MEMBER, id: 'user-owner', email: null };
++    clockMs = 1_000_000;
++    seen = [];
++    recoveries = [];
++  });
++
++  /* ── 1. Completeness ──────────────────────────────────────────────────── */
++
++  it.each(ALL_REASONS)('%s fires the hook exactly once, with its own reason', (reason) => {
++    arrange(reason);
++    const res = make().resolveFull();
++
++    expect(res.ok).toBe(false);
++    if (!res.ok) expect(res.refusal.reason).toBe(reason);
++    expect(seen).toHaveLength(1);
++    expect(seen[0]?.reason).toBe(reason);
++  });
++
++  it('a resolution that succeeds fires no refusal hook at all', () => {
++    const res = make().resolveFull();
++    expect(res.ok).toBe(true);
++    expect(seen).toHaveLength(0);
++  });
++
++  it('scope() and resolve() report too — the hook is not exclusive to resolveFull', () => {
++    // Every scoped store in the app reaches the resolver through `scope()`.
++    // A diagnostic only wired into `resolveFull` would miss all of them.
++    arrange('not_a_member');
++    const r = make();
++    expect(r.scope()).toBeNull();
++    expect(r.resolve().ok).toBe(false);
++    expect(seen.map((d) => d.reason)).toEqual(['not_a_member', 'not_a_member']);
++  });
++
++  /* ── 2. No address survives ───────────────────────────────────────────── */
++
++  it.each(ALL_REASONS)('%s carries no email address anywhere in its payload', (reason) => {
++    arrange(reason);
++    make().resolveFull();
++
++    const serialized = JSON.stringify(seen[0]);
++    expect(serialized).not.toContain('dishant.dobariya');
++    expect(serialized).not.toContain('someone.else');
++    expect(serialized).not.toContain(SESSION_EMAIL);
++  });
++
++  it('redactedEmailShape keeps the domain and reduces the local part to a length', () => {
++    expect(redactedEmailShape('Ada.Lovelace@Example.COM ')).toBe('12@example.com');
++    expect(redactedEmailShape(null)).toBeNull();
++    // Two different people at one domain look different; neither is readable.
++    expect(redactedEmailShape('a@x.io')).toBe('1@x.io');
++    expect(redactedEmailShape('abcd@x.io')).toBe('4@x.io');
++    // Malformed input must not throw and must not leak.
++    expect(redactedEmailShape('not-an-email')).toBe('12@');
++  });
++
++  /* ── 3. The facts are the ones the refusal used ───────────────────────── */
++
++  it('not_a_member carries the predicates the Windows fault turns on', () => {
++    arrange('not_a_member');
++    make().resolveFull();
++
++    const d = seen[0];
++    expect(d?.reason).toBe('not_a_member');
++    // The whole question: the renderer showed the owner's own address while the
++    // resolver said not_a_member. If this is false, the two sessions disagree.
++    expect(d?.sessionMatchesOwner).toBe(false);
++    expect(d?.ownerExists).toBe(true);
++    expect(d?.ownerClaimed).toBe(true);
++    expect(d?.ownerOrgMatches).toBe(true);
++    expect(d?.sessionMatchedAMember).toBe(false);
++    expect(d?.memberCount).toBe(0);
++    expect(d?.humanMembersWithEmail).toBe(0);
++    expect(d?.workspaceOrgId).toBe('org-a');
++  });
++
++  it('an unclaimed owner reports sessionMatchesOwner false, not a match against empty', () => {
++    // The owner row has a null email on a fresh install. Comparing a session
++    // address to `''` would call that a match and invert the diagnosis.
++    members = [];
++    owner = { ...MEMBER, id: 'user-owner', email: null, orgId: 'org-other' };
++    make().resolveFull();
++
++    expect(seen[0]?.reason).toBe('not_a_member');
++    expect(seen[0]?.ownerClaimed).toBe(false);
++    expect(seen[0]?.sessionMatchesOwner).toBe(false);
++    expect(seen[0]?.ownerEmailShape).toBeNull();
++  });
++
++  it('a refusal reports null for facts not yet established, never false', () => {
++    // `not_signed_in` fires before any workspace is read. Reporting
++    // `workspaceFound: false` there would be an invention that sends the next
++    // engineer to look at the workspace store.
++    arrange('not_signed_in');
++    make().resolveFull();
++
++    const d = seen[0];
++    expect(d?.loaded).toBe(true);
++    expect(d?.sessionEmailShape).toBeNull();
++    expect(d?.workspaceFound).toBeNull();
++    expect(d?.organizationFound).toBeNull();
++    expect(d?.memberCount).toBeNull();
++    expect(d?.ownerExists).toBeNull();
++    expect(d?.memberStatus).toBeNull();
++    expect(d?.memberInWorkspace).toBeNull();
++  });
++
++  it('member_inactive reports the status it rejected', () => {
++    arrange('member_inactive');
++    make().resolveFull();
++    expect(seen[0]?.memberStatus).toBe('suspended');
++    expect(seen[0]?.sessionMatchedAMember).toBe(true);
++    // Read the member without ever reaching the owner fallback.
++    expect(seen[0]?.ownerExists).toBeNull();
++  });
++
++  it('not_in_workspace reports a member who matched but is scoped elsewhere', () => {
++    arrange('not_in_workspace');
++    make().resolveFull();
++    expect(seen[0]?.sessionMatchedAMember).toBe(true);
++    expect(seen[0]?.memberStatus).toBe('active');
++    expect(seen[0]?.memberInWorkspace).toBe(false);
++    expect(seen[0]?.activeWorkspaceId).toBe('ws-a');
++  });
++
++  /* ── 4. The transition, which is the measurement ──────────────────────── */
++
++  it('the first refusal after a success is flagged, and only that one', () => {
++    const r = make();
++    expect(r.resolveFull().ok).toBe(true);
++
++    arrange('not_a_member');
++    clockMs += 2_400_000; // 40 minutes, the interval observed on Windows
++    r.resolveFull();
++    r.resolveFull();
++    r.resolveFull();
++
++    expect(seen.map((d) => d.firstRefusalAfterSuccess)).toEqual([true, false, false]);
++    expect(seen.map((d) => d.refusalIndex)).toEqual([1, 2, 3]);
++  });
++
++  it('msSinceLastSuccess is the interval that had to be measured by hand', () => {
++    const r = make();
++    r.resolveFull(); // success at t0
++    arrange('not_a_member');
++    clockMs += 2_400_000;
++    r.resolveFull();
++
++    expect(seen[0]?.msSinceLastSuccess).toBe(2_400_000);
++  });
++
++  it('a cold start that never resolved reports null, not zero', () => {
++    // Zero would read as "it broke instantly", which is a different defect.
++    arrange('not_loaded');
++    make().resolveFull();
++    expect(seen[0]?.msSinceLastSuccess).toBeNull();
++    expect(seen[0]?.firstRefusalAfterSuccess).toBe(false);
++  });
++
++  it('recovery fires once, closing the bracket with the outage duration', () => {
++    const r = make();
++    r.resolveFull();
++
++    arrange('not_a_member');
++    clockMs += 600_000;
++    r.resolveFull();
++    clockMs += 60_000;
++    r.resolveFull();
++
++    // Whatever the fix turns out to be, this is what a restart does today.
++    members = [MEMBER];
++    owner = { ...MEMBER, id: 'user-owner', email: null };
++    clockMs += 30_000;
++    expect(r.resolveFull().ok).toBe(true);
++
++    expect(recoveries).toHaveLength(1);
++    expect(recoveries[0]?.msSinceFirstRefusal).toBe(90_000);
++    expect(recoveries[0]?.msSinceLastSuccess).toBe(690_000);
++    expect(recoveries[0]?.refusalsWhileDown).toBe(2);
++    expect(recoveries[0]?.lastRefusalReason).toBe('not_a_member');
++
++    // A second success is not a second recovery.
++    r.resolveFull();
++    expect(recoveries).toHaveLength(1);
++  });
++
++  it('a first-call success is not reported as a recovery', () => {
++    make().resolveFull();
++    expect(recoveries).toHaveLength(0);
++  });
++
++  /* ── 5. Instrumentation is never load-bearing ─────────────────────────── */
++
++  it('a hook that throws leaves the refusal exactly as it was', () => {
++    arrange('not_a_member');
++    const r = make({
++      onRefusal: () => {
++        throw new Error('logger exploded');
++      },
++    });
++
++    const res = r.resolveFull();
++    expect(res.ok).toBe(false);
++    if (!res.ok) expect(res.refusal.reason).toBe('not_a_member');
++    expect(() => r.scope()).not.toThrow();
++    expect(r.scope()).toBeNull();
++  });
++
++  it('a recovery hook that throws does not lose the successful resolution', () => {
++    const r = make({
++      onRecovered: () => {
++        throw new Error('logger exploded');
++      },
++    });
++    arrange('not_a_member');
++    r.resolveFull();
++    members = [MEMBER];
++    expect(r.resolveFull().ok).toBe(true);
++  });
++
++  it('with no hooks wired the resolver behaves exactly as before', () => {
++    for (const reason of ALL_REASONS) {
++      // Fresh fixture per reason, or a suspended org leaks into the next case.
++      email = SESSION_EMAIL;
++      loaded = true;
++      activeWs = 'ws-a';
++      orgs = new Map([[ORG.id, ORG]]);
++      workspaces = new Map([[WS.id, WS]]);
++      members = [MEMBER];
++      owner = { ...MEMBER, id: 'user-owner', email: null };
++      arrange(reason);
++
++      const bare = createTenantContextResolver({
++        sessionEmail: () => email,
++        isLoaded: () => loaded,
++        activeWorkspaceId: () => activeWs,
++        workspace: (id) => workspaces.get(id) ?? null,
++        organization: (id) => orgs.get(id) ?? null,
++        usersFor: (orgId) => members.filter((m) => m.orgId === orgId),
++        rolesFor: () => [ROLE],
++        ownerMember: () => owner,
++      });
++      const res = bare.resolveFull();
++      expect(res.ok).toBe(false);
++      if (!res.ok) expect(res.refusal.reason).toBe(reason);
++    }
++  });
++
++  /* ── 6. Structural: no refusal path may bypass the hook ───────────────── */
++
++  it('resolveFull contains no refusal return that skips refuse()', () => {
++    /**
++     * A source invariant, deliberately. The behavioural tests above cover the
++     * eight reasons that exist TODAY; this one covers the ninth. Round 28's
++     * diagnostic was complete for the branch it was written against and blind
++     * to every other, and nothing failed to say so.
++     */
++    const src = readFileSync(join(__dirname, 'tenantContext.ts'), 'utf8');
++    const start = src.indexOf('const resolveFull = ():');
++    const end = src.indexOf('  return {\n    resolveFull,', start);
++    expect(start).toBeGreaterThan(0);
++    expect(end).toBeGreaterThan(start);
++
++    const body = src.slice(start, end);
++    // Exactly one construction of a refusal, and exactly one `ok: false` return
++    // — the same statement, inside `refuse`. Any new branch that builds its own
++    // fails here rather than going unreported for a fortnight.
++    expect(body.split('refusalOf(').length - 1).toBe(1);
++    const bareReturns = body.match(/return\s*\{\s*ok:\s*false[^}]*\}/g) ?? [];
++    expect(bareReturns).toHaveLength(1);
++    expect(bareReturns[0]).toContain('refusalOf(reason)');
++    /**
++     * And the set of reasons routed through the helper is the whole union —
++     * asserted as a SET, not a count, because `no_workspace` is refused at two
++     * sites (no id, and an id that resolves to nothing) and a count would have
++     * to encode that coincidence to stay green.
++     */
++    const routed = [...body.matchAll(/return refuse\('([a-z_]+)'\)/g)].map((m) => m[1]);
++    expect([...new Set(routed)].sort()).toEqual([...ALL_REASONS].sort());
++  });
++});
+diff --git a/apps/desktop/src/main/tenancy/tenantContext.ts b/apps/desktop/src/main/tenancy/tenantContext.ts
+index a3dc66b..999e76d 100644
+--- a/apps/desktop/src/main/tenancy/tenantContext.ts
++++ b/apps/desktop/src/main/tenancy/tenantContext.ts
+@@ -79,6 +79,98 @@ export interface TenantContextDeps {
+    * one being fixed.
+    */
+   ownerMember: () => OrgUser | null;
++  /**
++   * P13C ROUND 31 — W-10. FIRES IMMEDIATELY BEFORE EVERY REFUSAL.
++   *
++   * Round 28 put this diagnostic at the authorization gate, and it never once
++   * printed on the machine it was written for. `livesync:status` throws the
++   * refusal itself and never calls `createAuthorize`, so a hook on the gate
++   * observes a subset of refusals that happened not to include the failing one.
++   * Instrumenting a caller measures that caller. There are many callers and one
++   * resolver, so the resolver is where the measurement belongs.
++   *
++   * Optional, and consulted only on the refusal path: a request that resolves
++   * pays one `undefined` check.
++   */
++  onRefusal?: (diagnostic: TenantRefusalDiagnostic) => void;
++  /**
++   * Fires ONCE when resolution recovers, not on every success.
++   *
++   * The pair of events brackets the outage, so its duration is a subtraction in
++   * the log rather than an interview with whoever was using the machine.
++   */
++  onRecovered?: (recovery: TenantRecovery) => void;
++  /** Injectable clock, so the interval arithmetic is testable. Defaults to `Date.now`. */
++  now?: () => number;
++}
++
++/**
++ * An email reduced to what a diagnostic may keep.
++ *
++ * The local part becomes its LENGTH and the domain survives whole. Two accounts
++ * at the same domain and two accounts at different domains are different bugs,
++ * so the domain earns its place; the local part answers no question that the
++ * comparison predicates do not already answer, so it does not. Nothing here is
++ * reversible into an address, which is the property that lets a support bundle
++ * be sent over WhatsApp.
++ */
++export function redactedEmailShape(email: string | null): string | null {
++  if (email === null) return null;
++  const norm = email.trim().toLowerCase();
++  const at = norm.lastIndexOf('@');
++  if (at < 0) return `${norm.length}@`;
++  return `${at}@${norm.slice(at + 1)}`;
++}
++
++/**
++ * What was true at the moment a refusal was decided.
++ *
++ * Every field is read from the values `resolveFull` ITSELF used. Round 28's
++ * version re-read `authService.getStatus()` and the org store after the fact,
++ * which is a second sample of mutable singletons: if the session changed in
++ * between, the log described a state that never produced the refusal it claimed
++ * to explain. These come from the same pass.
++ *
++ * `null` means NOT YET KNOWN at that point in the chain, and is never a stand-in
++ * for false. A `not_signed_in` refusal happens before any workspace is read, so
++ * reporting `workspaceFound: false` there would be an invention.
++ */
++export interface TenantRefusalDiagnostic {
++  reason: TenantRefusal['reason'];
++  /** 1 for the first refusal of an outage, incrementing until it recovers. */
++  refusalIndex: number;
++  /** True exactly once per outage: the transition from resolving to refusing. */
++  firstRefusalAfterSuccess: boolean;
++  /** ms since the last successful resolution; null if there has never been one. */
++  msSinceLastSuccess: number | null;
++  loaded: boolean;
++  sessionEmailShape: string | null;
++  activeWorkspaceId: string | null;
++  workspaceFound: boolean | null;
++  workspaceOrgId: string | null;
++  organizationFound: boolean | null;
++  organizationOperable: boolean | null;
++  memberCount: number | null;
++  humanMembersWithEmail: number | null;
++  sessionMatchedAMember: boolean | null;
++  ownerExists: boolean | null;
++  /** An owner row whose email is set. Unclaimed owners are the first-run path. */
++  ownerClaimed: boolean | null;
++  ownerOrgMatches: boolean | null;
++  ownerEmailShape: string | null;
++  sessionMatchesOwner: boolean | null;
++  memberStatus: string | null;
++  memberInWorkspace: boolean | null;
++}
++
++/** The closing bracket of an outage. */
++export interface TenantRecovery {
++  /** How long resolution was refusing, end to end. */
++  msSinceFirstRefusal: number | null;
++  /** How long since the last success BEFORE the outage. Null on a cold start. */
++  msSinceLastSuccess: number | null;
++  refusalsWhileDown: number;
++  lastRefusalReason: TenantRefusal['reason'] | null;
+ }
+ 
+ /** What resolution found, when it found something. */
+@@ -126,9 +218,149 @@ export interface TenantContextResolver {
+ }
+ 
+ export function createTenantContextResolver(deps: TenantContextDeps): TenantContextResolver {
++  const now = deps.now ?? ((): number => Date.now());
++
++  /**
++   * OUTAGE BOOKKEEPING — the only mutable state in this file.
++   *
++   * It exists because the question that mattered for six days was "how long did
++   * it work before it stopped", and nothing in the process knew. Every caller
++   * saw one refusal and had no way to tell whether it was the first or the
++   * thousandth. This is three numbers and a string, updated on the transitions.
++   */
++  let lastSuccessAtMs: number | null = null;
++  let lastOutcome: 'ok' | 'refused' | null = null;
++  let firstRefusalAtMs: number | null = null;
++  let refusalsWhileDown = 0;
++  let lastRefusalReason: TenantRefusal['reason'] | null = null;
++
+   const resolveFull = ():
+     | { ok: true; value: ResolvedTenant }
+     | { ok: false; refusal: TenantRefusal } => {
++    /**
++     * Facts accumulated as the chain runs, for the diagnostic. Left `null` until
++     * the step that establishes them, so a refusal can only report what had
++     * actually been read when it fired.
++     */
++    const loaded = deps.isLoaded();
++    let sessionEmailRaw: string | null = null;
++    let activeWorkspaceId: string | null = null;
++    let workspaceFound: boolean | null = null;
++    let workspaceOrgId: string | null = null;
++    let organizationFound: boolean | null = null;
++    let organizationOperable: boolean | null = null;
++    let memberList: OrgUser[] | null = null;
++    let sessionMatchedAMember: boolean | null = null;
++    let ownerRow: OrgUser | null = null;
++    let ownerWasRead = false;
++    let memberStatus: string | null = null;
++    let memberInWorkspace: boolean | null = null;
++
++    /**
++     * THE ONLY WAY OUT OF THIS FUNCTION WITHOUT A TENANT.
++     *
++     * Every refusal goes through here, which is what makes the instrumentation
++     * complete rather than approximately complete. A ninth refusal reason added
++     * later cannot forget to report itself, because the compiler will not let it
++     * return the wrong shape and there is no other shape to return.
++     * `refusalDiagnostic.test.ts` pins that structurally against the source.
++     */
++    const refuse = (
++      reason: TenantRefusal['reason'],
++    ): { ok: false; refusal: TenantRefusal } => {
++      const at = now();
++      const firstRefusalAfterSuccess = lastOutcome === 'ok';
++      if (lastOutcome !== 'refused') {
++        firstRefusalAtMs = at;
++        refusalsWhileDown = 0;
++      }
++      refusalsWhileDown += 1;
++      const msSinceLastSuccess = lastSuccessAtMs === null ? null : at - lastSuccessAtMs;
++      lastOutcome = 'refused';
++      lastRefusalReason = reason;
++
++      if (deps.onRefusal !== undefined) {
++        /**
++         * Owner comparisons, spelled out rather than inlined.
++         *
++         * `sessionMatchesOwner` is the single predicate the Windows fault turns
++         * on: the renderer showed the owner's own address while the resolver
++         * said `not_a_member`, and those two statements cannot both be true.
++         * An UNCLAIMED owner (null email) matches nobody — writing that as a
++         * string comparison against `''` would make an empty session email
++         * match an unclaimed owner and report the opposite of the truth.
++         */
++        const ownerEmail = ownerWasRead ? (ownerRow?.email ?? null) : null;
++        const normSession = sessionEmailRaw === null ? null : sessionEmailRaw.trim().toLowerCase();
++        const normOwner = ownerEmail === null ? null : ownerEmail.trim().toLowerCase();
++
++        /**
++         * A diagnostic that throws must not become the error the user sees.
++         * That is the exact failure W-1 fixed one layer up: a recording step
++         * threw, and its message replaced the real reason all the way to the
++         * renderer. Instrumentation is never allowed to be load-bearing.
++         */
++        try {
++          deps.onRefusal({
++            reason,
++            refusalIndex: refusalsWhileDown,
++            firstRefusalAfterSuccess,
++            msSinceLastSuccess,
++            loaded,
++            sessionEmailShape: redactedEmailShape(sessionEmailRaw),
++            activeWorkspaceId,
++            workspaceFound,
++            workspaceOrgId,
++            organizationFound,
++            organizationOperable,
++            memberCount: memberList === null ? null : memberList.length,
++            humanMembersWithEmail:
++              memberList === null
++                ? null
++                : memberList.filter((m) => m.kind === 'human' && m.email !== null).length,
++            sessionMatchedAMember,
++            ownerExists: ownerWasRead ? ownerRow !== null : null,
++            ownerClaimed: ownerWasRead ? ownerEmail !== null : null,
++            ownerOrgMatches:
++              ownerWasRead && ownerRow !== null && workspaceOrgId !== null
++                ? ownerRow.orgId === workspaceOrgId
++                : null,
++            ownerEmailShape: redactedEmailShape(ownerEmail),
++            sessionMatchesOwner: ownerWasRead
++              ? normOwner !== null && normSession !== null && normOwner === normSession
++              : null,
++            memberStatus,
++            memberInWorkspace,
++          });
++        } catch {
++          // Deliberately silent: there is no logger here and a failed log line
++          // is not worth converting a refusal into a crash.
++        }
++      }
++      return { ok: false, refusal: refusalOf(reason) };
++    };
++
++    const succeed = (value: ResolvedTenant): { ok: true; value: ResolvedTenant } => {
++      const at = now();
++      if (lastOutcome === 'refused' && deps.onRecovered !== undefined) {
++        try {
++          deps.onRecovered({
++            msSinceFirstRefusal: firstRefusalAtMs === null ? null : at - firstRefusalAtMs,
++            msSinceLastSuccess: lastSuccessAtMs === null ? null : at - lastSuccessAtMs,
++            refusalsWhileDown,
++            lastRefusalReason,
++          });
++        } catch {
++          // Same rule as above.
++        }
++      }
++      lastOutcome = 'ok';
++      lastSuccessAtMs = at;
++      firstRefusalAtMs = null;
++      refusalsWhileDown = 0;
++      return { ok: true, value };
++    };
++
+     /**
+      * COLD START FIRST.
+      *
+@@ -138,19 +370,23 @@ export function createTenantContextResolver(deps: TenantContextDeps): TenantCont
+      * this: a permission check that read an unloaded list, saw nothing, and
+      * treated the absence as an all-clear.
+      */
+-    if (!deps.isLoaded()) return { ok: false, refusal: refusalOf('not_loaded') };
++    if (!loaded) return refuse('not_loaded');
+ 
+     const email = deps.sessionEmail();
++    sessionEmailRaw = email;
+     if (email === null || email.trim() === '') {
+-      return { ok: false, refusal: refusalOf('not_signed_in') };
++      return refuse('not_signed_in');
+     }
+ 
+     const workspaceId = deps.activeWorkspaceId();
++    activeWorkspaceId = workspaceId;
+     if (workspaceId === null || workspaceId === '') {
+-      return { ok: false, refusal: refusalOf('no_workspace') };
++      return refuse('no_workspace');
+     }
+     const workspace = deps.workspace(workspaceId);
+-    if (workspace === null) return { ok: false, refusal: refusalOf('no_workspace') };
++    workspaceFound = workspace !== null;
++    if (workspace === null) return refuse('no_workspace');
++    workspaceOrgId = workspace.organizationId;
+ 
+     /**
+      * The workspace names its tenant, and that name must resolve.
+@@ -161,19 +397,43 @@ export function createTenantContextResolver(deps: TenantContextDeps): TenantCont
+      * deny, and a renderer that could set it chose the authorization domain.
+      */
+     const organization = deps.organization(workspace.organizationId);
++    organizationFound = organization !== null;
+     if (organization === null) {
+-      return { ok: false, refusal: refusalOf('workspace_orphaned') };
++      return refuse('workspace_orphaned');
+     }
+-    if (!organizationIsOperable(organization)) {
+-      return { ok: false, refusal: refusalOf('tenant_not_operable') };
++    organizationOperable = organizationIsOperable(organization);
++    if (!organizationOperable) {
++      return refuse('tenant_not_operable');
+     }
+ 
+     const wanted = email.trim().toLowerCase();
+     const members = deps.usersFor(organization.id);
++    memberList = members;
++    /**
++     * P13C ROUND 31 — O-11. `!== null` IS NOT THE SAME QUESTION AS "IS A STRING".
++     *
++     * `OrgUser.email` is typed `string | null`, and this predicate trusted the
++     * type. It does not hold at runtime: `orgStore.updateUser` spreads a patch
++     * object over the row, the IPC handler builds that patch as an object
++     * LITERAL with every key present, and a request that omits `email`
++     * therefore writes `email: undefined`. `undefined !== null` is true, so the
++     * next call was `undefined.trim()` — a TypeError thrown out of a function
++     * whose contract, stated on `resolve()` a few lines above, is that it never
++     * throws. Everything downstream treats a refusal as the worst case.
++     *
++     * `typeof === 'string'` fails closed on every non-string: the same answer
++     * for null, and the correct one for undefined. The owner fallback below is
++     * deliberately NOT relaxed the same way — a corrupt owner row must keep
++     * refusing rather than become claimable by whoever signs in next.
++     */
+     let member =
+       members.find(
+-        (m) => m.kind === 'human' && m.email !== null && m.email.trim().toLowerCase() === wanted,
++        (m) =>
++          m.kind === 'human' &&
++          typeof m.email === 'string' &&
++          m.email.trim().toLowerCase() === wanted,
+       ) ?? null;
++    sessionMatchedAMember = member !== null;
+ 
+     if (member === null) {
+       /**
+@@ -185,17 +445,21 @@ export function createTenantContextResolver(deps: TenantContextDeps): TenantCont
+        * not loosen.
+        */
+       const owner = deps.ownerMember();
++      ownerRow = owner;
++      ownerWasRead = true;
+       if (owner === null || owner.email !== null || owner.orgId !== organization.id) {
+-        return { ok: false, refusal: refusalOf('not_a_member') };
++        return refuse('not_a_member');
+       }
+       member = owner;
+     }
+ 
++    memberStatus = member.status;
+     if (member.status !== 'active') {
+-      return { ok: false, refusal: refusalOf('member_inactive') };
++      return refuse('member_inactive');
+     }
+-    if (!memberMayUseWorkspace(member, workspace.id)) {
+-      return { ok: false, refusal: refusalOf('not_in_workspace') };
++    memberInWorkspace = memberMayUseWorkspace(member, workspace.id);
++    if (!memberInWorkspace) {
++      return refuse('not_in_workspace');
+     }
+ 
+     const roles = deps.rolesFor(member.orgId);
+@@ -219,7 +483,7 @@ export function createTenantContextResolver(deps: TenantContextDeps): TenantCont
+       actorType: 'human',
+       label: member.name || member.email || 'This account',
+     };
+-    return { ok: true, value: { context, organization, workspace, member, roles } };
++    return succeed({ context, organization, workspace, member, roles });
+   };
+ 
+   return {

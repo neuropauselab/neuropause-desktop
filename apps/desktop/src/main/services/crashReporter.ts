@@ -131,8 +131,27 @@ class CrashReporter {
     return this.status();
   }
 
-  /** Parse the local crash archive into structured records (newest first). */
+  /**
+   * Parse the local crash archive into structured records (newest first).
+   *
+   * P13C — F-11c. `crashLog.append()` is fire-and-forget BY DESIGN: recording a
+   * fault must never block the fault path. That makes every read of the file a
+   * read-past-an-unflushed-write unless it awaits the barrier first, and
+   * `createBoundedLog().flush()` exists for exactly this. Without it the export
+   * can omit the crash that triggered it.
+   *
+   * This is not cosmetic. `status()` and `recommendations()` both derive from
+   * here, so a stale read UNDER-COUNTS the patterns that raise a Safe Mode
+   * recommendation — three renderer crashes can read as zero and the guidance
+   * never appears.
+   *
+   * Same class as F-11b (TimelineService.flush was not a barrier), found by the
+   * census that finding prompted. `boundedLog` already serializes appends on one
+   * promise chain and returns it from `flush()`, so the barrier is correct here;
+   * only the call was missing.
+   */
   async export(limit = 200): Promise<CrashRecord[]> {
+    await this.crashLog.flush();
     try {
       const raw = await fs.readFile(this.logPath(), 'utf8');
       const records = raw

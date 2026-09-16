@@ -13,6 +13,18 @@ name: desktop-ci
 # in it undetected — Round 2's tenancy binding and Round 17's D-5 channel move.
 # A suite nothing runs is not a gate; it is documentation that looks like one.
 #
+# P13C — the "both suites are headless, so they run on ubuntu" note above is
+# still true and still not sufficient. Headless means the suites CAN run on
+# ubuntu; it does not mean ubuntu is where they FAIL. Everything platform-shaped
+# the desktop app touches — path separators, case-sensitive vs case-insensitive
+# file lookups, line endings, `os.homedir()` layout, Windows file locking — is
+# invisible to a linux-only job. Until now the only macOS and Windows test
+# execution in this repository lived in macos-release.yml and windows-release.yml,
+# which run on `push: tags: v*`. That made a RELEASE TAG the discovery mechanism
+# for platform-specific failures, and five consecutive tags were burned finding
+# them one at a time. The matrix below moves that discovery to the PR, where a
+# failure costs a re-push instead of a burned version number.
+#
 # P13C ROUND 17i — and adding a step HERE was half a fix. The release workflows
 # do not run this file; they run `test:release`, which runs each workspace's own
 # `test` script, so a signed artifact could still ship with the UI suite unrun.
@@ -30,14 +42,31 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/desktop-ci.yml'
+      # S132 — any workflow change runs the desktop suite so the workflow least-privilege assertion gates it.
+      - '.github/workflows/**'
   pull_request:
     paths:
       - 'apps/desktop/**'
       - 'packages/shared/**'
+      - '.github/workflows/**'
+
+# S131 — least privilege. This job only reads the repo and runs tests; it needs no write scopes on the
+# GITHUB_TOKEN. Declared explicitly so a future step cannot silently inherit broad default permissions.
+permissions:
+  contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      # fail-fast: false — a Windows-only failure must not cancel the macOS leg
+      # before it reports. One red platform per run is a bug report; three runs
+      # to learn that all three are red is the tag-burning loop this replaces.
+      fail-fast: false
+      matrix:
+        # ubuntu stays the primary leg: it is listed first and it is the only
+        # one that uploads the SBOM artifact (see that step's note).
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,5 +80,46 @@ jobs:
         run: npx eslint apps/desktop --max-warnings 0
       - name: Test (desktop — node suite + mounted components)
         run: npm run test -w @neuropause/desktop
+      # S132 — GitHub Actions least-privilege assertion (fail-closed on missing/over-broad permissions).
+      - name: Workflow least-privilege assertion
+        run: npm run verify:workflow-perms
       - name: Build (desktop)
         run: npm run build -w @neuropause/desktop
+      # S131 — supply-chain trust. SBOM + verification are deterministic (offline fold over the lockfile);
+      # the packaged-content assertion runs on the freshly-built out/** (no electron-builder needed).
+      - name: SBOM — generate + verify (CycloneDX, corresponds to lockfile)
+        run: npm run verify:sbom -w @neuropause/desktop
+      - name: Packaged-content assertion (out/** carries no prohibited material)
+        run: npm run verify:packaged -w @neuropause/desktop
+      # Upload from the primary leg only. upload-artifact@v4 rejects a second
+      # upload under an existing name, so three matrix legs racing for
+      # `desktop-sbom` would fail the run; and the SBOM is a deterministic fold
+      # over the lockfile (see above), so the three copies would be identical
+      # anyway. `verify:sbom` itself still runs on every platform — that step is
+      # what catches a platform-specific SBOM defect, not the upload.
+      - name: Upload SBOM + provenance
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-sbom
+          path: apps/desktop/dist-sbom/
+          if-no-files-found: error
+      # S131 — dependency vulnerability scan. This SURFACES the current advisory posture (full tree + a
+      # production-dependency high+ view) on every PR; it is REPORT-ONLY by design and does not gate.
+      # Rationale (recorded in SESSION131 cert §Vuln-scan): (1) `npm audit` at the workspace root spans ALL
+      # workspaces, so a backend-only advisory (e.g. the express/body-parser/qs DoS present at S131) would
+      # otherwise fail DESKTOP CI for a package the Electron app never ships — wrong coupling; (2) choosing
+      # a severity threshold that BLOCKS a merge is a release-policy decision the repo has not made, and
+      # S131 does not invent policy. Dependabot (.github/dependabot.yml) provides the ongoing update stream;
+      # a gating threshold + per-workspace scoping is the recommended follow-up remediation slice.
+      # `shell: bash` pinned on these two only. Every other step is a plain
+      # command that runs the same under any shell; these two rely on `|| true`
+      # to stay report-only, and on the windows leg the default shell is pwsh,
+      # where `true` is not a command — the swallow would itself fail the step
+      # and turn a report into a gate. bash is present on all three runners.
+      - name: Dependency vulnerability scan — full tree (report)
+        shell: bash
+        run: npm audit --audit-level=info || true
+      - name: Dependency vulnerability scan — production deps high+ (report)
+        shell: bash
+        run: npm audit --omit=dev --audit-level=high || true

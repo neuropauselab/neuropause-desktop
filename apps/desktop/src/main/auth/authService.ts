@@ -13,12 +13,16 @@
 import { EventEmitter } from 'node:events';
 import { createHash, randomBytes } from 'node:crypto';
 import { shell } from 'electron';
-import type { AuthStatus, AuthProviderId, TokenPair, User } from '@neuropause/shared';
+import type { AuthErrorCause, AuthStatus, AuthProviderId, TokenPair, User } from '@neuropause/shared';
 import { config } from '../config';
 import { createLogger } from '../logger';
 import { secureStore } from '../security/secureStore';
 import { backendClient, BackendError } from './backendClient';
+import { isTransientBackendFailure } from './backendFailure';
+
+
 import { startLoopbackServer } from './loopbackServer';
+import { localPrincipalStore } from './localPrincipalStore';
 
 const log = createLogger('auth');
 
@@ -45,10 +49,54 @@ function messageFor(err: unknown): string {
   return err instanceof Error ? err.message : 'Unexpected error';
 }
 
+/**
+ * P13C — O-4. The failure CLASS, so the renderer never has to match on message
+ * text to decide whether the F-7 notice has already explained the situation.
+ *
+ * A string comparison here would be exactly the kind of fragility this program
+ * keeps finding: today's `not.toContain('http')` matched `http_error`.
+ */
+function causeFor(err: unknown): AuthErrorCause {
+  if (err instanceof BackendError) {
+    return isTransientBackendFailure(err) ? 'unreachable' : 'rejected';
+  }
+  return 'unknown';
+}
+
+/** Every error status carries both, so no caller can set one without the other. */
+function errorStatus(err: unknown): AuthStatus {
+  return { state: 'error', message: messageFor(err), cause: causeFor(err) };
+}
+
 class AuthService extends EventEmitter {
   private status: AuthStatus = { state: 'unauthenticated' };
   private accessToken: string | null = null;
   private accessTokenExpiresAt = 0;
+  /**
+   * P13C ROUND 33 — SINGLE-FLIGHT REFRESH.
+   *
+   * Refresh tokens rotate on every use and the backend treats a re-sent
+   * (already-consumed) token as theft: it revokes EVERY session for the user
+   * (`refresh_reused`). Six independent consumers call
+   * `getValidAccessToken()` per request, and one screen fires several
+   * concurrently — two calls that both observe an expired access token would
+   * both POST the same stored refresh token, and the second one burned the
+   * whole chain, deterministically, once per token lifetime. All concurrent
+   * callers now share one in-flight refresh.
+   */
+  private refreshInFlight: Promise<string | null> | null = null;
+  /**
+   * P13C GATE 2 — SINGLE-FLIGHT RESTORE.
+   *
+   * `restoreSession` refreshes the rotating token, and a re-restore can now be
+   * TRIGGERED at runtime (when the backend becomes reachable again), not only
+   * once at boot. Two overlapping restores would both read the same stored
+   * token and both POST it — the second is a consumed-token reuse, which the
+   * backend punishes by revoking every session on every device (`refresh_reused`,
+   * the same catastrophe the round-33 single-flight refresh exists to prevent).
+   * All restore entry points (boot + reachability retry) share one in-flight run.
+   */
+  private restoreInFlight: Promise<void> | null = null;
 
   /** Current snapshot the renderer can render. */
   getStatus(): AuthStatus {
@@ -84,24 +132,132 @@ class AuthService extends EventEmitter {
   }
 
   /**
+   * Enter device-local mode (S17 local-first). Loads-or-creates the stable
+   * LocalPrincipal from the local profile (id persisted → stable across
+   * restarts, FG-6 condition 2 / pin 3) and flips status to `local`. Holds no
+   * token, so cloud clients keep failing closed; enterprise RBAC + tenancy
+   * resolve locally. Idempotent.
+   */
+  async enterLocalMode(): Promise<AuthStatus> {
+    const principal = await localPrincipalStore.loadOrCreate();
+    log.info('Entering device-local mode (no cloud account)');
+    return this.setStatus({ state: 'local', principal });
+  }
+
+  /**
    * Attempts to restore a session on launch using the stored refresh token.
-   * Rotation means a successful refresh yields (and persists) a new token.
+   * Single-flighted so it can never overlap itself (or a reachability retry) and
+   * re-send the rotating token. Rotation means a successful refresh yields (and
+   * persists) a new token.
    */
   async restoreSession(): Promise<void> {
-    const refreshToken = await secureStore.getRefreshToken();
-    if (!refreshToken) {
-      this.setStatus({ state: 'unauthenticated' });
+    if (this.restoreInFlight) return this.restoreInFlight;
+    this.restoreInFlight = this.doRestoreSession();
+    try {
+      await this.restoreInFlight;
+    } finally {
+      this.restoreInFlight = null;
+    }
+  }
+
+  /**
+   * Re-attempt a cloud restore after the backend becomes reachable again.
+   *
+   * P13C GATE 2 — RE-RESTORE ON REACHABILITY RECOVERY. A user who launched
+   * offline degraded to device-local mode (the network branch of
+   * `doRestoreSession` below) with a valid refresh token still in the vault.
+   * Nothing used to re-attempt the cloud restore when connectivity returned, so
+   * they stayed local for the whole session. This is wired to the
+   * backend-reachable edge (`runtimeTelemetry` → `backendReachabilityHub`) and
+   * acts ONLY from the degraded state:
+   *
+   *   - a NO-OP unless status is `local` AND a refresh token is stored, so it
+   *     can never disturb an authenticated session, a deliberately logged-out
+   *     user, or a genuine local-first user — and never contacts the backend in
+   *     those cases;
+   *   - single-flighted with `restoreSession`, so it can never re-send the
+   *     rotating token;
+   *   - CRUCIALLY, unlike boot restore, a genuine rejection here does NOT wall:
+   *     the user is comfortably working locally, so an invalid token is cleared
+   *     but the app STAYS local (a background probe must never bump a working
+   *     user to an escape-less sign-in screen). Success promotes local →
+   *     authenticated.
+   */
+  async retryCloudRestore(): Promise<void> {
+    if (this.status.state !== 'local') return;
+    if (this.restoreInFlight) return this.restoreInFlight;
+    this.restoreInFlight = this.doRetryCloudRestore();
+    try {
+      await this.restoreInFlight;
+    } finally {
+      this.restoreInFlight = null;
+    }
+  }
+
+  private async doRetryCloudRestore(): Promise<void> {
+    const stored = await secureStore.getRefreshToken();
+    if (!stored) return; // genuine local-first: nothing to restore, no backend contact
+    try {
+      const { tokens } = await backendClient.refresh(stored);
+      await this.applyTokens(tokens);
+      const { user } = await backendClient.me(tokens.accessToken);
+      this.setStatus({
+        state: 'authenticated',
+        session: { user, accessTokenExpiresAt: tokens.accessTokenExpiresAt },
+      });
+      log.info('Re-restored cloud session after the backend became reachable');
+    } catch (err) {
+      const isNetwork = isTransientBackendFailure(err);
+      if (isNetwork) {
+        // The backend went away again mid-restore: stay local, keep the token,
+        // and wait for the next reachable edge. No status change.
+        log.warn('Cloud re-restore hit a network error; staying in local mode', messageFor(err));
+        return;
+      }
+      // Genuine rejection: the stored token is invalid/revoked. Clear it so a
+      // dead token is not re-tried on every future edge — but STAY local. A
+      // background reachability probe must never convert a working local session
+      // into an escape-less sign-in wall; the user reconnects via the affordance.
+      log.warn(
+        'Cloud re-restore rejected; clearing the invalid token and staying local',
+        messageFor(err),
+      );
+      await this.clearSession();
+      await this.enterLocalMode();
+    }
+  }
+
+  private async doRestoreSession(): Promise<void> {
+    const stored = await secureStore.getRefreshToken();
+    if (!stored) {
+      // S17 local-first (FG-6): no stored account → the device-local principal,
+      // NOT the sign-in wall. Signing in later (the affordance) transitions
+      // local → authenticating → authenticated (DECISIONS D-11).
+      await this.enterLocalMode();
       return;
     }
     // The desktop app and backend start together (npm run dev), so at boot the
     // backend may not be reachable for a moment. A transient network failure must
     // NOT log the user out — only a genuine auth rejection (invalid/expired
     // credentials) should clear the session. Retry network failures with backoff.
+    //
+    // P13C ROUND 33 — NEVER RE-SEND A CONSUMED REFRESH TOKEN. Refresh tokens
+    // rotate on use, and the backend treats a re-sent one as theft: it revokes
+    // every session for the user (`refresh_reused`). The old loop captured the
+    // stored token once and re-sent it on every retry — so when the REFRESH
+    // succeeded but the `me()` call that followed hit a network blip (the exact
+    // boot race this retry exists for), the second attempt burned the whole
+    // chain and a flaky boot signed the user out on every device. The refresh
+    // now happens at most once; retries after a successful rotation re-attempt
+    // only the `me()` read with the already-valid access token.
     const maxAttempts = 5;
+    let tokens: TokenPair | null = null;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const { tokens } = await backendClient.refresh(refreshToken);
-        await this.applyTokens(tokens);
+        if (tokens === null) {
+          tokens = (await backendClient.refresh(stored)).tokens;
+          await this.applyTokens(tokens);
+        }
         const { user } = await backendClient.me(tokens.accessToken);
         this.setStatus({
           state: 'authenticated',
@@ -110,7 +266,7 @@ class AuthService extends EventEmitter {
         log.info('Restored session from stored credentials', { attempt });
         return;
       } catch (err) {
-        const isNetwork = err instanceof BackendError && err.status === 0;
+        const isNetwork = isTransientBackendFailure(err);
         if (isNetwork && attempt < maxAttempts) {
           log.warn(
             `Backend unreachable during session restore (attempt ${attempt}/${maxAttempts}); retrying`,
@@ -122,11 +278,24 @@ class AuthService extends EventEmitter {
         if (isNetwork) {
           // Still unreachable after retries: keep credentials so a later launch (or
           // reconnect) can restore the session. Do not clear — the session is valid.
+          //
+          // GATE 1 (Program 13C) — DEGRADE TO LOCAL, NOT TO A WALL. Setting
+          // `unauthenticated` here dropped a returning user onto `LoginScreen`,
+          // and App.tsx renders that fallback with NO `onDismiss`, so there was
+          // no "Keep working locally" escape — an offline launch became a
+          // backend-dependent dead end. S17's whole premise is that the absence
+          // of a reachable cloud account yields the device-local principal, not
+          // the sign-in wall. A valid-but-unreachable session is exactly that
+          // case: cloud is absent right now. So enter local mode, which grants
+          // NO cloud access (a distinct `@device.invalid` principal) and asserts
+          // no authenticated session — fail-closed is preserved — while leaving
+          // the stored refresh token untouched so a later online launch, or the
+          // in-shell "connect an account" affordance, restores the cloud session.
           log.warn(
-            'Backend still unreachable after retries; keeping credentials for a later attempt',
+            'Backend still unreachable after retries; entering device-local mode and keeping credentials for a later attempt',
             messageFor(err),
           );
-          this.setStatus({ state: 'unauthenticated' });
+          await this.enterLocalMode();
           return;
         }
         // Genuine auth failure — the stored session is invalid, so clear it.
@@ -171,7 +340,7 @@ class AuthService extends EventEmitter {
       return status;
     } catch (err) {
       log.error('OAuth sign-in failed', messageFor(err));
-      return this.setStatus({ state: 'error', message: messageFor(err) });
+      return this.setStatus(errorStatus(err));
     } finally {
       loopback?.close();
     }
@@ -183,7 +352,7 @@ class AuthService extends EventEmitter {
       const auth = await backendClient.loginEmail(email, password);
       return await this.applyAuthResult(auth);
     } catch (err) {
-      return this.setStatus({ state: 'error', message: messageFor(err) });
+      return this.setStatus(errorStatus(err));
     }
   }
 
@@ -193,7 +362,7 @@ class AuthService extends EventEmitter {
       const auth = await backendClient.registerEmail(email, password);
       return await this.applyAuthResult(auth);
     } catch (err) {
-      return this.setStatus({ state: 'error', message: messageFor(err) });
+      return this.setStatus(errorStatus(err));
     }
   }
 
@@ -222,6 +391,18 @@ class AuthService extends EventEmitter {
       this.accessToken && Date.now() < this.accessTokenExpiresAt - config.accessTokenRefreshSkewMs;
     if (fresh) return this.accessToken;
 
+    // Single-flight: concurrent callers share one refresh instead of racing
+    // the same rotating token into the backend's reuse detector.
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = this.refreshAccessToken();
+    try {
+      return await this.refreshInFlight;
+    } finally {
+      this.refreshInFlight = null;
+    }
+  }
+
+  private async refreshAccessToken(): Promise<string | null> {
     const refreshToken = await secureStore.getRefreshToken();
     if (!refreshToken) return null;
     try {
@@ -229,7 +410,24 @@ class AuthService extends EventEmitter {
       await this.applyTokens(tokens);
       return tokens.accessToken;
     } catch (err) {
-      log.warn('Token refresh failed', messageFor(err));
+      /**
+       * P13C ROUND 33 — A TRANSIENT NETWORK ERROR MUST NOT DESTROY THE VAULT.
+       *
+       * This catch used to `clearSession()` for EVERY failure class, so ~14
+       * minutes after sign-in (access-token TTL), the first authenticated
+       * call made while offline — sleep, VPN drop, backend restart; often
+       * from an unattended background loop — deleted a still-valid refresh
+       * token and signed the user out. `restoreSession` was written to make
+       * exactly this network-vs-rejection distinction; apply the same rule
+       * here: keep the credentials on a network failure and let a later call
+       * (or the next launch) retry. Only a genuine rejection clears.
+       */
+      const isNetwork = isTransientBackendFailure(err);
+      if (isNetwork) {
+        log.warn('Token refresh failed on a network error; keeping credentials', messageFor(err));
+        return null;
+      }
+      log.warn('Token refresh rejected; clearing credentials', messageFor(err));
       await this.clearSession();
       this.setStatus({ state: 'unauthenticated' });
       return null;

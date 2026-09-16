@@ -1,0 +1,7 @@
+{
+  "id": "np-population",
+  "version": 1,
+  "_comment": "The release population is EVERY tracked file at the admitted commit — all workspaces ship together. The gate measures each matched blob from Git objects (never the working tree) and the issuer must measure the same set. Narrowing this list is a reviewed policy change and changes policy_digest, which every authority must name.",
+  "include": ["**"],
+  "exclude": ["**/.DS_Store"]
+}

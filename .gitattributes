@@ -1,0 +1,8 @@
+# LF working trees on every platform. The Windows release job checks out with
+# core.autocrlf=true (runner-image default); CRLF working trees break the
+# source-scanning test invariants (literal "\n" matches) and change source
+# bytes out from under provenance measurements. S160.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

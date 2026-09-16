@@ -1,0 +1,36 @@
+{
+  "ARTIFACT": "15_APPLE_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-002",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "APP_IDENTIFIER": "com.neuropause.desktop",
+  "BUNDLE_IDENTIFIER": "com.neuropause.desktop",
+  "TEAM_ID": "J3G89MY3QG",
+  "SIGNING_IDENTITY": "Developer ID Application: Dishant Dobariya (J3G89MY3QG)",
+  "ENTITLEMENTS": "resources/entitlements.mac.plist (allow-jit, unsigned-executable-memory, disable-library-validation, dyld-env, network client/server)",
+  "HARDENED_RUNTIME": true,
+  "NOTARIZATION_METHOD": "@electron/notarize (notarytool) afterSign hook; skipped without APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID",
+  "formats": [
+    "dmg",
+    "zip"
+  ],
+  "UPDATE_FORMAT": "zip via generic feed",
+  "codesign_verify": true,
+  "spctl": "/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-CTme9L/dmg/NeuroPause.app: rejected\nsource=Unnotarized Developer ID",
+  "stapler_exit": 65,
+  "secrets": {
+    "APPLE_SIGNING_SECRET_READY": "PRESENT in GitHub (APPLE_CSC_LINK, APPLE_CSC_KEY_PASSWORD) but rc.29 CI signing failed in the keychain step",
+    "APPLE_NOTARIZATION_AUTH_READY": "PRESENT in GitHub (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID); ABSENT locally",
+    "APPLE_TEAM_ID_READY": "PRESENT"
+  },
+  "status": "WAITING_FOR_OPERATOR_SECRET / CI-UNVERIFIED"
+}

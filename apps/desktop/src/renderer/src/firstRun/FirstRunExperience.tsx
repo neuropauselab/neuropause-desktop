@@ -13,7 +13,8 @@
  * local" claim (routing is Private First, and says exactly that), and Sign In
  * routes to the existing auth surface rather than pretending to be one.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useFocusTrap } from '@renderer/lib/useFocusTrap';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { AiMode, UnderstandingAttribute, WorkspaceType } from '@neuropause/shared';
 import { AI_MODE_LABELS } from '@neuropause/shared';
@@ -29,7 +30,7 @@ import { ipc } from '@renderer/lib/ipc';
 import { createLogger } from '@renderer/lib/logger';
 import { Button } from '@renderer/components/ui/Button';
 import { Icon } from '@renderer/components/ui/Icon';
-import { FIRST_RUN_COPY } from './experienceModel';
+import { FIRST_RUN_COPY, resumeStep } from './experienceModel';
 import { setWorkspaceType } from './workspaceTypeStore';
 
 const log = createLogger('first-run');
@@ -39,12 +40,20 @@ type Step = 'welcome' | 'processing' | 'workspace' | 'discovery' | 'understandin
 export function FirstRunExperience({
   onDone,
   onSignIn,
+  profile,
 }: {
   /** Called when the experience finishes or is skipped; the shell re-reads the profile. */
   onDone: (landing: 'ai-home' | null) => void;
   onSignIn: () => void;
+  /** The persisted profile — round 36: the flow RESUMES from it (Gate 13). */
+  profile?: { aiModeChosen: boolean; workspaceType: WorkspaceType | null } | null;
 }): JSX.Element {
-  const [step, setStep] = useState<Step>('welcome');
+  // Round 36 — Gate 13: the step derives from what is already persisted, so
+  // quitting mid-flow resumes where the user left off — the promise the
+  // service docstring has made since round 17, finally true.
+  const [step, setStep] = useState<Step>(() =>
+    profile ? resumeStep(profile) : 'welcome',
+  );
   const [busy, setBusy] = useState(false);
   /**
    * P13C ROUND 17 · D-5. Three pieces of state so the screen can be HONEST:
@@ -62,36 +71,62 @@ export function FirstRunExperience({
   const [actionError, setActionError] = useState<string | null>(null);
   const [effectiveMode, setEffectiveMode] = useState<AiMode | null>(null);
   const [restrictedByPlatform, setRestrictedByPlatform] = useState(false);
-  const [chosenType, setChosenType] = useState<WorkspaceType | null>(null);
+  const [chosenType, setChosenType] = useState<WorkspaceType | null>(profile?.workspaceType ?? null);
   const [role, setRole] = useState<string | null>(null);
   const [helpStyle, setHelpStyle] = useState<string | null>(null);
   const [workText, setWorkText] = useState('');
   const [attributes, setAttributes] = useState<UnderstandingAttribute[]>([]);
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [ollamaReachable, setOllamaReachable] = useState<boolean | null>(null);
+  const [localAi, setLocalAi] = useState<{
+    reachable: boolean;
+    installed: boolean | null;
+    models: number;
+  } | null>(null);
   const reducedMotion = useReducedMotion();
 
-  useEffect(() => {
+  const probeLocalAi = useCallback((): void => {
     // A real probe, so the processing step can say whether a local model is
-    // actually there — instead of implying one is.
+    // actually there — instead of implying one is. Round 34: installed and
+    // running are DIFFERENT answers ("install it" vs "start it"), the model
+    // count is shown instead of discarded, and the user can re-check after
+    // installing without restarting onboarding.
+    setLocalAi(null);
     ipc.aiConfig
       .detectOllama()
-      .then((d) => setOllamaReachable(d.reachable))
-      .catch(() => setOllamaReachable(false));
+      .then((d) => setLocalAi({ reachable: d.reachable, installed: d.installed, models: d.models.length }))
+      .catch(() => setLocalAi({ reachable: false, installed: null, models: 0 }));
   }, []);
+
+  useEffect(() => {
+    probeLocalAi();
+  }, [probeLocalAi]);
 
   const skip = useCallback(async (): Promise<void> => {
     setBusy(true);
+    setActionError(null);
     try {
       await ipc.firstRun.set({ state: 'skipped' });
+      // Round 36 — Gate 13: onDone only when the skip PERSISTED. It used to
+      // fire from a finally, so a failed write re-read a still-pending
+      // profile and the takeover re-rendered with no explanation — the exact
+      // silent-no-op class this screen's own comments were written against.
+      onDone(null);
     } catch (err) {
       log.warn('Could not persist skip', { message: String(err) });
+      setActionError('Skipping could not be saved. Please try again.');
     } finally {
       setBusy(false);
-      onDone(null);
     }
   }, [onDone]);
+
+  /** Round 36 — Gate 13: every step after welcome can go back. */
+  const goBack = useCallback((): void => {
+    setActionError(null);
+    setStep((s) =>
+      s === 'understanding' ? 'discovery' : s === 'discovery' ? 'workspace' : s === 'workspace' ? 'processing' : 'welcome',
+    );
+  }, []);
 
   /**
    * P13C ROUND 17 · D-5 — THE FIRST-RUN HIGH.
@@ -242,7 +277,11 @@ export function FirstRunExperience({
       await ipc.firstRun.set({ attributes, state: 'completed' });
       onDone('ai-home');
     } catch (err) {
+      // Round 36 — Gate 13: the FINAL button of onboarding must not go inert
+      // in silence. Its two siblings in this file already set the shared
+      // error; this one — the only one that completes the flow — did not.
       log.warn('Could not persist understanding', { message: String(err) });
+      setActionError('That could not be saved. Please try again.');
       setBusy(false);
     }
   };
@@ -272,8 +311,15 @@ export function FirstRunExperience({
     ? {}
     : { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { duration: 0.25 } };
 
+  // GATE 12 (round 50) — the takeover traps focus for its whole life.
+  // Escape deliberately does NOT close it: this is a required flow with an
+  // explicit Skip; a stray key must not dismiss consent-bearing steps.
+  const trapRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(trapRef, true);
+
   return (
     <div
+      ref={trapRef}
       // `app-bg` is the app's own opaque window background (deep black +
       // accent glow). It has to be an OPAQUE class, not a translucent
       // `--surface-*` token: first run is a full takeover, and anything
@@ -286,6 +332,29 @@ export function FirstRunExperience({
       aria-label="Welcome to NeuroPause"
     >
       <div className="mx-auto w-full max-w-[760px] px-8 py-12">
+        {/* Round 36 — Gate 13: ONE error banner for the whole flow, at the
+            container. It used to render inside two of the five steps only, so
+            a failed skip (welcome) or a failed completion (understanding)
+            set the state and showed nothing. */}
+        {actionError !== null && (
+          <p
+            role="alert"
+            className="mb-4 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
+          >
+            {actionError}
+          </p>
+        )}
+        {/* Round 36 — Gate 13: the flow is no longer one-way. */}
+        {step !== 'welcome' && (
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={busy}
+            className="app-no-drag mb-4 inline-flex items-center gap-1 text-sm text-muted transition hover:text-ink disabled:opacity-50"
+          >
+            ← Back
+          </button>
+        )}
         {step === 'welcome' && (
           <motion.div {...fade} className="text-center">
             <h1 className="text-4xl font-semibold tracking-tight">{FIRST_RUN_COPY.headline}</h1>
@@ -325,11 +394,43 @@ export function FirstRunExperience({
                 title={FIRST_RUN_COPY.onDevice.title}
                 body={FIRST_RUN_COPY.onDevice.body}
                 footnote={
-                  ollamaReachable === null
-                    ? 'Checking for a local model…'
-                    : ollamaReachable
-                      ? 'A local model server is reachable on this device.'
-                      : 'No local model server is reachable right now — you can set one up later (for example, Ollama). Until then, AI requests will fail on this device rather than being sent anywhere.'
+                  localAi === null ? (
+                    'Checking for a local model…'
+                  ) : localAi.reachable ? (
+                    `A local model server is running on this device${
+                      localAi.models > 0
+                        ? ` with ${localAi.models} model${localAi.models === 1 ? '' : 's'} installed.`
+                        : ' — you can download a model in Settings → AI.'
+                    }`
+                  ) : (
+                    <>
+                      {localAi.installed
+                        ? 'Ollama is installed but not running — start it (ollama serve) and '
+                        : 'No local AI is set up yet. Ollama runs models entirely on this device — '}
+                      {localAi.installed ? null : (
+                        <>
+                          <a
+                            href="https://ollama.com/download"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline underline-offset-2"
+                          >
+                            get Ollama
+                          </a>
+                          , install it, then{' '}
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        className="app-no-drag underline underline-offset-2"
+                        onClick={probeLocalAi}
+                      >
+                        check again
+                      </button>
+                      . Until a local model exists, AI requests will fail on this device rather than being sent
+                      anywhere.
+                    </>
+                  )
                 }
                 cta="Keep it on this device"
                 busy={busy}
@@ -345,14 +446,6 @@ export function FirstRunExperience({
                 onChoose={() => void chooseProcessing(true)}
               />
             </div>
-            {actionError !== null && (
-              <p
-                role="alert"
-                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
-              >
-                {actionError}
-              </p>
-            )}
             {restrictedByPlatform && effectiveMode !== null && (
               /**
                * P13C ROUND 17 · D-5 · NO SILENT NO-OP.
@@ -439,14 +532,6 @@ export function FirstRunExperience({
               * the same state. A click here that could not be persisted left
               * the button inert and the screen silent; it now says so.
               */}
-            {actionError !== null && (
-              <p
-                role="alert"
-                className="mt-6 rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-center text-sm text-danger"
-              >
-                {actionError}
-              </p>
-            )}
           </motion.div>
         )}
 
@@ -635,7 +720,7 @@ function ChoiceCard({
   icon: 'lock' | 'globe';
   title: string;
   body: string;
-  footnote: string;
+  footnote: ReactNode;
   cta: string;
   busy: boolean;
   onChoose: () => void;

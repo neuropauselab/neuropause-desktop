@@ -1,0 +1,698 @@
+{
+  "key": "observability-incident",
+  "generated": "2026-09-12",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399f",
+    "version": "1.0.0-rc.30"
+  },
+  "classification_legend": {
+    "MEASURED": "executed/observed by this mapper",
+    "DECLARED": "asserted by a doc/comment/config",
+    "DERIVED": "computed from measured facts",
+    "INFERRED": "mapper judgement",
+    "ABSENT": "looked for and does not exist"
+  },
+  "headline": [
+    "MEASURED 2026-09-12: https://api.neuropause033.com/{health,live,metrics} all return HTTP 530 from Cloudflare (server: cloudflare, cf-ray a3a087b7ab2a3d70-MRS); DNS resolves to Cloudflare proxy IPs 104.21.22.28 / 172.67.202.47, not the 134.199.250.188 LB the runbooks and SLO docs name.",
+    "MEASURED 2026-09-12: droplet 64.227.128.218 (declared live host, docs/PROJECT-STATE-2026-08-05.md:135) — :4000 SYN dropped (connect=0.000s, 10s timeout); :80 answers 'Server: Caddy' 308 -> https; :443 TLS handshake fails 'tlsv1 alert internal error' (no certificate). Caddyfile:8 requires Cloudflare DNS-only for HTTP-01; DNS is proxied -> cert cannot issue (INFERRED root cause). The backend is unreachable by every public path.",
+    "DECLARED: the Kubernetes production that every runbook, alert rule, dashboard, SLO and DR plan targets was destroyed by 2026-08-05 (docs/PROJECT-STATE-2026-08-05.md:146-152); api down for up to two weeks unnoticed, found by a founder failing to sign in (certification/PRODUCTION-OUTAGE-api-neuropause033.md:170-177, P-5 'Nothing was watching').",
+    "ABSENT: no monitoring, alerting, or external uptime probe exists for the current droplet topology; deploy/observability/* is orphaned material for a cluster that no longer exists. The only in-code alert sink (ALERT_WEBHOOK_URL) is off by default and not set in any compose file.",
+    "DECLARED: the droplet has no offsite DB backup, no dump, no snapshot (PROJECT-STATE:144, :211); rescue-backups.sh:5-7 says the Spaces bucket holding 'the whole of production' was scheduled for deletion 18 Aug 2026; no evidence that the rescue was performed exists in the repo or at the script's default output path (ABSENT).",
+    "Backend code-level instrumentation is real and tested (7 metric families, edge-triggered health alerts, Redis fallback counter, pino redaction): MEASURED 15/15 tests pass in healthAlerts.test.ts + rateLimit.test.ts.",
+    "Desktop crash capture, safe mode, bounded logs, credential-redacting logger, sha256-manifested backups with atomic restore and forced relaunch are implemented; crashReporter and recoveryService have no unit tests (ABSENT); disk-full is never handled or tested anywhere (boundedLog swallows all write errors, boundedLog.ts:62).",
+    "CST governance stores (claims/idempotency/evidence) are in-memory, process-lifetime (governedAction.ts:26-27; sendTransition.ts:235-257): a process crash or app restart loses admission state; replay HOLDs rather than fabricating (DECLARED, fail-closed direction). ActionRecord evidence is a best-effort post-effect observer: an evidence-store write failure logs an 'evidence gap' and never blocks the send (actionRecord.ts:5-9, 462-467)."
+  ],
+  "facts": [
+    {
+      "fact": "metrics.ts exposes 7 metric families: neuropause_backend_up, _uptime_seconds, _resident_memory_bytes, _heap_used_bytes, neuropause_pg_pool_connections{state}, neuropause_http_requests_total{method,status}, neuropause_ratelimit_fallback_total{bucket}, neuropause_health_alerts_total{component,state}",
+      "evidence": "apps/backend/src/observability/metrics.ts:78-124",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No request-duration histogram and no route/path label on HTTP counter; per-route latency and OAuth/queue/AI counters are a documented instrumentation gap",
+      "evidence": "apps/backend/src/observability/metrics.ts:14-21; deploy/observability/README.md:32-42; deploy/observability/prometheusrules-nems.yaml:12-17",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "HTTP counter middleware excludes /metrics, /health, /live",
+      "evidence": "apps/backend/src/app.ts:77-82",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "/live returns 200 unconditionally (liveness); /health pings Postgres and Redis in parallel, returns 200 only when BOTH up, else 503 {status:'degraded'}",
+      "evidence": "apps/backend/src/app.ts:87-102; apps/backend/src/db/pool.ts:42-49; apps/backend/src/cache/redis.ts:16-23",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "k8s readinessProbe = /health, livenessProbe = /live (all three manifests)",
+      "evidence": "deploy/kubernetes/backend-production.yaml:102-112; deploy/kubernetes/backend.yaml:147-159; deploy/helm/neuropause-backend/templates/deployment.yaml:57-69",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Because readiness requires Redis, a Redis outage makes every replica NotReady and removes the whole backend from service even though the app degrades safely; contradicts DR-PLAN Scenario 4 'usually a degradation, not an outage'",
+      "evidence": "apps/backend/src/app.ts:96-97 vs docs/operations/dr/DR-PLAN.md:106-109",
+      "classification": "INFERRED"
+    },
+    {
+      "fact": "Health alerts are edge-triggered per process (up->down / down->up), first 'up' silent, first 'down' alerts; state not shared across instances; detection latency = /health poll interval",
+      "evidence": "apps/backend/src/observability/healthAlerts.ts:13-16, 53-73",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "reportHealthSnapshot is wired into GET /health; alert sink also logs at error (down) / warn (up) via pino",
+      "evidence": "apps/backend/src/app.ts:95; apps/backend/src/observability/healthAlerts.ts:61-65",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Webhook alert sink is opt-in via ALERT_WEBHOOK_URL (optional, default unset) with ALERT_WEBHOOK_TIMEOUT_MS default 5000; installed at boot before listen; best-effort, never throws",
+      "evidence": "apps/backend/src/config/env.ts:56-57; apps/backend/src/index.ts:19; apps/backend/src/observability/alertWebhookSink.ts:103-115",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "ALERT_WEBHOOK_URL is not set in docker-compose.prod.yml or docker-compose.edge.yml",
+      "evidence": "docker-compose.prod.yml:47-56 (env keys: NODE_ENV, PORT, SEED_STORE_ON_BOOT, DATABASE_URL, REDIS_URL)",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "Rate limiter on Redis failure engages in-process fixed-window fallback (per instance, 50k-key cap), sets x-ratelimit-mode: fallback, increments neuropause_ratelimit_fallback_total, throttled warn <=1/60s per bucket; does NOT fail open",
+      "evidence": "apps/backend/src/middleware/rateLimit.ts:16-27, 76-111",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "vitest: healthAlerts.test.ts 7 tests + rateLimit.test.ts 8 tests -> 15/15 passed in 1.28s",
+      "evidence": "cd apps/backend && npx vitest run src/observability/healthAlerts.test.ts src/middleware/rateLimit.test.ts",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Backend tests present: metrics.test.ts(38), healthAlerts.test.ts(84), alertWebhookSink.test.ts(114), rateLimit.test.ts(153), error.test.ts(276); no app.test.ts exercising the /health or /live route end-to-end",
+      "evidence": "wc -l; find apps/backend/src -name app.test.ts -> none",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "pino logger: level LOG_LEVEL || (dev ? debug : info); redact paths ['req.headers.authorization','password','*.password','refreshToken','accessToken'] censor '[redacted]'; pino-pretty only in development",
+      "evidence": "apps/backend/src/config/logger.ts:6-15",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "pino redaction does not cover req.headers.cookie, snake_case refresh_token/access_token, nested *.refreshToken/*.accessToken, or query strings; logCause objects from upstream errors are serialized in full (may carry request URLs)",
+      "evidence": "apps/backend/src/config/logger.ts:9; apps/backend/src/middleware/error.ts:27-46, 116",
+      "classification": "INFERRED"
+    },
+    {
+      "fact": "pinoHttp autoLogging ignores only /health (not /live or /metrics); requestId attached via middleware",
+      "evidence": "apps/backend/src/app.ts:67-74",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "errorHandler logs 5xx AppErrors and all unhandled errors with requestId; emits Retry-After for AppError.retryAfterSeconds; non-exposed messages become 'Internal server error'",
+      "evidence": "apps/backend/src/middleware/error.ts:95-130",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Backend has NO process.on('uncaughtException') or 'unhandledRejection' handler; only main().catch -> 'Fatal startup error' exit(1) and SIGINT/SIGTERM drain with 10s forced exit(1)",
+      "evidence": "grep uncaughtException apps/backend/src -> none; apps/backend/src/index.ts:67-84",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Backend boots even when Postgres is unreachable (warn only) and continues after a failed boot migration (error logged, server still listens)",
+      "evidence": "apps/backend/src/index.ts:28-46",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Compose: backend restart: unless-stopped; postgres/redis healthchecks (pg_isready / redis-cli ping, 10s); backend port bound to 127.0.0.1:${BACKEND_PORT:-4000}; edge overlay removes the published port and fronts with Caddy",
+      "evidence": "docker-compose.prod.yml:22-41, 57-64; docker-compose.edge.yml:14-33",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Caddyfile requires Cloudflare DNS-only (grey cloud) for HTTP-01 and the DNS record pointing at the host before first start; proxies api.neuropause033.com -> backend:4000",
+      "evidence": "Caddyfile:3-17",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Semantic (AI/embedding/vector) transient failures map to 503 with Retry-After and logCause; non-transient -> 500",
+      "evidence": "apps/backend/src/semantic/api/semanticRouter.ts:106-111",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Pilot consequential operations resolve authority via resolveAuthority; only evaluator shipped answers UNKNOWN; absent/throwing/non-string evaluator -> UNKNOWN; anything not explicit ALLOW is withheld with 'human_decision_required'",
+      "evidence": "apps/backend/src/pilot/authority.ts:46-91; apps/backend/src/pilot/service.ts:109-131",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "JWT access TTL default 900s; requireAuth returns 401 invalid_token 'Invalid or expired token' for any verification failure; missing header -> 401 missing_token",
+      "evidence": "apps/backend/src/config/env.ts:32; apps/backend/src/auth/requireAuth.ts:13-27",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Refresh-token reuse detection revokes ALL of the user's sessions (401 refresh_reused); logout revokes single token",
+      "evidence": "apps/backend/src/auth/session.ts:66-73, 104-110",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Device revoke: POST /devices/:deviceId/revoke, owner/admin only, sets trust 'revoked'; DeviceTrustStatus = trusted|blocked|revoked",
+      "evidence": "apps/backend/src/devices/router.ts:103-106; apps/backend/src/devices/service.ts:78-86; apps/backend/src/devices/types.ts:11",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Whether a 'revoked' device trust status is enforced on subsequent backend request paths (sync, heartbeat) was not traced",
+      "evidence": "n/a",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "PauseCloud is an interface-only boundary marked DESIGN_ONLY / NOT_IMPLEMENTED; nothing in apps/backend/src imports it outside its own directory",
+      "evidence": "apps/backend/src/pausecloud/interfaces.ts:1-13; grep pausecloud apps/backend/src -> only self",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No component named 'policy service' exists; policy is an in-process CST PolicyStore built per call from connector facts (desktop) and the unconfigured AuthorityEvaluator (backend)",
+      "evidence": "grep policyService -> none; apps/desktop/src/main/cst/sendTransition.ts:231-234; apps/backend/src/pilot/authority.ts:46-50",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "prometheusrules-nems.yaml defines 22 alerts with explicit thresholds: BackendNoHealthyReplicas(avail==0,1m,crit), BackendTargetDown(up==0,3m,crit), EdgeDown(probe_success==0,2m,crit), HighErrorRate(5xx>5%,10m,warn), HighErrorRateCritical(5xx>15%,5m,crit), HighLatency(avg probe_duration>1s,10m,warn), HighLatencyCritical(>3s,5m,crit), BackendHighMemory(>90% of 512Mi,10m,warn), BackendOOMKilled(1m,crit), BackendCPUSaturation(>90% of 1 core,15m,warn), BackendCrashLooping(5m,crit), DatabaseUnavailable(increase health_alerts db down [10m]>0,crit), DatabasePoolSaturated(waiting>0,10m,warn), RedisUnavailable(crit), RedisFallbackEngaged(warn), CertificateExpiringSoon(<21d,1h,warn), CertificateExpiringCritical(<7d,30m,crit), DenylistLeak(/metrics not 404,5m,warn), NodeNotReady(5m,crit), NodeDiskPressure(5m,crit), NodeFilesystemLow(<15%,10m,warn), PersistentVolumeFillingUp(<15%,10m,warn), NodeCPUSaturation(>90%,15m,warn), PrometheusTargetMissing(5m,warn)",
+      "evidence": "deploy/observability/prometheusrules-nems.yaml:32-302",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "prometheusrules-slo.yaml: SLOs availability 99.9%, latency 99% <=0.5s, app-success 99.5% (28d); burn alerts SLOAvailabilityFastBurn(14.4x over 5m&1h,2m,crit), SLOAvailabilitySlowBurn(6x over 30m&6h,15m,warn), SLOAppSuccessFastBurn(14.4x,crit), SLOLatencyBudgetBurn(<99% over 30m&6h,15m,warn)",
+      "evidence": "deploy/observability/prometheusrules-slo.yaml:8-9, 63-110",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Alertmanager routing: only severity critical|warning enter tree; critical -> nems-page Slack #nems-oncall-critical repeat 1h; warning -> nems-ticket Slack #nems-oncall repeat 12h; groupWait 30s; inhibition critical suppresses matching warning; delivery URL from secret alertmanager-slack; PagerDuty not configured",
+      "evidence": "deploy/observability/alertmanager-config.yaml:28-89",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Blackbox probes: /health and /live every 30s (http_2xx, tier=edge); /metrics every 5m expecting 404 (tier=edge-denylist)",
+      "evidence": "deploy/observability/probe-nems-endpoints.yaml:13-51",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "4 Grafana dashboards (nems-backend-overview 35 typed blocks, nems-dependencies 19, nems-kubernetes 25, nems-slo 27) querying only metrics that exist (neuropause_*, probe_*, kube_*, node_*, container_*, nems:slo_* recording rules)",
+      "evidence": "deploy/observability/dashboards/*.json; grep expr",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Every runbook_url in the alert rules points at github.com/dishantdobariya91-debug/neuropause-desktop/blob/phase-2/docs/operations/runbooks/*.md (branch phase-2)",
+      "evidence": "deploy/observability/prometheusrules-nems.yaml:40 et seq.",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Phase 5 live validation (2026-07-30) declares the stack deployed and validated: 27 targets UP, 4/4 dashboards, real alert fire->Slack->resolve cycle, backup 108,783B/288 TOC, restore drill 36 tables in 12s, RTO subset measured",
+      "evidence": "docs/operations/PHASE5-LIVE-VALIDATION.md:24-38; docs/operations/dr/recovery-evidence-2026-07-30-pg-restore-drill.md:21-29, 50",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Leaked Slack webhook remained the active alert delivery credential at Phase 5 commit time ('FINAL WEBHOOK CHECK AT COMMIT TIME: OPEN')",
+      "evidence": "docs/operations/PHASE5-LIVE-VALIDATION.md:60 and final line",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Phase 5 security detail: NetworkPolicies none exist (Phase 4.9 deferred); /metrics restricted only by Gateway 404 at edge",
+      "evidence": "docs/operations/PHASE5-LIVE-VALIDATION.md:69; deploy/observability/README.md:108-115",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "PROJECT-STATE 2026-08-05: k8s cluster, managed Postgres and Valkey 'gone' (billing shows only 1 droplet); live host is droplet 64.227.128.218 running compose at commit 35eedc0 with port 0.0.0.0:4000, no Qdrant, no TLS, no offsite DB backup; Cloudflare account access held by a team member, not the operator",
+      "evidence": "docs/PROJECT-STATE-2026-08-05.md:130-156",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "PRODUCTION-OUTAGE record (2026-08-13): api timed out (connect=0.000s); P-4 nothing in CI deploys the backend; P-5 nothing was watching, outage found by a founder; verdict 'Program 13C = NOT CERTIFIED, Backend availability = FAIL'",
+      "evidence": "certification/PRODUCTION-OUTAGE-api-neuropause033.md:14-27, 159-196",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Live probe today: GET https://api.neuropause033.com/health -> 530, /live -> 530, /metrics -> 530; response 'server: cloudflare', body 17 bytes; DNS A = 104.21.22.28, 172.67.202.47 (Cloudflare proxied)",
+      "evidence": "curl -sS -o /dev/null -w http=%{http_code} https://api.neuropause033.com/health; curl -sSI; dig +short",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Live probe today: http://64.227.128.218:4000/health and /live -> connect timeout (SYN dropped, 10s); http://64.227.128.218/health -> 308 Location https://64.227.128.218/health, Server: Caddy; https://64.227.128.218/health and https with SNI api.neuropause033.com -> curl (35) 'tlsv1 alert internal error'",
+      "evidence": "curl -m 10 -k -w connect=%{time_connect}; curl -sSI; curl --resolve api.neuropause033.com:443:64.227.128.218",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Caddy on the droplet has no certificate for api.neuropause033.com because HTTP-01 cannot complete while Cloudflare proxies the record (Caddyfile:8 states the precondition); the API is therefore unreachable via DNS name (530) and via IP (no cert / port 4000 firewalled)",
+      "evidence": "Caddyfile:5-8 + measured probes above",
+      "classification": "INFERRED"
+    },
+    {
+      "fact": "No external uptime/synthetic monitor (UptimeRobot, healthchecks.io, Better Uptime, StatusCake, Pingdom, Uptime Kuma, cron-job.org) is referenced anywhere in deploy/, docs/, .github/",
+      "evidence": "grep -rli across deploy docs .github -> none",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "No observability, alerting, or probing configuration exists for the docker-compose/droplet topology; deploy/observability/* is Kubernetes-only (ServiceMonitor, Probe CRs, PrometheusRule, AlertmanagerConfig)",
+      "evidence": "deploy/observability/README.md:1-10, 67-92",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "rescue-backups.sh (2026-08-13) declares: bucket neuropause-nems-backups holds 11 objects / 543 KiB, scheduled for deletion 18 Aug 2026, 'The cluster and both managed databases are gone. These dumps are the whole of production.'",
+      "evidence": "rescue-backups.sh:3-7; git log a2d7b75 2026-08-13",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "No record that rescue-backups.sh was executed: no rescue.txt, no *rescue* file under certification/ or docs/, no ~/neuropause-prod-backups-* directory",
+      "evidence": "ls rescue.txt; find certification docs -iname '*rescue*'; ls -d ~/neuropause-prod-backups-*",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "verify-backup.sh --selftest PASS: predicates fresh()/nonempty() discriminate PASS/FAIL/UNREADABLE (exit 0)",
+      "evidence": "bash deploy/backup/verify-backup.sh --selftest",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "deploy/backup: k8s CronJob nems-pg-backup 02:15 UTC daily, pg_dump -Fc + pg_restore --list gate + head-object byte-equality; restore-test Job into scratch DB only, backoffLimit 0; Qdrant snapshot cronjob template; Spaces lifecycle 30d/14d noncurrent; KubeJobFailed relied on for failure alerting",
+      "evidence": "deploy/backup/pg-backup-cronjob.yaml:57-66, 94-106, 131-144; deploy/backup/pg-restore-job.yaml:7-15, 37; deploy/backup/README.md:22-36",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "scripts/backup-db.sh (compose): pg_dump --clean --if-exists via docker compose exec, gzip to ./backups, retention 14, no offsite copy, no integrity check; scripts/restore-db.sh requires interactive 'yes' and overwrites the live DB with psql ON_ERROR_STOP",
+      "evidence": "scripts/backup-db.sh:13-43; scripts/restore-db.sh:9-35",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Droplet currently has no DB dump, no snapshot, no offsite backup ('Highest data-loss risk in the system')",
+      "evidence": "docs/PROJECT-STATE-2026-08-05.md:144, 211",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "DR objectives: PG RPO <=24h / RTO <=1h (unvalidated), Qdrant RPO <=24h, Valkey loss tolerated, backend RTO <=30m, full cluster rebuild <=4h; only PG restore-path subset measured (12s); production restore and cluster rebuild require explicit human go/no-go and must never be automated",
+      "evidence": "docs/operations/dr/README.md:27-33; docs/operations/dr/DR-PLAN.md:17-23, 53, 82-83",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Runbooks (backend-down, database-down, redis-down, disk-full, etc.) reference the destroyed cluster's resources: namespace nems-prod, deployment nems-backend, LB 134.199.250.188, DB id 406985e0-..., Valkey id a5829ae2-..., image digest 997f8737...; none address the droplet/compose topology",
+      "evidence": "docs/operations/runbooks/README.md:4-7; runbooks/database-down.md:20; runbooks/redis-down.md:20; runbooks/backend-down.md:22",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "Incident process defines SEV1-4, IC/Operator/Scribe/Comms roles, 2-person rule for destructive actions, postmortem within 5 business days for SEV1/2; directory records no incidents and no filled incident/postmortem record exists for the Aug-2026 outage (certification/PRODUCTION-OUTAGE-*.md is a diagnosis narrative, not the template)",
+      "evidence": "docs/operations/incident/README.md:13-43; grep postmortem -> only templates/manuals",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "CONTAINMENT-PROCEDURE.md (2026-08-20) is PREDICTIVE, NOT VALIDATED; steps 1-3 (revoke consent, delete app registration, remove profile) have UNKNOWN portal paths and verification forms; it does not un-send, does not by itself invalidate issued tokens, and preserves the ActionRecord/audit trail",
+      "evidence": "certification/CONTAINMENT-PROCEDURE.md:2, 10-13, 29-32, 41-43, 59-66",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Desktop main installs uncaughtException (log + app.quit through flush barrier, 'crashed' latch) and unhandledRejection (log only, never fatal) handlers; local-only, no upload",
+      "evidence": "apps/desktop/src/main/index.ts:33-65",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Boot-window crash capture is pinned only by a source-text assertion, not a behavioral test",
+      "evidence": "apps/desktop/src/main/bootstrapPins.test.ts:63-68",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "CrashReporter service registers a second uncaughtException/unhandledRejection pair plus render-process-gone (renderer) and child-process-gone (plugin); records redacted CrashRecord to userData/logs/crashes.log via bounded log 2 MiB x keep 2; native minidumps opt-in only, uploadToServer:false, submitURL invalid.localhost; opt-in cannot be torn down mid-session",
+      "evidence": "apps/desktop/src/main/services/crashReporter.ts:65, 78-91, 104-113, 116-132",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Crash recommendations thresholds: renderer>=3 -> 'renderer-instability' warning action safeMode; plugin>=2 -> 'plugin-instability' action disablePlugins; connector>=3 -> info; main>=1 -> critical 'main-fault' (generate support bundle); export() awaits flush barrier before reading",
+      "evidence": "apps/desktop/src/main/services/crashReporter.ts:153-216",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No crashReporter.test.ts and no recoveryService.test.ts exist; crashRecord.test.ts exists",
+      "evidence": "find apps/desktop/src/main -name 'crashReporter.test.ts' / 'recoveryService.test.ts' -> none",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "IPC authz: crash:getStatus, crash:export, crash:recommendations, releaseDiagnostics:get/export, system:healthSnapshot -> operations:read; recovery:run, backup:restore/delete/create/list/validate, support:generateBundle -> cloud:operate (platform-only); crash:setOptIn, crash:report, recovery:safeModeStatus are public",
+      "evidence": "apps/desktop/src/main/ipc/runtimeAuthz.ts:388-391, 418-420, 613-615, 667-668, 743, 1110-1120",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "crash:getStatus handler returns crashReporter.status() = {optedIn, nativeActive, total, recent(10)}; crash:report lets the renderer record its own crashes",
+      "evidence": "apps/desktop/src/main/releaseOps/index.ts:401-430; crashReporter.ts:167-170",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Safe Mode: persisted flag <dataDir>/safe-mode.json {enabled, reason, setAt} mode 0600; launcher reads it and starts services with plugin-loader skipped; toggling requires restart; plugin enabled-state is not mutated",
+      "evidence": "apps/desktop/src/main/recovery/recoveryService.ts:106-175; apps/desktop/src/main/runtimeCore.ts:4127-4130",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Recovery actions: safeMode, disablePlugins, resetSettings (deletes telemetry.json, crash-reporting.json, update-prefs.json, window-state.json only), restoreBackup, repairInstallation, verifyIntegrity, rebuildSearchIndexes, rebuildKnowledgeGraph; every action returns {ok,requiresRestart,message,detail}; run() never throws",
+      "evidence": "apps/desktop/src/main/recovery/recoveryService.ts:84, 120-145, 198-215",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Backup manager: per-file sha256 manifest hashed from the archived copy; restore pre-flight refuses uncontained id, missing manifest, missing archive scope block, unacknowledged boundary, failed integrity, uncovered/escaping entries BEFORE any write; safety snapshot taken first; per-file tmp+rename atomic restore; manual cap 10 (pre-migration never pruned); scheduled backup every 24h keep 10; restore forces app.relaunch after 1.5s",
+      "evidence": "apps/desktop/src/main/backup/backupManager.ts:83, 209-219, 236-248, 284-391; apps/desktop/src/main/releaseOps/index.ts:76-88, 328-337, 464",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "backupManager.ts last modified today (61b1503 2026-09-12); tests backupManager.test.ts (228 lines) and session36BackupRecovery.test.ts (283 lines) exist",
+      "evidence": "git log -1 -- apps/desktop/src/main/backup/backupManager.ts; wc -l",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Desktop logger redacts credentials at the boundary (JWT prefixes, Bearer, keyword k/v in env+JSON form, Slack/OpenAI/GitHub/AWS/Google token shapes) plus secret-classified object keys; console and file see identical redacted payload; file sink receives only >= info; test logger.redaction.test.ts (127 lines) exists",
+      "evidence": "apps/desktop/src/main/logger.ts:47-68, 128-167; apps/desktop/src/main/logger.redaction.test.ts",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Shared redactSensitive (crash records/error reports) also strips home-dir usernames and emails; used by buildCrashRecord before persistence",
+      "evidence": "packages/shared/src/types/errorReport.ts:42-57; crashReporter.ts:118-119",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "app.log sink: userData/logs/app.log, 5 MiB x keep 2, attached before bootstrap; will-quit runs a time-boxed shutdown flush of all registered flushers then quits",
+      "evidence": "apps/desktop/src/main/index.ts:289-295, 325-342",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "boundedLog.append swallows every write error (.catch(() => undefined)); an ENOSPC on app.log/crashes.log/audit.log is silent; no code path anywhere in desktop main checks free disk space (ENOSPC appears only in comments)",
+      "evidence": "apps/desktop/src/main/storage/boundedLog.ts:53-63; grep ENOSPC apps/desktop/src/main -> comments only (enterpriseRecordStore.ts:314, orgStore.ts:410, backupManager.ts:364)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No test anywhere in apps/desktop/src/main or apps/backend/src exercises ENOSPC / disk-full",
+      "evidence": "grep -rn --include='*.test.ts' ENOSPC -> none",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "Backend reachability: probeBackend every >=15s against ${backendUrl}/health with 4s abort; error classified timeout|dns|refused|http_error; 1 failure -> 'recovering', >=3 -> 'disconnected'; reachable=false until a probe has succeeded; unreachable->reachable edge announced once per recovery to trigger auth re-restore",
+      "evidence": "apps/desktop/src/main/runtimeTelemetry.ts:38-49, 117-175; apps/desktop/src/main/backendReachabilityHub.ts:24-38",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "User-facing copy on backend unreachable (F-7): 'NeuroPause cannot reach its AI service right now.' + per-class detail ('did not respond in time' / 'address could not be found' / 'refused the connection' / 'responded, but reported a problem') + 'Sign-in needs the service. Nothing is wrong with this computer.'; polls every 15s; never asks the user to run anything",
+      "evidence": "apps/desktop/src/renderer/src/screens/BackendReachabilityNotice.tsx:12-15, 23, 28-41, 119-122",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Session restore on launch: network failure (BackendError status 0) retried 5x @1s, then enters device-local mode keeping the refresh token (no cloud access, distinct @device.invalid principal); genuine auth rejection clears credentials; refresh is single-flight and never re-sends a consumed token",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:73-84, 236-300",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Access token refreshed before expiry using accessTokenRefreshSkewMs; token expiry itself never blocks a consequential action silently — callers receive a 401 from the backend and the desktop treats it as auth failure",
+      "evidence": "apps/desktop/src/main/auth/authService.ts:382-396; apps/backend/src/auth/requireAuth.ts:25",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Cloud-org membership/role checks refuse when the backend list cannot be fetched ('FAIL CLOSED ON AN UNREACHABLE BACKEND'); opaque single message 'That organization is not available to you.'",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:388-439",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Companion device gateway refuses WS hello from a missing or revoked device; deviceRegistryStore.revoke sets tombstone; activeByPublicKey excludes revoked",
+      "evidence": "apps/desktop/src/main/companion/gatewayServer.ts:430, 476, 553; apps/desktop/src/main/companion/deviceRegistryStore.ts:288-291, 371-372",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "CST governed send/action stores (PolicyStore, EvidenceStore, ResourceStore, claims, idempotency) are constructed in-process and are process-lifetime; 'RESTART-DURABLE single-use is OUT OF SCOPE ... NOT claimed'; reconcile oracle answers {known:false} so an interrupted IN_FLIGHT replay HOLDs rather than asserting a send; the external effect is attempted at most once, never retried",
+      "evidence": "apps/desktop/src/main/cst/governedAction.ts:26-27; apps/desktop/src/main/cst/sendTransition.ts:231-260",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Governed execute path AWAITS the durable persist of the ExecutionSession before the consequential effect (fail-closed direction); non-governed persists are fire-and-forget",
+      "evidence": "apps/desktop/src/main/executeEngine.ts:40-47",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "ActionRecord (action-records.json, tenant-scoped) is a BEST-EFFORT observer called after the send resolves: it never throws, never blocks or alters the send; persist failure logs '[ACTION_RECORD] governance emit failed — evidence gap'; persist is tmp+rename with 5 retries on Windows lock errors",
+      "evidence": "apps/desktop/src/main/connectors/actionRecord.ts:5-9, 368-395, 459-474",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "M365 executor OUTCOME_UNKNOWN raises a tenant-scoped durable hold correlated by decisionId; hold-raise failure is logged and the outcome stays non-success; no blind retry",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:2584-2600",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Assistant: each context collector settles independently and a failing subsystem becomes an explicit `unavailable` reason (never a silent zero); with no model, deterministic findings still answer with aiOffline:true; nothing side-effecting runs without an approval recorded on the step",
+      "evidence": "apps/desktop/src/main/assistant/assistantService.ts:16-20, 162-163, 245",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Desktop does not consult Electron net.isOnline() or navigator.onLine anywhere; 'network unavailable' is only observable through the backend probe's dns/timeout classification",
+      "evidence": "grep net.isOnline|navigator.onLine apps/desktop/src/main -> none",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "Release diagnostics page composes build identity, codesign/spctl signing status (macOS packaged only), update status, startup phase timings, component health, modules and connectors into an exportable text report",
+      "evidence": "apps/desktop/src/main/diagnostics/releaseDiagnostics.ts:32-116; signingStatus.ts:21-76; startupMetrics.ts:32-66",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Handoff standing status: AUTHORIZATION_ISSUED=FALSE, DEPLOYMENT_AUTHORIZED=FALSE, global_pilot_gate=BLOCKED, first_blocking_gate=GATE-INTENDED-USE, HUMAN_DECISION_REQUIRED=TRUE",
+      "evidence": "/Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md:192-203",
+      "classification": "DECLARED"
+    }
+  ],
+  "failure_case_matrix": [
+    {
+      "case": "backend unavailable",
+      "code_path": "desktop: runtimeTelemetry.ts:117-155 probe; authService.ts:266-296 local-mode degrade; runtimeCore.ts:392-439 org checks refuse; renderer BackendReachabilityNotice.tsx:43-122. backend side: n/a",
+      "consequential_actions": "FAIL_CLOSED (cloud-org mutations refuse; no authenticated session in local mode; governed sends need backend-authorized connector facts)",
+      "user_message": "'NeuroPause cannot reach its AI service right now. <class detail> Sign-in needs the service. Nothing is wrong with this computer.'",
+      "recovery": "probe edge -> announceBackendReachable -> auth re-restore with kept refresh token (runtimeTelemetry.ts:141; backendReachabilityHub.ts:29)",
+      "evidence": "app.log lines 'Backend unreachable during session restore' / 'Backend still unreachable after retries' (authService.ts:268-294); no server-side evidence",
+      "status": "MEASURED in code; MEASURED live: backend IS unavailable today (530 / TLS failure)"
+    },
+    {
+      "case": "AI unavailable",
+      "code_path": "desktop assistantService.ts:16-20 explicit `unavailable` + aiOffline; backend semanticRouter.ts:106-111 503+Retry-After for transient embedding/vector failure",
+      "consequential_actions": "FAIL_CLOSED (assistant never side-effects without recorded approval; AI proposes only; capabilityPrincipal/proposeCore refuse without resolved principal)",
+      "user_message": "AssistantUnavailable reasons in the response; backend fixed literals 'Failed to embed the query.' / 'Vector search failed.'",
+      "recovery": "retry after Retry-After; deterministic findings continue",
+      "evidence": "backend log carries logCause; desktop toolCalls/unavailable list",
+      "status": "DECLARED (assistant) / MEASURED (backend mapping); no test of AI-down path located"
+    },
+    {
+      "case": "PauseCloud unavailable",
+      "code_path": "none — apps/backend/src/pausecloud/interfaces.ts:2 DESIGN_ONLY / NOT_IMPLEMENTED; no runtime dependency",
+      "consequential_actions": "NOT_APPLICABLE",
+      "user_message": "none",
+      "recovery": "none",
+      "evidence": "none",
+      "status": "NOT_APPLICABLE (no implementation)"
+    },
+    {
+      "case": "database unavailable",
+      "code_path": "backend index.ts:39-44 boots with warning; app.ts:91-102 /health 503; healthAlerts.ts:53-73 edge alert + metric; k8s readiness pulls pod; error.ts:116 logs 5xx",
+      "consequential_actions": "FAIL_CLOSED (queries throw -> 5xx; pilot authority remains UNKNOWN regardless)",
+      "user_message": "client: 500 'Internal server error' or 503 with code; desktop treats as http_error -> reachability notice",
+      "recovery": "runbook database-down.md (k8s-only); DR-PLAN §2; compose: restart: unless-stopped; no droplet backup exists",
+      "evidence": "neuropause_health_alerts_total{component=database,state=down}; pino error 'Health alert: database is DOWN'; DatabaseUnavailable alert (only if Prometheus exists — it does not today)",
+      "status": "MEASURED in code; alerting ABSENT for live topology"
+    },
+    {
+      "case": "policy service unavailable",
+      "code_path": "no such service; desktop CST PolicyStore built in-process per call (sendTransition.ts:231-234); backend AuthorityEvaluator absent -> UNKNOWN (authority.ts:56-86)",
+      "consequential_actions": "FAIL_CLOSED (no grant -> kernel DENIES; UNKNOWN never widens)",
+      "user_message": "backend: 'A pilot outcome decision requires a designated decision authority ... withheld' (service.ts:128-131) -> 403 human_decision_required",
+      "recovery": "human designation only",
+      "evidence": "kernel envelope / PilotError",
+      "status": "NOT_APPLICABLE as a remote dependency; fail-closed MEASURED"
+    },
+    {
+      "case": "network unavailable",
+      "code_path": "same as backend-unavailable (probe classifies 'dns'/'timeout'); no OS-level online check (ABSENT)",
+      "consequential_actions": "FAIL_CLOSED (device-local mode; governed sends fail at connector HttpClient NetworkError -> kernel outcome non-success; UNKNOWN -> hold)",
+      "user_message": "'The service address could not be found on this network.' / 'did not respond in time.'",
+      "recovery": "automatic on probe recovery edge",
+      "evidence": "app.log; hold records for UNKNOWN M365 outcomes",
+      "status": "MEASURED in code"
+    },
+    {
+      "case": "token expired",
+      "code_path": "backend requireAuth.ts:19-26 -> 401 invalid_token; desktop authService.ts:382-396 pre-emptive single-flight refresh; session.ts:66-73 reuse detection revokes all",
+      "consequential_actions": "FAIL_CLOSED (401 before any handler; refresh reuse -> all sessions revoked)",
+      "user_message": "'Invalid or expired token' (backend); desktop clears session on genuine auth rejection -> sign-in",
+      "recovery": "refresh rotation; re-login",
+      "evidence": "pino request log 401; auth_sessions.revoked_at",
+      "status": "MEASURED"
+    },
+    {
+      "case": "device revoked",
+      "code_path": "backend devices/service.ts:78-86 sets trust 'revoked' (owner/admin); desktop companion gatewayServer.ts:553 refuses revoked device hello",
+      "consequential_actions": "FAIL_CLOSED for companion WS; enforcement of 'revoked' trust on other backend request paths NOT traced",
+      "user_message": "companion: hello refused (message not captured)",
+      "recovery": "re-pair / re-register",
+      "evidence": "device row trust_status; gateway log",
+      "status": "PARTIAL — NOT_MEASURED for backend request-path enforcement"
+    },
+    {
+      "case": "evidence store unavailable",
+      "code_path": "pre-effect: executeEngine.ts:40-47 awaits durable persist (fail-closed); post-effect: actionRecord.ts:459-474 best-effort, logs evidence gap; CST EvidenceStore in-memory (sendTransition.ts:235)",
+      "consequential_actions": "FAIL_CLOSED before effect (awaited persist); FAIL_OPEN after effect for the ActionRecord observer (send already happened; gap logged, not blocked)",
+      "user_message": "none to user; log '[ACTION_RECORD] governance emit failed — evidence gap for <actionId>'",
+      "recovery": "none automatic; read-back reconciler (reconciliation/readBackReconciler.ts) exists but was not audited here",
+      "evidence": "app.log warn line only",
+      "status": "MEASURED (code); no test of persist-failure path located (actionRecord.test.ts pins observer invariant at :204 per comment)"
+    },
+    {
+      "case": "disk full",
+      "code_path": "desktop: boundedLog.ts:62 swallows; backupManager.ts:362-371 atomic per file (partial restore leaves old-or-new bytes); actionRecord.ts:393-395 persist throws -> evidence gap; backend: none",
+      "consequential_actions": "UNDEFINED — logging and evidence writes fail silently; governed pre-effect persist would throw (fail-closed) but is untested",
+      "user_message": "none",
+      "recovery": "runbook disk-full.md (k8s nodes/PVCs only); nothing for desktop or droplet",
+      "evidence": "none (log sink is the thing that fails)",
+      "status": "NOT_MEASURED — no code check, no test anywhere"
+    },
+    {
+      "case": "process crash",
+      "code_path": "desktop index.ts:48-65 uncaught -> log + app.quit (flush); crashReporter.ts:80-84 archive; backend: NO handler (Node default exit; compose restart: unless-stopped / k8s restart)",
+      "consequential_actions": "FAIL_CLOSED in the sense that in-flight CST admissions are lost and replay HOLDs (sendTransition.ts:239-242); desktop pending store writes drained by will-quit barrier only on orderly quit",
+      "user_message": "crash recommendations on Recovery Center ('A core fault was recorded ... Generate a support bundle')",
+      "recovery": "desktop relaunch; safe mode recommended after >=3 renderer crashes; backend restart by supervisor",
+      "evidence": "crashes.log (redacted), app.log; backend: container logs only",
+      "status": "MEASURED (desktop); backend handler ABSENT; behavior test ABSENT"
+    },
+    {
+      "case": "machine restart",
+      "code_path": "compose restart: unless-stopped (docker-compose.prod.yml:41,64); desktop safe-mode.json and settings persisted; CST in-memory state lost",
+      "consequential_actions": "same as process crash",
+      "user_message": "none specific",
+      "recovery": "supervisor restart; desktop scheduled backup timer restarts",
+      "evidence": "none specific",
+      "status": "DECLARED (compose policy); NOT_MEASURED end-to-end"
+    },
+    {
+      "case": "app restart",
+      "code_path": "desktop releaseOps/index.ts:76-84 forced relaunch after restore; recoveryService.ts:147-170 safe mode requires restart; will-quit flush index.ts:326-342",
+      "consequential_actions": "FAIL_CLOSED (restore refuses before writing; relaunch enforced so stale in-memory stores cannot overwrite restored files)",
+      "user_message": "'Safe Mode is armed. Restart the app to launch with plugins disabled.' / 'Restored N domain(s) from backup.'",
+      "recovery": "automatic relaunch",
+      "evidence": "app.log 'Restore requires a restart — relaunching'; safety backup id in result",
+      "status": "MEASURED (code + backup tests); recoveryService untested"
+    }
+  ],
+  "gate_assessments": [
+    {
+      "gate": "OBSERVABILITY",
+      "status": "FAIL",
+      "reason": "MEASURED: production API returns 530 on /health,/live,/metrics via Cloudflare and is unreachable by IP (TLS handshake failure, :4000 filtered); DECLARED: the outage went unnoticed for ~2 weeks in Aug-2026 because nothing was watching. ABSENT: no monitoring/alerting/probe exists for the live droplet topology; deploy/observability targets a destroyed cluster; ALERT_WEBHOOK_URL unset; no external uptime probe. Code-level instrumentation is real and tested (15/15) but has no consumer."
+    },
+    {
+      "gate": "INCIDENT-RECOVERY",
+      "status": "FAIL",
+      "reason": "MEASURED: an availability incident is live and unresolved today. DECLARED: droplet has no DB backup; the only production dumps sat in a bucket scheduled for deletion 2026-08-18 with no recorded rescue (ABSENT); runbooks/DR/SLO/on-call docs all address the destroyed k8s environment; CONTAINMENT-PROCEDURE never performed; no incident record or postmortem for the Aug outage; CST governance state is not restart-durable (declared out of scope); disk-full unhandled and untested; backend lacks crash handlers. Desktop-side recovery (safe mode, backups, relaunch) is implemented and partially tested."
+    }
+  ],
+  "gaps": [
+    "No observability, alerting or synthetic probing for the current droplet/compose deployment (ABSENT)",
+    "No external uptime monitor referenced anywhere (ABSENT)",
+    "ALERT_WEBHOOK_URL not configured in any compose file; in-code sink is inert (MEASURED)",
+    "Runbooks, DR plan, SLO, on-call guide and alert runbook_urls reference destroyed k8s resources and the phase-2 branch (DERIVED)",
+    "No incident record / postmortem for the Aug-2026 outage using the incident templates (ABSENT)",
+    "No evidence rescue-backups.sh was run; bucket deletion date 2026-08-18 has passed (ABSENT)",
+    "Droplet Postgres has no dump/snapshot/offsite backup (DECLARED)",
+    "Leaked Slack webhook never rotated per Phase 5 record (DECLARED)",
+    "Backend has no uncaughtException/unhandledRejection handlers (ABSENT)",
+    "Readiness /health couples Redis to availability; contradicts DR-PLAN degradation claim (INFERRED)",
+    "Disk-full: no detection, silent log-sink failure, no tests (ABSENT)",
+    "crashReporter.ts and recoveryService.ts have no unit tests (ABSENT)",
+    "Boot-window crash capture pinned only by source-text test (MEASURED)",
+    "Device 'revoked' trust enforcement on backend request paths not traced (NOT_MEASURED)",
+    "CST claims/idempotency/evidence stores are in-memory; restart-durable single-use explicitly not claimed (DECLARED)",
+    "pino redact list narrow (no cookie, snake_case tokens, nested paths) (INFERRED)",
+    "CONTAINMENT-PROCEDURE steps 1-3 have UNKNOWN portal paths and verification forms; never performed (DECLARED)",
+    "Cloudflare account access not held by the operator; DNS proxied contrary to Caddyfile precondition (DECLARED + INFERRED)"
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Add ALERT_WEBHOOK_URL/ALERT_WEBHOOK_TIMEOUT_MS to .env.example and docker-compose.prod.yml env passthrough so the existing sink can be enabled without code change",
+      "effort": "S",
+      "files": [
+        ".env.example",
+        "docker-compose.prod.yml"
+      ],
+      "risk": "none (opt-in)"
+    },
+    {
+      "action": "Add process.on('uncaughtException'/'unhandledRejection') logging + orderly exit to backend index.ts, mirroring desktop GATE 1",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/index.ts"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Write a compose-topology observability doc + minimal external probe definition (e.g. a documented curl-based cron or third-party monitor config) for /health and /live; add a droplet runbook variant",
+      "effort": "M",
+      "files": [
+        "deploy/observability/README.md",
+        "docs/operations/runbooks/backend-down.md"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Add unit tests for crashReporter (report/export/recommendations thresholds) and recoveryService (safe-mode flag round-trip, resetSettings scope)",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/services/crashReporter.test.ts",
+        "apps/desktop/src/main/recovery/recoveryService.test.ts"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Add ENOSPC/EDQUOT tests: boundedLog append failure surfaces a counter; actionRecord persist failure logs evidence gap; backupManager.create aborts cleanly",
+      "effort": "M",
+      "files": [
+        "apps/desktop/src/main/storage/boundedLog.test.ts",
+        "apps/desktop/src/main/connectors/actionRecord.test.ts",
+        "apps/desktop/src/main/backup/backupManager.test.ts"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Broaden pino redact paths (req.headers.cookie, refresh_token, access_token, '*.refreshToken', '*.accessToken', 'logCause.config.headers.authorization')",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/config/logger.ts"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Split readiness so Redis outage degrades rather than removes replicas (e.g. /ready = db only, /health unchanged) and align DR-PLAN §4",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/app.ts",
+        "deploy/kubernetes/*.yaml",
+        "docs/operations/dr/DR-PLAN.md"
+      ],
+      "risk": "medium (changes orchestrator behavior; human review)"
+    },
+    {
+      "action": "Regenerate runbook_url targets and runbook inventory for the current branch/topology; mark k8s runbooks as historical",
+      "effort": "M",
+      "files": [
+        "deploy/observability/prometheusrules-*.yaml",
+        "docs/operations/runbooks/*.md"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Add scripts/backup-db.sh integrity gate (gunzip -t + psql --list dry-run) and an offsite copy step guarded by env; document droplet cron",
+      "effort": "S",
+      "files": [
+        "scripts/backup-db.sh"
+      ],
+      "risk": "low"
+    }
+  ],
+  "human_decisions_required": [
+    "Rebuild target for the public API: restore the documented DOKS topology (needs 7 secrets + DOCR pull secret + billing) or formalize the droplet/compose topology as production.",
+    "Cloudflare account access for the operator; set api.neuropause033.com to DNS-only (per Caddyfile:8) or move TLS to Cloudflare origin certs — either changes the trust path.",
+    "Confirm whether rescue-backups.sh was executed before 2026-08-18 and where the copies now live; if not, declare production data loss.",
+    "Rotate the leaked Slack alert webhook (Phase 5 OPEN item) and decide alert delivery destination for the live topology.",
+    "Open and record a SEV1 incident + postmortem for the Aug-2026 outage per docs/operations/incident/README.md.",
+    "Decide whether restart-durable CST single-use (declared out of scope) is required before any real consequential send in the pilot.",
+    "Perform CONTAINMENT-PROCEDURE once (or a dry run) to convert its UNKNOWN steps into recorded facts.",
+    "Whether Redis should remain a readiness dependency (availability vs. brute-force-protection consistency trade-off)."
+  ],
+  "report_file": "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/observability-incident.json"
+}

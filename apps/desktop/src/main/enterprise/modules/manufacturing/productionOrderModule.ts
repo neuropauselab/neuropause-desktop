@@ -14,7 +14,9 @@ import type {
   BillOfMaterials,
   EnterpriseEntity,
   EnterpriseModuleDescriptor,
+  EnterpriseRecordInput,
   EnterpriseRecordSummary,
+  EnterpriseRecordValidation,
   ProductionOrder,
 } from '@neuropause/shared';
 import {
@@ -25,6 +27,7 @@ import {
   componentConsumption,
   productionOrderFromRecord,
   productionOrderSummaryFallback,
+  validateEnterpriseRecordInput,
 } from '@neuropause/shared';
 import {
   EnterpriseRecordStore,
@@ -33,11 +36,12 @@ import {
   type EnterpriseModuleActionContext,
 } from '../../framework';
 import {
-  postConsumption,
   postOutput,
   postReservation,
   postReservationRelease,
 } from './manufacturingMovements';
+import { postMovementLinesAtomic } from '../inventory/multiLineMovements';
+import { settleProductionVariance } from './productionVarianceSettlement';
 import { COMMIT_SCHEDULE_ACTION, commitScheduleForOrder } from './scheduleCommit';
 import { proposeScheduleForOrder } from './scheduleProposalLink';
 
@@ -92,6 +96,12 @@ export const PRODUCTION_ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
       default: 'draft',
       badge: true,
       filterable: true,
+      // ERP Session 98 (F-S98-1) — machine-owned: born `draft`, transitions ONLY through the
+      // lifecycle actions (Plan / Allocate / Start / Complete / Cancel), which post the real
+      // inventory movements (production_consumption / production_output) and the WIP/GL. A hand-set
+      // status via the edit door moved NO material yet let `complete` produce finished goods from
+      // nothing (Cr WIP with no Dr WIP) — the validate hook below refuses status edits.
+      readOnly: true,
       options: [
         { value: 'draft', label: 'Draft', tone: 'neutral' },
         { value: 'planned', label: 'Planned', tone: 'blue' },
@@ -140,6 +150,45 @@ export function createProductionOrderModule(storePath: string, aiRunner?: Produc
     descriptor: PRODUCTION_ORDER_DESCRIPTOR,
     store,
     hooks: {
+      // ERP Session 98 (F-S98-1) — the production status machine OWNS lifecycle transitions. An EDIT
+      // (recordId present ⇒ the EnterpriseModuleUpdate door) must never hand-set `status`: a
+      // hand-flipped `running`/`completed` moved NO material yet let `complete` yield finished goods
+      // with no consumption (Cr WIP with no Dr WIP → phantom finished stock + broken WIP), and a
+      // direct edit to `completed` even fired the variance-settlement onChange GL. Transitions happen
+      // ONLY through the lifecycle actions, which post the guarded inventory movements. Creates (no
+      // recordId) and status-less importer rows are unaffected; the actions never re-enter this hook.
+      // Mirrors the sales-order (S45) + stock-movement (S55) machine-owned-status guards.
+      validate: (input: EnterpriseRecordInput): EnterpriseRecordValidation => {
+        const result = validateEnterpriseRecordInput(PRODUCTION_ORDER_DESCRIPTOR, input);
+        if (result.ok && input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          const nextStatus = result.values.status;
+          if (prior && priorStatus !== '' && typeof nextStatus === 'string' && nextStatus !== priorStatus) {
+            return {
+              ok: false,
+              values: result.values,
+              errors: { status: 'Production order status changes only through the lifecycle actions (Plan, Allocate, Start, Complete, Cancel).' },
+            };
+          }
+        }
+        return result;
+      },
+      // ERP Session 5-Fix: when an order reaches 'completed' (via the classic
+      // COMPLETE action here, or the MES path emitting an order update), settle
+      // the production variance ONCE — clear residual WIP to 5910 from the order's
+      // own movements. Idempotent + contained: a GL failure never unwinds the
+      // physical completion, and a re-fired change never double-posts.
+      onChange: async (event, ctx) => {
+        if (event.record.status === 'deleted') return;
+        if (str(event.record.fields.status) !== 'completed') return;
+        try {
+          await settleProductionVariance(event.record, ctx);
+        } catch {
+          // Advisory only — the completion + finished-goods movement already stand;
+          // the variance entry is idempotent, so a later change can still post it.
+        }
+      },
       summarize: async (record): Promise<EnterpriseRecordSummary> => {
         const order = productionOrderFromRecord(record);
         const ai = aiRunner ? await aiRunner(order).catch(() => null) : null;
@@ -201,37 +250,40 @@ export function createProductionOrderModule(storePath: string, aiRunner?: Produc
           if (order.status !== 'released') return { ok: false, message: `Allocate material before starting (it is ${order.status}).` };
           const bom = await resolveBom(ctx, order.bom);
           if (!bom || bom.components.length === 0) return { ok: false, message: `BOM "${order.bom}" has no components.` };
-          const consumptionIds: string[] = [];
-          for (const component of bom.components) {
-            const qty = componentConsumption(component, order.productionQuantity, bom.waste);
-            if (qty <= 0) continue;
-            const consumed = await postConsumption(ctx, {
-              movementNumber: `MV-${order.orderNumber}-${component.sku}-CON`,
-              product: component.sku,
+          // Session 7-Fix: consume every component ATOMICALLY. If any line fails,
+          // the shared seam compensates every consumed line (Session 6 reversal),
+          // so an order never starts with a partially consumed BOM (business-level
+          // all-or-nothing; the stores are not a single DB transaction).
+          const lines = bom.components
+            .map((component) => ({
+              sku: component.sku,
+              quantity: componentConsumption(component, order.productionQuantity, bom.waste),
               warehouse: order.warehouse,
-              quantity: qty,
-              referenceModule: PRODUCTION_ORDERS_MODULE_ID,
-              referenceRecord: order.id,
-              reason: `Production ${order.orderNumber} consumption`,
-            });
-            if (!consumed) return { ok: false, error: `Could not consume component ${component.sku}.` };
-            consumptionIds.push(consumed.id);
-            // Release the reservation held for this component (material is now consumed).
+            }))
+            .filter((l) => l.quantity > 0);
+          const consumption = await postMovementLinesAtomic(
+            ctx,
+            { module: PRODUCTION_ORDERS_MODULE_ID, recordId: order.id, number: order.orderNumber, type: 'production_consumption', reason: `Production ${order.orderNumber} consumption` },
+            lines,
+          );
+          if (!consumption.ok) return { ok: false, error: consumption.message };
+          // Release the reservations held for the consumed components (net-zero).
+          for (const line of lines) {
             await postReservationRelease(ctx, {
-              movementNumber: `MV-${order.orderNumber}-${component.sku}-REL`,
-              product: component.sku,
-              warehouse: order.warehouse,
-              quantity: qty,
+              movementNumber: `MV-${order.orderNumber}-${line.sku}-REL`,
+              product: line.sku,
+              warehouse: line.warehouse,
+              quantity: line.quantity,
               referenceModule: PRODUCTION_ORDERS_MODULE_ID,
               referenceRecord: order.id,
               reason: `Production ${order.orderNumber} reservation release`,
             });
           }
           emitSelf(
-            store.update(record.id, { fields: { status: 'running', consumptionMovements: consumptionIds.join(',') }, actor: ctx.actor(), now: ctx.now() }),
+            store.update(record.id, { fields: { status: 'running', consumptionMovements: consumption.movementIds.join(',') }, actor: ctx.actor(), now: ctx.now() }),
             ctx,
           );
-          return { ok: true, message: `Started ${order.orderNumber}; consumed ${consumptionIds.length} component(s).` };
+          return { ok: true, message: `Started ${order.orderNumber}; consumed ${consumption.movementIds.length} component(s).` };
         }
 
         if (action === COMPLETE_ACTION) {

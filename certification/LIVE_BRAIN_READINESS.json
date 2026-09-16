@@ -1,0 +1,59 @@
+{
+  "generatedAt": "2026-08-20",
+  "head": "8ec36f6",
+  "baseline": "BASELINE-1ac1c6b0bbbb",
+  "state": "PARTIAL — propose loop TEST-VERIFIED (mock, in-app) with pinned zero-authority boundaries; 4 stages PARTIAL; 2 RECORDED-NOT-ENTERED; 0 Brain stages LIVE (NP-000 ceremony pending)",
+  "completed_stages": [
+    "state_acquisition (TEST-VERIFIED mock)",
+    "capability_awareness (TEST-VERIFIED mock)",
+    "proposal_generation (TEST-VERIFIED mock)",
+    "proposal_provenance (TEST-VERIFIED)",
+    "brain_review_surface_FG9 (TEST-VERIFIED mock)",
+    "expiry (TEST-VERIFIED)",
+    "proposal_fingerprint (TEST-VERIFIED)",
+    "authority_derivation (TEST-VERIFIED, coarse 1-bit per-connector; per-capability = S23 horizon)",
+    "governance_handoff (TEST-VERIFIED mock)",
+    "ask_boundary_S51 (TEST-VERIFIED, structural ASK-only)",
+    "execution_gate_handoff_FG10 (TEST-VERIFIED mock, in-app)",
+    "memory_boundaries (TEST-VERIFIED, §2#15 by construction)"
+  ],
+  "incomplete_stages": [
+    "context_construction_S2 (PARTIAL — built+tested, NO production caller; lane bypasses)",
+    "reasoning_S3 (PARTIAL — built+tested, NO production caller; lane bypasses)",
+    "workspace_awareness (PARTIAL — lane feeds moduleStore ()=>null → honest-UNAVAILABLE, not real counts)",
+    "verification_handoff (PARTIAL/MOCK-ONLY — orchestrator callers are compile-stripped e2e only; S22 reconciler does not exist; deriveOracle stamps productionWired:false)"
+  ],
+  "mock_only_stages": [
+    "end_to_end_brain_proposed_loop (real-Electron, mock Graph, all three read-back terminals)",
+    "verification_circle (mock Graph read-back)"
+  ],
+  "live_stages": [],
+  "recorded_not_entered": [
+    "relationship_awareness (LB-10/S35, docs only)",
+    "experience_recording (LB-6, zero code by explicit operator order; LB-7..LB-12 all docs-only)"
+  ],
+  "evidence": [
+    "certification/NEUROPAUSE-OS-MASTER-READINESS-REPORT.md §A",
+    "liveBrain/* pin tests (zero-runtime-import ×6)",
+    "e2e/brainPropose.e2e.cjs + e2e/mailReadBack.e2e.cjs (PASS, fresh profiles)",
+    "…L6-S5-4-P0-READBACK-CIRCLE-EVIDENCE.md (verbatim completion claim + CORRECTION note)"
+  ],
+  "blockers": [
+    "NP-000 ceremony (AUTHORITY_REQUIRED — operator keyboard; the mock→live conversion)",
+    "S22 reconciler absent (verification handoff has no production caller)",
+    "S2/S3 unwired into the production lane",
+    "lane workspace feed null"
+  ],
+  "authority_requirements": [
+    "NP-000 explicit operator go (bound, re-armed)",
+    "any frozen touch → FG gate with literal token",
+    "real credentials/consent only at the operator's keyboard"
+  ],
+  "frozen_dependencies": [
+    "connectors/index.ts (FG-10 gate call, FG-4 guard hook, FG-5 observer line)",
+    "packages/shared/src/ipc/contracts.ts (FG-9 brainReview field)",
+    "runtimeCore.ts (FG-2 handler registration)"
+  ],
+  "recommended_next_slice": "NP-000 ceremony first (operator); then M-002a wire S2+S3 into the propose lane (or record the bypass as a decision), M-002b real module registry into the lane's workspace snapshot, M-002c S22 reconciler as verifyGovernedSend's production caller. Connector-platform work (M-008+) does NOT proceed until these close.",
+  "gate_verdict": "NOT_SUFFICIENT_FOR_CONNECTOR_EXPANSION"
+}

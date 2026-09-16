@@ -1,0 +1,52 @@
+{
+  "ARTIFACT": "22_TOOL_AUTHORIZATION_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "default": "DENY",
+  "classes": [
+    "READ_ONLY",
+    "REVERSIBLE_WRITE",
+    "IRREVERSIBLE_WRITE",
+    "EXTERNAL_COMMUNICATION",
+    "FINANCIAL",
+    "IDENTITY",
+    "SECURITY",
+    "SYSTEM",
+    "DEVICE"
+  ],
+  "tools": [
+    {
+      "TOOL_ID": "read_file",
+      "TOOL_VERSION": "1.0",
+      "CAPABILITY": "read sandbox file",
+      "RISK_LEVEL": "LOW",
+      "REQUIRED_AUTHORITY": "NONE",
+      "REQUIRED_CONFIRMATION": false,
+      "SIDE_EFFECT_CLASS": "READ_ONLY",
+      "EVIDENCE_REQUIREMENT": "ALWAYS",
+      "ROLLBACK_CAPABILITY": "NOT_APPLICABLE"
+    },
+    {
+      "TOOL_ID": "write_file",
+      "TOOL_VERSION": "1.0",
+      "CAPABILITY": "overwrite sandbox file",
+      "RISK_LEVEL": "MEDIUM",
+      "REQUIRED_AUTHORITY": "HUMAN_CONFIRMATION",
+      "REQUIRED_CONFIRMATION": true,
+      "SIDE_EFFECT_CLASS": "REVERSIBLE_WRITE",
+      "EVIDENCE_REQUIREMENT": "ALWAYS",
+      "ROLLBACK_CAPABILITY": "REVERSIBLE"
+    }
+  ],
+  "legacy_ipc_authority_map": "apps/desktop/src/main/ipc/runtimeAuthz.ts (188 authority-gated channels; AssistantAsk public — gap)"
+}

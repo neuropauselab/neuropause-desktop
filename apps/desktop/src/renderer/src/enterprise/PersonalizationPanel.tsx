@@ -8,6 +8,7 @@
 import { useState } from 'react';
 import type { PersonalizationState } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { useToast } from '@renderer/state/ToastProvider';
 import { cn } from '@renderer/lib/cn';
 import { Icon } from '@renderer/components/ui/Icon';
 import { Button } from '@renderer/components/ui/Button';
@@ -27,14 +28,34 @@ export function PersonalizationPanel({
   const [busy, setBusy] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
+  const { error: raiseError } = useToast();
 
-  const run = async (key: string, op: () => Promise<PersonalizationState>): Promise<void> => {
+  /**
+   * D-7b Site 6 — the shared write helper had NO catch, so a refused
+   * personalization write (`dashboard:read` + requireAuth) rejected UNHANDLED:
+   * the click cleared its spinner and did nothing, and the screen said nothing.
+   * Every failure now surfaces through the app's toast (role="alert",
+   * aria-live="assertive"), keyed per action+item so failures on different rows
+   * coexist. The boundary message is rendered VERBATIM (the D-6 `invoke` wrapper
+   * already restored the clean text). `onMutate` runs ONLY after a successful op
+   * (outside the try), so a setState throw can never raise a false failure toast,
+   * and on failure the list is left exactly as it was (no optimistic update).
+   */
+  const run = async (key: string, label: string, op: () => Promise<PersonalizationState>): Promise<void> => {
     setBusy(key);
+    let next: PersonalizationState;
     try {
-      onMutate(await op());
+      next = await op();
+    } catch (err) {
+      raiseError(label, {
+        message: err instanceof Error && err.message ? err.message : 'The request failed.',
+        dedupeKey: `personalize:${key}`,
+      });
+      return;
     } finally {
       setBusy(null);
     }
+    onMutate(next);
   };
 
   const open = (tab: string, query?: string): void => onNavigate(tab as EnterpriseTab, query || undefined);
@@ -55,7 +76,7 @@ export function PersonalizationPanel({
                   <div className="truncate text-2xs text-faint">{f.kind}{f.query ? ` · “${f.query}”` : ''}</div>
                 </div>
                 <Button variant="secondary" size="sm" icon="arrow-right" onClick={() => open(f.tab, f.query)}>Open</Button>
-                <Button variant="ghost" size="sm" icon="close" loading={busy === `unfav:${f.id}`} onClick={() => run(`unfav:${f.id}`, () => ipc.enterprise.personalization.favorite({ id: f.id, kind: f.kind, label: f.label, tab: f.tab, query: f.query }))}>Remove</Button>
+                <Button variant="ghost" size="sm" icon="close" loading={busy === `unfav:${f.id}`} onClick={() => run(`unfav:${f.id}`, 'Couldn’t remove favorite', () => ipc.enterprise.personalization.favorite({ id: f.id, kind: f.kind, label: f.label, tab: f.tab, query: f.query }))}>Remove</Button>
               </div>
             ))}
           </div>
@@ -66,7 +87,7 @@ export function PersonalizationPanel({
       <OpsPanel
         title="Recently Opened"
         subtitle={`${state.recents.length} recent surface(s)`}
-        actions={state.recents.length > 0 ? <Button variant="ghost" size="sm" icon="trash" loading={busy === 'clear'} onClick={() => run('clear', () => ipc.enterprise.personalization.clearRecents())}>Clear</Button> : undefined}
+        actions={state.recents.length > 0 ? <Button variant="ghost" size="sm" icon="trash" loading={busy === 'clear'} onClick={() => run('clear', 'Couldn’t clear recents', () => ipc.enterprise.personalization.clearRecents())}>Clear</Button> : undefined}
       >
         {state.recents.length === 0 ? (
           <EmptyState icon="clock" compact title="Nothing recent" description="Surfaces you open across the Enterprise experience appear here, most recent first." />
@@ -108,14 +129,14 @@ export function PersonalizationPanel({
                   </div>
                   {renaming === v.id ? (
                     <>
-                      <Button variant="primary" size="sm" loading={busy === `rename:${v.id}`} onClick={() => { const label = renameText.trim(); setRenaming(null); if (label) void run(`rename:${v.id}`, () => ipc.enterprise.personalization.renameView(v.id, label)); }}>Save</Button>
+                      <Button variant="primary" size="sm" loading={busy === `rename:${v.id}`} onClick={() => { const label = renameText.trim(); setRenaming(null); if (label) void run(`rename:${v.id}`, 'Couldn’t rename view', () => ipc.enterprise.personalization.renameView(v.id, label)); }}>Save</Button>
                       <Button variant="ghost" size="sm" onClick={() => setRenaming(null)}>Cancel</Button>
                     </>
                   ) : (
                     <>
                       <Button variant="secondary" size="sm" icon="arrow-right" onClick={() => open(v.tab, v.query)}>Open</Button>
                       <Button variant="ghost" size="sm" icon="settings" onClick={() => { setRenaming(v.id); setRenameText(v.label); }}>Rename</Button>
-                      <Button variant="ghost" size="sm" icon="trash" loading={busy === `del:${v.id}`} onClick={() => void run(`del:${v.id}`, () => ipc.enterprise.personalization.deleteView(v.id))}>Delete</Button>
+                      <Button variant="ghost" size="sm" icon="trash" loading={busy === `del:${v.id}`} onClick={() => void run(`del:${v.id}`, 'Couldn’t delete view', () => ipc.enterprise.personalization.deleteView(v.id))}>Delete</Button>
                     </>
                   )}
                 </div>

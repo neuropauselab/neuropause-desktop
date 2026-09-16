@@ -9,6 +9,7 @@
 import type { TenantAiPreferenceView } from '@neuropause/shared';
 import { tenantAiPreferenceStore } from './tenantAiPreferenceInstance';
 import { loadAiConfig, resolveAiMode } from './aiConfigStore';
+import { resolveProviderId } from './providerManager';
 import { composeAiPreferenceView } from './tenantAiPreferenceCompose';
 
 export function aiPreferenceView(): TenantAiPreferenceView {
@@ -30,8 +31,19 @@ export function aiPreferenceView(): TenantAiPreferenceView {
    * imports `electron`. Stated rather than glossed.
    */
   const cfg = loadAiConfig();
+  /**
+   * P13C ROUND 34 — D-2. The display and the router used to compute two
+   * DIFFERENT platform modes: this file substituted 'ollama' for a null
+   * provider ("the fail-safer of the two") while the router's
+   * `resolveProviderId()` substituted 'claude'. On a fresh install the view
+   * therefore reported `private_first` — so first-run showed no restriction
+   * warning — while the engine routed `external`. Fail-safe in the display
+   * with a permissive engine is the inversion of the intent. Both sides now
+   * read the SAME resolution, so `restrictedByPlatform` is finally computed
+   * against what the engine will actually do.
+   */
   return composeAiPreferenceView({
-    platformMode: resolveAiMode(cfg, cfg.provider ?? 'ollama'),
+    platformMode: resolveAiMode(cfg, resolveProviderId().provider),
     platformExternalConsent: cfg.externalConsent,
     row: tenantAiPreferenceStore.mine(),
   });

@@ -7,7 +7,336 @@ All notable changes to NeuroPause are documented here. The format is based on
 
 ## [Unreleased]
 
-_No unreleased changes; the current build is `1.0.0-rc.15`._
+_Everything in flight is described in the `1.0.0-rc.30` entry below._
+
+## [1.0.0-rc.30] — the pilot decision gate gets a thrower, and the gates get exercised (2026-09-12)
+
+Version bumped from `1.0.0-rc.29` via the sanctioned tool (`npm run version:bump`), five fields in
+sync. `v1.0.0-rc.29` is tagged and bound to `f0ba0e8`; a version is spent once a tag exists for it,
+so this work ships as rc.30 rather than producing a second binary under the rc.29 label — the
+`da36851` failure class Gate 27 exists to prevent. Gate 27 caught this bump itself: it failed on the
+first full-suite run of this work and named the remedy, which is what was then done.
+
+**The orphaned refusal path is closed.** `PilotErrorCode` declared six codes and the router mapped
+`human_decision_required` to HTTP 403, but at `f0ba0e8` nothing in the module ever threw it:
+`DECLARED_MINUS_THROWN = ['human_decision_required']`. The 403 was unreachable.
+`apps/backend/src/pilot/authority.ts` supplies the missing thrower — a deny-by-default decision
+authority evaluator — and after this change the set difference is empty. An enforcement code with no
+thrower is a mapping that looks like a control and is not one.
+
+**The enforcement gates are exercised rather than merely implemented.** `router.enforcement.test.ts`
+pins refusal at the consequential consumer: every outcome state (`CONTINUE`,
+`PAID_PENDING_HUMAN_DECISION`, `INSTITUTIONAL_PENDING`, `EXTENDED`, `STOPPED`, `COMPLETED`) is refused
+for a self-issued decision and writes nothing, an unauthenticated caller is rejected before the
+service, and `actor !== subject` is refused identically so the path cannot serve as a state-name
+oracle. `service.test.ts` adds the `NP-ENF-015-*` series, including `-016` (an evaluator injected via
+`Object.prototype` is refused with no write), `-026a/b/c` (`NO_AUTHORITY_CONFIGURED` answers UNKNOWN
+for every context, and the coercion withholds every non-ALLOW/DENY answer), and `-027`, a positive
+control proving the guard is not merely always-denying. 32 pilot tests, 450 backend tests, 53
+workspaces typechecking clean.
+
+**Certification artifacts.** Adds the SLSA-style supply-chain audit and the FG16 / IPC-ENV execution
+evidence under `certification/`, plus `certification/pilot-gate-closure/` carrying a state snapshot
+object, a pilot claim register, a test-to-artifact binding for every execution record, a regulatory
+reviewer briefing pack, and a gate status board.
+
+No authorization is created by this release. `GATE-INTENDED-USE` remains `NOT_ESTABLISHED`, no
+baseline is designated, no pilot claim is adopted, and no classification is assigned.
+
+## [1.0.0-rc.29] — the import journey waits for the refresh it started (2026-09-07)
+
+Version bumped from `1.0.0-rc.28` via the sanctioned tool (`npm run version:bump`). `v1.0.0-rc.28`
+was tagged but never published: both release workflows stopped in CI before packaging, Windows on a
+deterministic Gate-26 failure and macOS on a keychain-passphrase credential error. The tag remains
+bound to `a50e9d3` and is not moved, reused, or retro-fixed by this entry — a version is spent once
+a tag exists for it, so the corrected tree ships as rc.29.
+
+Test-only change. Gate 26's shell-journey test finished as soon as `EnterpriseRecordStore.list()`
+returned two rows, but those rows appear inside `governedImport`, roughly seventy lines before the
+`dp:import` handler returns. The test could therefore end mid-handler: `afterEach` deleted the temp
+directory under the still-running import, and the renderer's floating `onImported → loadHistory()`
+refresh landed its `dp:history` invoke after `clearRoutes()`, where it was recorded as unrouted and
+failed the *next* test. Only the slower Windows filesystem made the race deterministic, which is why
+it survived every macOS run and appeared as an unroutable channel in CI.
+
+The completion gate now waits for the History tab's count badge — the one signal on the Import tab
+that requires a *resolved* `dp:history`, since the badge renders only when `runs.length` is non-zero
+and `runs` is only ever assigned from an awaited `ipc.data.history()`. Reaching it entails that
+`dp:import` resolved, `onImported` ran, and the refresh completed while the routes were still
+registered. The Gate-26 store assertion and the unrouted-channel assertion are unchanged,
+`dp:history` is not allowlisted, no sleeps were added, and no production code is touched.
+
+## [1.0.0-rc.28] — the packaged runtime boots again; unclassified channels now fail CI, not customers (2026-09-07)
+
+Fixes the one defect that made the published `1.0.0-rc.27` Windows build enterprise-dead on
+arrival: S115 registered the workforce IPC channel `security:auditIntegrity.status` and wrote
+its intended `operations:read` scope into the handler comment, the channel-resource
+declaration, and the coverage-gate baseline — everywhere except `WORKFORCE_CHANNEL_PERMISSIONS`
+itself. The authz gate's composition-time throw (fail-closed, working as designed) then aborted
+`initRuntimeCore` in every packaged build: the window rendered, but secure IPC never registered
+and every governed operation hung. Proven against published rc.27 on a real Windows 11 Pro
+ARM64 runtime (S165: `Runtime core failed to initialize` in app.log; all acceptance harnesses
+watchdog-timed-out) and proven fixed there (S166: full boot-marker set, the 39-assertion
+payment-reversal suite, O2C and procurement journeys completed by clicks alone, restart
+durability with a byte-identical journal).
+
+One-line production change (`authzGate.ts` gains the missing classification) plus a new
+regression invariant, `authzGateCoverage.test.ts`: it derives the registered channel set from
+the workforce composition root itself — no second hand-maintained registry — and composes it
+through the real `withWorkforceAuthz`, so a registered-but-unclassified channel now fails CI
+instead of shipping. `1.0.0-rc.27` remains the previously published broken release; it is not
+retro-fixed by this entry.
+
+## [1.0.0-rc.27] — windows ci repair; the lockfile moves with the manifests again (2026-09-07)
+
+Version bumped from `1.0.0-rc.26` via the sanctioned tool (`npm run version:bump`). The rc.26
+bump (S158) had repeated the rc.24-class mistake — a manual edit moved only the two manifests,
+leaving the lockfile's three version fields at `1.0.0-rc.25` — and the live five-field coherence
+pin caught it on the very next CI run (macos-release 34087275974: 10,843/10,845 passed, the two
+failures being exactly this pin and the missing-CHANGELOG gate). This bump re-syncs all five
+fields. Neither `v1.0.0-rc.25` nor `v1.0.0-rc.26` produced an artifact, release, or feed; both
+tags stopped in CI pre-publish (rc.25: lockfile missing the `apps/web` workspace, fixed in
+S158; rc.26: this version drift plus the pre-existing Windows failures).
+
+rc.27 also carries the Windows CI repair: the release suite's Windows job had been red since
+tests introduced after `v1.0.0-rc.17` first met a real Windows runner (rc.19/rc.20 failed at
+lint before tests ran; rc.24/rc.26 failed in the same store tests). Root cause was a class of
+POSIX-only filesystem assumptions in three independent tmp+rename persistence routines —
+rename-over-an-open-file (EPERM/EBUSY on win32), chmod-based directory write denial (inert on
+win32), ENOENT-vs-ENOTDIR errno mapping for a file-as-parent open (a genuine fail-open on
+Windows), and teardown of directories with in-flight writes. The repair applies the repo's own
+precedent (the `enterpriseRecordStore` EPERM/EACCES/EBUSY rename retry) to the un-hardened
+stores, closes the fail-open hydrate hole, and corrects the two POSIX-shaped test fixtures to
+force genuine cross-platform failures instead of chmod. No test was skipped, weakened, or
+platform-excluded.
+
+## [1.0.0-rc.25] — version-tool repair: the lockfile now moves with the manifests (2026-09-04)
+
+Version bumped from `1.0.0-rc.24` under issuer directives A.363/A.364. The sanctioned bump tool
+(`scripts/bump-version.cjs`) updated only the two manifests and left `package-lock.json`
+behind — by rc.24 the committed lockfile still carried `1.0.0-rc.21` (root) and `1.0.0-rc.22`
+(`apps/desktop`), a five-field / three-value metadata disagreement no gate watched. The tool now
+moves all five authoritative version fields together (both manifests plus the lockfile's root
+`version`, `packages[""].version`, and `packages["apps/desktop"].version`), refuses to finish if
+any of the five disagree afterwards, and is pinned by
+`apps/desktop/src/main/release/versionBump.test.ts` (fixture proofs for rc.25, rc.26, and
+arbitrary semver, plus a live five-field coherence pin). No dependency resolution changed.
+
+## [1.0.0-rc.24] — S57–S64 governance ships: reversals, policy closures, and the un-reversal door shut (2026-09-03)
+
+Version bumped from `1.0.0-rc.23` because the rc.23 artifacts predate ERP sessions 57–64: the
+eight governed O2C reversal/settlement commands (S57), the operator policy closures and
+issued-invoice adjustment governance (S58–S60), the governed payment reversal with the
+financial delete boundary (S61, FG-activated in S62), and S64's closure of the S63-found
+reversal-record delete gap (a forced delete could un-reverse a payment; now refused
+unconditionally in the canonical delete guard). rc.24 is the first shippable artifact carrying
+all of it; promotion record: `certification/SESSION64-REVERSAL-DELETE-GUARD-AND-RC24-CERTIFICATION.md`.
+
+## [1.0.0-rc.23] — the S55 governance-closure fence set ships (2026-09-03)
+
+Version bumped from `1.0.0-rc.22` because the rc.22 artifacts predate ERP session 55: fourteen
+census-found governance gaps fenced in four classes (store-anchored token guards for journal
+`postedAt` / period `closedAt` / payment `bankReconciledAt`; marker and conversion-token
+immutability across bills, orders, quotes and received goods receipts; posting re-arm fences for
+shipping, multi-line dispatch/receipt and the stock ledger's declared immutability; the
+SetStatus-'deleted' second delete door closed) plus the packed-test-source exclusion. rc.23 is
+the first shippable artifact to contain them; its promotion record is
+`certification/SESSION56-S55-ARTIFACT-PROMOTION-CERTIFICATION.md`.
+
+## [1.0.0-rc.22] — first packaged artifact carrying S49+S50 procurement governance (2026-09-03)
+
+Version bumped from `1.0.0-rc.21` because the rc.21 artifact predates ERP sessions 49–50: the
+governed procurement UI closure (eight buy-side commands wired, PR/GR/vendor-payment edit
+fences) and the procurement surface hardening (PO received/reversal/`convertedReceipt` fences,
+census-backed reference pickers, the structured Lines editor replacing raw JSON). rc.22 is the
+first shippable artifact to contain them; its packaged acceptance record is
+`certification/SESSION51-PRODUCTION-PACKAGED-ACCEPTANCE.md` (signed, notarization pending
+operator credentials).
+
+## [1.0.0-rc.21] — release discipline, enforced by the suite (2026-08-31)
+
+Version bumped from `1.0.0-rc.20` because **392 commits** shipped after the
+rc.20 stamp. A build calling itself rc.20 today would not be the rc.20 whose
+Windows installer hash (`e861228f…8bc90`) is on record — the same `da36851`
+failure class this project has now caught three times, each catch later and
+larger than the last (rc.17→rc.18, rc.19→rc.20, and this one at 392 commits).
+
+### Added
+- **The failure class is now caught by the suite, not by eye.**
+  `releaseDiscipline.test.ts` treats a version as **spent** once a tag exists
+  for it: if `v<version>` is bound to a commit and HEAD is not that commit, the
+  tree is a version orphan and the test fails with the exact remedy. It also
+  refuses a CHANGELOG that claims "no unreleased changes" while commits sit past
+  the tag. `verify:release` structurally could not catch either — it compares an
+  update feed to the binaries beside it, so a stale-version build is perfectly
+  self-consistent and passes.
+- **`verify:release` gained the version-parity check** it was missing: the
+  update feed's version must equal the version the manifests declare.
+- **`verify-acceptance-artifact.cjs`** — binds an acceptance artifact to the
+  feature set the acceptance procedure assumes it has, so a machine session is
+  never spent discovering a limitation of the build (Gate 20).
+
+### Fixed
+- **A tenant switch now refreshes what is on screen** (Gate 26). The shell
+  remounted on a local *view* change but not on an *organization workspace*
+  change, so after switching tenants every already-mounted surface kept
+  rendering the previous tenant's data — the Business record counts, the Data
+  import history, module screens — until the user happened to navigate. The
+  view is now keyed on a tenant epoch driven by the existing
+  `enterprise:event` broadcast, so the numbers become true while the sidebar,
+  the active section and shell state all survive the switch. This was a display
+  correctness defect, never a data-access one: the record store re-resolves
+  scope on every call and fails closed, and the switch itself is
+  membership-gated.
+
+### Documentation
+- Windows acceptance re-based on local-first mode: sign-in is a detour, not a
+  precondition, so B3/B5/B6/B9 are drivable with no backend at all. The rc.20
+  residuals were misattributed to a missing cloud backend when the real cause
+  was that rc.20 predates local-first mode by three days.
+
+## [1.0.0-rc.20] — the release gate: every tenant gets a protected owner (2026-08-15)
+
+Program 13C rounds 35–40. Version bumped from `1.0.0-rc.19` because five
+rounds of fixes shipped since the rc.19 stamp — a build calling itself rc.19
+today would not be the rc.19 whose Windows installer hash is on record.
+
+### Security
+- **Provisioned organizations finally have a protected owner** (round 40, the
+  last release blocker). The root-of-trust guards were keyed on the seeded
+  literal `user-owner`, so in any runtime-created organization a Manager could
+  re-role, suspend, re-email, or delete the creator, and an Admin could delete
+  the Owner role (provisioning created every role `builtIn:false`).
+  Provisioning now records `Organization.ownerUserId` in the same act that
+  creates the owner and marks its spec-derived roles built-in; the user
+  patch/delete guards key on the target org's recorded owner; legacy stores
+  heal on load when the owner is unambiguous and say so when it is not.
+
+### Fixed
+- Boot-window races closed at their common root (rounds 36–39): the AI engine
+  rebuilds its router when tenant resolution recovers (a local-only user with
+  a running Ollama no longer boots into "No AI model"); the Assistant's
+  conversation list retries once on the runtime-ready broadcast.
+- The sidebar workspace switcher now fronts the real organization workspaces
+  through the membership-gated switch; the local tab-set list is labeled
+  "Views on this device"; the advertised ⌘1–9 shortcuts work.
+- Onboarding resumes at its persisted step; Sign-In is a detour, not a
+  forfeit; failed completion/skip writes are surfaced (round 36).
+- Shutdown flush barrier + atomic, restart-enforcing restore (round 37).
+- Administration, family dashboards, feature flags, subscriptions, trusted
+  devices, and assistant list reads surface failures instead of rendering
+  them as emptiness (rounds 36–38).
+
+### Added
+- End-to-end product journey suite (`productJourney.test.ts`, 8 phases) and
+  the driven-UI acceptance evidence for Gates 18/26.
+- `system:runtimeState` + ready broadcast; boot-window router fails closed.
+
+## [1.0.0-rc.19] — AI providers: the privacy choice becomes real (2026-08-14)
+
+Program 13C round 34. Version bumped from `1.0.0-rc.18` because an rc.18
+binary was already built from `ee3da3d` — one version, one binary.
+
+- **The onboarding "On this device" choice now changes routing.** The tenant
+  AI preference was written and displayed for seventeen rounds while no
+  request path ever read it — a fresh install with an environment API key
+  routed to the cloud after the user chose local. The `min(platform, tenant)`
+  law now clamps the route plan inside the single candidate-assembly site the
+  router and the Settings surface share; the engine reconfigures when the
+  preference changes and on every workspace switch. The routing display and
+  the router also now compute the platform mode from the same resolution, so
+  the first-run restriction warning fires when it is true.
+- **OpenAI joins Anthropic and Ollama on the same provider contract.** One
+  `ModelClient` implementation (`Bearer` auth, per-provider error naming for
+  401/429), its own Secure Vault entry, per-provider key entry/test/removal in
+  Settings, a routed external candidate that leads when selected and falls
+  back under the same consent rules as Anthropic. No provider-specific
+  architecture anywhere else.
+- **Local AI setup distinguishes "install it" from "start it".** Detection now
+  probes the Ollama binary and the service independently and reports models;
+  Settings and first-run show the state with its own action — official
+  download page link (explicit user action, no silent installs), `ollama
+  serve` hint, or a model download list with sizes shown before any pull. A
+  model pull runs only on explicit approval, through Ollama's own API.
+- **Settings shows the organization preference** (read/set with tenant RBAC)
+  beside the platform mode, with the effective mode named; the AI settings
+  panel's actions no longer swallow refusals silently.
+
+## [1.0.0-rc.18] — Tenant-resolution diagnostics and owner-row hardening (2026-08-14)
+
+Program 13C rounds 31–32. Version bumped from `1.0.0-rc.17` because the rc.17
+tag points at `e09df1e` and these changes landed after it — the same rule that
+produced rc.17 itself: no two different binaries may claim one version.
+
+- **W-10 — the tenant resolver now reports its own refusals.** Every refusal
+  out of `resolveFull()` carries a redacted diagnostic (local email parts
+  reduced to a length, domains kept) built from the values the resolution
+  actually used. The transition is logged as `Tenant resolution LOST` with
+  `msSinceLastSuccess`; steady-state refusals are throttled to one line per
+  reason per minute with a suppressed-count; recovery closes the bracket with
+  the outage duration. This is the instrumentation for the Windows
+  `not_a_member` fault.
+- **O-11 — a member edit that omitted a field erased it.** `updateUser` spread
+  the handler's object-literal patch over the row, so an omitted `email`
+  arrived as `undefined` and was written — persistently, since JSON drops
+  `undefined` — removing the person from their own organization. The store now
+  drops `undefined` keys (an explicit `null` still clears), and the resolver's
+  membership predicate fails closed on non-string emails instead of throwing.
+- **O-12 — the owner-claim path has its own narrow authority.** The claim rule
+  moved inside `orgStore.claimOwnerIdentity`; cross-tenant safety is structural
+  (the seeded org and owner id are compile-time constants) rather than
+  caller-scope-dependent, so first-claim and same-account repair now run even
+  while tenant resolution is refusing. A corrupt owner row is never claimable.
+- **O-13 — the owner row's email is immutable through member edits.**
+  `guardOwnerUserPatch` strips `email` alongside `roleIds`/`status`: membership
+  is decided by that address, so an in-tenant rewrite was an ownership transfer
+  wearing a profile edit. Handoff, when it exists, will be a dedicated flow.
+
+## [1.0.0-rc.17] — Windows runtime and release-pipeline repair (2026-08-14)
+
+Program 13C rounds 24–26. No feature work; every entry is a defect found with a
+negative control taken from git rather than reconstructed.
+
+- **O-8 — a restart re-fired automation rules.** The scheduler's
+  once-per-occurrence guard lived only in memory, and an `interval` schedule
+  reports due on every tick by construction, so relaunching inside the bucket
+  re-executed an occurrence that had already fired — once per restart, and a
+  crash loop is a restart loop. The claim is now persisted on the rule and
+  written before the fire, so at-most-once means the same thing on both sides of
+  a restart.
+- **O-9 — the parked-reference retry ran as the wrong tenant.** One shared
+  debounce timer, cleared and re-armed on every save on the install, executed
+  the retry pass under whoever was signed in 400 ms later — and one tenant's
+  save cancelled another's pending pass, so under sustained activity the queue
+  was never drained by that path at all. Same shape Round 10 fixed in the graph,
+  memory and scheduler call sites; this fourth one was missed.
+- **W-1 — an audit write replaced the error it was recording.** A permission
+  refusal raises a durable hold; a hold needs an owner; with no tenant scope
+  that write threw and its exception escaped in place of the authorization
+  error. Users saw "Cannot record a hold…" instead of the sentence naming the
+  actual condition. Recording a refusal can no longer change the refusal.
+- **W-2 — Windows received a frameless window.** `titleBarStyle: 'hiddenInset'`
+  was applied unconditionally under a comment claiming it was ignored off macOS.
+  Windows degrades it to `hidden`, producing a window with no close, minimise or
+  maximise controls.
+- **W-3 — both release workflows were unparseable.** A guard referenced the
+  `secrets` context inside a step `if:`, which GitHub rejects at load time, so
+  neither `windows-release` nor `macos-release` could be dispatched.
+- **W-4 — CI now parses every workflow** and rejects unavailable contexts in
+  `if:`, because nothing in the repository had ever validated a workflow file.
+- **W-5 — eight tenant refusals reached callers as one sentence.** The resolver
+  distinguishes `not_signed_in`, `not_loaded`, `no_workspace`,
+  `workspace_orphaned`, `not_a_member`, `not_in_workspace`, `member_inactive`
+  and `tenant_not_operable`, each with its own text; the authorization gate
+  discarded all of them. Each now reaches the caller with its own message and a
+  stable code.
+- **O-10 — eight gate verdicts were recorded under the wrong identity**, because
+  the repository's own `.git/config` named a different author. Corrected, and
+  the divergence left visible in the certification record rather than erased.
+
+Version bumped from `1.0.0-rc.16` because two different Windows binaries were
+built under that version with different hashes, which makes release provenance
+unresolvable.
 
 ## [1.0.0-rc.15] — Global Product RC: Pilot Readiness (2026-08-08)
 

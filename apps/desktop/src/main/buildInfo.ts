@@ -57,9 +57,14 @@ export interface BuildInfo {
   releaseNotes: string | null;
 }
 
+// Wave-2 Slice-14 — build-time constant (electron.vite.config.ts `define`); false in every release build.
+declare const __NP_E2E__: boolean;
+
 export function getBuildInfo(): BuildInfo {
   return {
-    version: app.getVersion(),
+    // An e2e-capable build (with the seed seam) MUST NOT masquerade as a release: stamp its version so every
+    // about-box / telemetry / artifact reports `-e2e`. Folds to a plain version in release builds.
+    version: __NP_E2E__ ? `${app.getVersion()}-e2e` : app.getVersion(),
     channel: resolveChannel(process.env.NEUROPAUSE_CHANNEL ?? generated.channel),
     commit: process.env.NEUROPAUSE_BUILD_COMMIT ?? generated.commit ?? 'unknown',
     releaseNotes: generated.releaseNotes ?? null,

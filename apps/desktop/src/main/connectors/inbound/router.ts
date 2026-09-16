@@ -17,6 +17,7 @@
  * Deps-injected and transport-agnostic; never throws on a bad delivery — returns a structured,
  * non-sensitive result.
  */
+import type { PlatformEventInput } from '@neuropause/shared';
 import { createLogger } from '../../logger';
 import {
   graphValidationResponse,
@@ -39,6 +40,15 @@ export interface InboundWebhookPorts {
   /** Trigger an incremental sync of one account (the existing connector sync path). */
   requestSync: (connectorId: string, accountId: string) => Promise<unknown>;
   now: () => number;
+  /**
+   * S114 (FG-S113-WEBHOOK-EVENT), additive + optional. Emit ONE minimal, read-only Platform Event
+   * onto the EXISTING platform event bus when an inbound webhook is verified — so intelligence /
+   * notification / timeline consumers see a real-time "verified inbound webhook" signal. Absent ⇒
+   * no-op (preserves prior behavior). Carries NO secrets / OAuth tokens / auth headers / raw payload.
+   */
+  emitPlatformEvent?: (input: PlatformEventInput) => void;
+  /** Additive + optional: the connector's owning workspace/tenant id (for the event metadata). */
+  resolveTenantId?: () => string | null;
 }
 
 /** One inbound delivery, normalized by whatever transport received it. Header keys MUST be lowercased. */
@@ -91,7 +101,12 @@ export class InboundWebhookRouter {
       return reject(verdict.reason ?? 'verification failed');
     }
 
-    // 4) Authentic → trigger a targeted incremental sync of the connector's connected accounts.
+    // 4a) Verified → emit ONE minimal, read-only real-time event onto the existing bus (S114). This is
+    // NOT an ERP mutation and carries no secret/payload — only {connectorId, provider, tenantId, kind,
+    // receivedAt}. Fired only AFTER signature verification passes (never for a rejected/forged delivery).
+    this.emitVerified(d);
+
+    // 4b) Authentic → trigger a targeted incremental sync of the connector's connected accounts.
     const synced = await this.fanOutSync(d.connectorId);
     return { accepted: true, synced };
   }
@@ -140,6 +155,37 @@ export class InboundWebhookRouter {
       }
       default:
         return { ok: false, reason: 'unknown provider' };
+    }
+  }
+
+  /**
+   * S114 — emit ONE minimal, read-only Platform Event for a VERIFIED inbound webhook. No-op if no
+   * emit port is wired. Carries only non-sensitive identifiers + kind + receipt time (never the raw
+   * payload, headers, secret, or token). Reuses the existing `connector.online` event type (an
+   * authentic inbound signal proves the connector is live) with `metadata.kind = 'inbound_webhook'`
+   * so consumers distinguish it; adding a dedicated event TYPE would touch frozen shared types and is
+   * out of the FG-S113-WEBHOOK-EVENT scope (documented as a follow-up gate).
+   */
+  private emitVerified(d: InboundDelivery): void {
+    const emit = this.ports.emitPlatformEvent;
+    if (!emit) return;
+    try {
+      emit({
+        type: 'connector.online',
+        category: 'connector',
+        source: 'connectors',
+        actor: { kind: 'connector', id: d.connectorId },
+        resource: { type: 'connector', id: d.connectorId, name: null },
+        metadata: {
+          connectorId: d.connectorId,
+          provider: d.provider,
+          tenantId: this.ports.resolveTenantId?.() ?? null,
+          kind: 'inbound_webhook',
+          receivedAt: this.ports.now(),
+        },
+      });
+    } catch {
+      // best-effort real-time signal — never let event emission break webhook handling.
     }
   }
 

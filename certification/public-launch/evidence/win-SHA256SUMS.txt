@@ -1,0 +1,6 @@
+da5fd196c195b9d88c30c7b07311ba965507b3e286776b4580ab1b4e920a6dca  beta.yml
+967a1c7c9d949bcb8efa5a336ad7070195bc58b5b23bf90466cd1e59a4421d8d  build-info.json
+cb87c25e5aef75bf2533f2e34d491ae8f5f33a043bc4c87bf68886656495fdff  NeuroPause 1.0.0-rc.30.exe
+7c5da406fad2bcacf8b07352f75fbd3f55a25feb5c533b6c320c8a7f1c4b2182  NeuroPause-1.0.0-rc.30-win.zip
+fc13c84d041ece69cae5737126a6e60cfada55491a7a12d759b8bb2e911bb4e4  NeuroPause-Setup.exe
+d84843f67788ae0fac5693e584f4aa78df46e53f56dd1c2c04bb0efe052f45c4  NeuroPause-Setup.exe.blockmap

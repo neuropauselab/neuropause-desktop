@@ -21,7 +21,9 @@ import type {
   TenantScope,
 } from '@neuropause/shared';
 import { createLogger } from '../../logger';
-import { buildSeed, OWNER_USER_ID } from './seed';
+import { readStoreFile } from '../../storage/storeEnvelope';
+import { buildSeed, BUILT_IN_ROLE_SPECS, ORG_ID as SEED_ORG_ID, OWNER_USER_ID } from './seed';
+import { decideOwnerClaim } from '../authzGate';
 import { declareStoreScope } from '../../tenancy/storeScope';
 import { registerTenantStore } from '../../tenancy/tenantOwnedStore';
 
@@ -87,6 +89,12 @@ export interface CreateRoleInput {
   name: string;
   description: string;
   permissions: EnterprisePermission[];
+  /**
+   * Round 40: set ONLY by provisioning for the spec-derived role set. The IPC
+   * create-role schema has no such field, so callers over the wire cannot
+   * mint undeletable roles.
+   */
+  builtIn?: boolean;
 }
 
 /** A live worker summary, just enough to fold into the org chart. */
@@ -152,7 +160,9 @@ export class OrgStore extends EventEmitter {
    *
    *   1. Create an organization. Anyone may; you are its Owner.
    *   2. Call `enterprise:org.updateUser` with `{ id: 'user-owner', email: <you> }`.
-   *      `guardOwnerUserPatch` strips `roleIds` and `status` — NOT `email`.
+   *      `guardOwnerUserPatch` stripped `roleIds` and `status` — NOT `email`.
+   *      (Round 32 / O-13 later closed the email door too, same-tenant included;
+   *      this narrative records the exploit as it existed in Round 9.)
    *   3. That row lives in the VICTIM's organization and holds `role-owner`.
    *   4. You are now the victim tenant's Owner.
    *
@@ -240,16 +250,38 @@ export class OrgStore extends EventEmitter {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    try {
-      const raw = await fs.readFile(this.filePath, 'utf8');
-      const data = JSON.parse(raw) as Partial<OrgFile>;
+    /**
+     * P13C ROUND 33 — QUARANTINE, NEVER RESEED OVER A CORRUPT FILE.
+     *
+     * This store decides WHO EVERYONE IS, and its old load path was
+     * `catch { applySeed() }` — which cannot tell a first run from a truncated
+     * write, and whose seed schedules a persist that RENAMES THE DEMO DATA
+     * OVER the customer's real org chart: organizations, units, roles, every
+     * member row including the emails membership is decided by. One torn
+     * write, and the install silently becomes a fresh demo, permanently.
+     *
+     * `readStoreFile` (Phase 8's quarantine-not-reset envelope, adopted by 21
+     * stores and skipped by exactly the ones that mattered most) preserves the
+     * unreadable file beside itself for support/recovery; legacy un-stamped
+     * files still read as v1, so existing installs load unchanged.
+     */
+    const read = await readStoreFile<Partial<OrgFile>>(this.filePath);
+    if (read.state === 'loaded' && read.data !== null) {
+      const data = read.data;
       for (const o of data.organizations ?? []) if (o?.id) this.organizations.set(o.id, o);
       for (const u of data.units ?? []) if (u?.id) this.units.set(u.id, u);
       for (const r of data.roles ?? []) if (r?.id) this.roles.set(r.id, r);
       for (const u of data.users ?? []) if (u?.id) this.users.set(u.id, u);
       if (!data.seeded || this.organizations.size === 0) this.applySeed();
       else this.reconcileBuiltInRoles();
-    } catch {
+      this.healProvisionedOwnerAnchors();
+    } else {
+      if (read.state !== 'first-run') {
+        log.error('Org store unreadable — original preserved, starting from seed', {
+          state: read.state,
+          quarantinedTo: read.quarantinedTo,
+        });
+      }
       this.applySeed();
     }
     this.loaded = true;
@@ -294,6 +326,59 @@ export class OrgStore extends EventEmitter {
     if (changed) this.schedulePersist();
   }
 
+  /**
+   * P13C ROUND 40 — GATE 27. Provisioned-owner protection for PRE-round-40
+   * stores. Provisioning now records `Organization.ownerUserId` and marks the
+   * spec roles built-in at creation; organizations provisioned before that
+   * have neither, which is exactly the reported exploit surface: any Manager
+   * could edit/suspend/delete the creator, any Admin could delete the Owner
+   * role. On load:
+   *
+   *  1. A non-seeded organization without an owner anchor is healed from its
+   *     rows when UNAMBIGUOUS: exactly one human member titled 'Owner' holding
+   *     this org's role named 'Owner' (the shape provisioning always wrote).
+   *     Zero or several candidates → left unanchored and logged — inventing a
+   *     root of trust would be worse than admitting there isn't one.
+   *  2. Roles in non-seeded organizations whose name matches a built-in spec
+   *     are re-marked `builtIn` (provisioning created them from the specs but
+   *     `createRole` hardcoded false). A user-made custom role that reuses a
+   *     spec name is caught too — deliberate: freezing a role named 'Owner'
+   *     fails closed, deleting it fails open.
+   */
+  private healProvisionedOwnerAnchors(): void {
+    const specNames = new Set(BUILT_IN_ROLE_SPECS.map((s) => s.name));
+    let changed = false;
+    for (const role of this.roles.values()) {
+      if (role.orgId !== SEED_ORG_ID && !role.builtIn && specNames.has(role.name)) {
+        this.roles.set(role.id, { ...role, builtIn: true });
+        changed = true;
+      }
+    }
+    for (const org of this.organizations.values()) {
+      if (org.id === SEED_ORG_ID || org.ownerUserId) continue;
+      const ownerRoleIds = new Set(
+        [...this.roles.values()].filter((r) => r.orgId === org.id && r.name === 'Owner').map((r) => r.id),
+      );
+      const candidates = [...this.users.values()].filter(
+        (u) =>
+          u.orgId === org.id &&
+          u.kind === 'human' &&
+          u.title === 'Owner' &&
+          u.roleIds.some((id) => ownerRoleIds.has(id)),
+      );
+      if (candidates.length === 1 && candidates[0]) {
+        this.organizations.set(org.id, { ...org, ownerUserId: candidates[0].id });
+        changed = true;
+      } else {
+        log.warn('Provisioned organization has no unambiguous owner to anchor', {
+          orgId: org.id,
+          candidates: candidates.length,
+        });
+      }
+    }
+    if (changed) this.schedulePersist();
+  }
+
   private async persist(): Promise<void> {
     const file: OrgFile = {
       organizations: [...this.organizations.values()],
@@ -321,6 +406,11 @@ export class OrgStore extends EventEmitter {
         await this.persist();
       }
     } catch (err) {
+      // The write failed AFTER `dirty` was cleared, so without this line the
+      // pending change would never be retried — a transient ENOSPC/EPERM
+      // silently lost the mutation until the next unrelated edit. Re-marking
+      // dirty means the next schedulePersist (or flush) tries again.
+      this.dirty = true;
       log.error('Org persist failed', { error: String(err) });
     } finally {
       this.persisting = false;
@@ -389,15 +479,24 @@ export class OrgStore extends EventEmitter {
    * indistinguishable from a pre-P11 one, and the default exists only for data
    * that predates the field.
    *
-   * Honest note: this method still has no caller and no IPC channel, so a second
-   * tenant cannot be created from the product yet. It is correct rather than
-   * reachable, and the report says so.
+   * GATE 23 — organization names are unique case-insensitively GLOBALLY. There
+   * is one tenant per Organization, so "global" is across every org this store
+   * holds. A duplicate fails closed with a user-facing message. The seed path
+   * (`applySeed`/`buildSeed`) writes via `this.organizations.set` directly, so
+   * seeded names never trip this check. (Reached in-product via
+   * `provisionOrganization` → `EnterpriseOrganizationCreate`.)
    */
   createOrganization(
     name: string,
     description = '',
     type: Organization['type'] = 'business',
   ): Organization {
+    const wanted = name.trim().toLowerCase();
+    for (const existing of this.organizations.values()) {
+      if (existing.name.trim().toLowerCase() === wanted) {
+        throw new Error(`An organization named "${name.trim()}" already exists.`);
+      }
+    }
     const now = new Date().toISOString();
     const org: Organization = {
       id: `org_${randomUUID()}`,
@@ -413,6 +512,71 @@ export class OrgStore extends EventEmitter {
     this.organizations.set(org.id, org);
     this.touch();
     return org;
+  }
+
+  /**
+   * GATE 23 — remove a just-provisioned organization and everything it owns.
+   *
+   * Provisioning a second organization writes across TWO stores (this one and
+   * the workspace store) with no transaction. If a later step fails, the org,
+   * its roles and its owner row are already committed here — an "organization
+   * with no workspace" that cannot be entered (the resolver keys the tenant off
+   * the workspace) and cannot be cleaned up. This is the rollback the provision
+   * flow calls on failure. It removes ONLY rows whose `orgId` matches, plus the
+   * org row itself, and REFUSES the seeded organization outright — it is never a
+   * general delete path and is not exposed over IPC.
+   */
+  removeProvisionedOrganization(orgId: string): void {
+    if (orgId === SEED_ORG_ID) {
+      throw new Error('The seeded organization cannot be removed.');
+    }
+    if (!this.organizations.has(orgId)) return;
+    for (const [id, u] of this.users) if (u.orgId === orgId) this.users.delete(id);
+    for (const [id, r] of this.roles) if (r.orgId === orgId) this.roles.delete(id);
+    for (const [id, unit] of this.units) if (unit.orgId === orgId) this.units.delete(id);
+    this.organizations.delete(orgId);
+    this.touch();
+  }
+
+  /**
+   * P13C ROUND 40 — GATE 27. The protected owner of a tenant, if it has one.
+   * Seeded organization → the compile-time root of trust; provisioned →
+   * whatever provisioning recorded (or the load-time heal derived).
+   */
+  ownerUserIdFor(orgId: string): string | null {
+    if (orgId === SEED_ORG_ID) return OWNER_USER_ID;
+    return this.organizations.get(orgId)?.ownerUserId ?? null;
+  }
+
+  /**
+   * The owner id the root-of-trust guards must compare a mutation TARGET
+   * against. Resolved from the target's OWN organization, so the guards hold
+   * in every tenant, not just the seeded one. A target with no resolvable
+   * anchor falls back to the seeded literal — exactly the pre-round-40
+   * behaviour, never less protection.
+   */
+  protectedOwnerIdForTarget(userId: string): string {
+    const target = this.users.get(userId);
+    const ownerId = target ? this.ownerUserIdFor(target.orgId) : null;
+    return ownerId ?? OWNER_USER_ID;
+  }
+
+  /**
+   * Record the provisioned owner, once. First-set-wins like the seeded claim
+   * rule: the anchor is written by provisioning in the same act that creates
+   * the owner row, and no later caller — not even another provisioning run —
+   * may re-point it. Refuses the seeded org (its anchor is compile-time), an
+   * already-anchored org, and a user outside the org.
+   */
+  assignProvisionedOwner(orgId: string, userId: string): boolean {
+    if (orgId === SEED_ORG_ID) return false;
+    const org = this.organizations.get(orgId);
+    if (!org || org.ownerUserId) return false;
+    const user = this.users.get(userId);
+    if (!user || user.orgId !== orgId) return false;
+    this.organizations.set(orgId, { ...org, ownerUserId: userId, updatedAt: new Date().toISOString() });
+    this.touch();
+    return true;
   }
 
   /**
@@ -520,7 +684,32 @@ export class OrgStore extends EventEmitter {
     // membership is decided by email on this row. Was `this.users.get(id)`.
     const user = this.ownedUser(id);
     if (!user) return null;
-    const next: OrgUser = { ...user, ...patch, updatedAt: new Date().toISOString() };
+    /**
+     * P13C ROUND 31 — O-11. A PARTIAL PATCH MEANS "THESE FIELDS", NOT "THESE
+     * FIELDS PLUS UNDEFINED FOR THE REST".
+     *
+     * Object spread copies own enumerable keys REGARDLESS of value, so
+     * `{ ...user, ...{ email: undefined } }` SETS `email` to `undefined` — it
+     * does not leave the previous value alone. Every caller builds its patch as
+     * an object literal (see the `EnterpriseOrgUpdateUser` handler), so a
+     * request that simply omits a field arrives here carrying that field with
+     * the value `undefined`, and erases it.
+     *
+     * On the owner row that is not cosmetic. `email` is the key membership is
+     * decided by; `JSON.stringify` drops undefined, so the erasure survives a
+     * restart; and the resolver's `m.email !== null` check then called `.trim()`
+     * on it. One optional field left out of one member edit could take tenant
+     * resolution down for every subsequent request in the process.
+     *
+     * Deleting the key is right rather than coercing to null, because null is a
+     * MEANINGFUL value here — an unclaimed owner — so a patch that genuinely
+     * wants to clear a field says `null` and still can.
+     */
+    const applied: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (v !== undefined) applied[k] = v;
+    }
+    const next: OrgUser = { ...user, ...applied, updatedAt: new Date().toISOString() };
     this.users.set(id, next);
     this.touch();
     return next;
@@ -546,7 +735,10 @@ export class OrgStore extends EventEmitter {
       name: input.name,
       description: input.description,
       permissions: input.permissions,
-      builtIn: false,
+      // Round 40: provisioning marks its spec-derived roles built-in (the
+      // Owner role above all — a deletable root of trust was the exploit).
+      // The IPC create-role handler never passes this; user roles stay custom.
+      builtIn: input.builtIn ?? false,
       createdAt: now,
       updatedAt: now,
     };
@@ -579,15 +771,56 @@ export class OrgStore extends EventEmitter {
     return true;
   }
 
-  /** Rename the seeded owner to the signed-in account (idempotent best-effort). */
-  setOwnerIdentity(name: string, email: string | null): void {
-    // P13C ROUND 10 NEW-H6 — OWNER_USER_ID is a compile-time constant naming a
-    // row in the SEEDED organization. Claiming it from another tenant's session
-    // is the takeover by a second door. Was `this.users.get(OWNER_USER_ID)`.
-    const owner = this.ownedUser(OWNER_USER_ID);
-    if (!owner) return;
-    this.users.set(owner.id, { ...owner, name, email, updatedAt: new Date().toISOString() });
+  /**
+   * Bind the seeded owner to the signed-in account, under the first-claim rule.
+   *
+   * P13C ROUND 32 — O-12. NARROW AUTHORITY, DECIDED HERE, NOT BY THE CALLER.
+   *
+   * The Round 10 version (`setOwnerIdentity`) went through `ownedUser`, which
+   * requires a RESOLVED caller tenant. That gate is right for every ordinary
+   * mutation and wrong for this one, twice over:
+   *
+   *  1. It made the claim depend on unrelated mutable state. Ownership is
+   *     "the first account to SIGN IN claims the seeded org" — an install-level
+   *     rule. Whether the active workspace happened to belong to the seeded
+   *     organization at that moment is not part of the rule, yet it decided the
+   *     outcome.
+   *  2. It made recovery impossible (O-12). Once tenant resolution refuses,
+   *     `scope()` is null, `ownedUser` returns null, and the only non-IPC
+   *     writer of the owner row silently no-ops for the life of the process —
+   *     the reason the Windows outage is permanent until a restart.
+   *
+   * The authority granted instead is EXACTLY the claim rule, not a general
+   * write: the decision lives inside this method (`decideOwnerClaim`), so no
+   * caller can use this path to bind an arbitrary identity to the row. The
+   * cross-tenant guard Round 10 added is preserved STRUCTURALLY rather than by
+   * caller scope — the method can only ever touch `OWNER_USER_ID` inside the
+   * SEEDED organization, both compile-time constants:
+   *
+   *  - a CLAIMED owner is never rebound to a different account (first-claim-wins);
+   *  - a CORRUPT row (email present but not string-or-null — the O-11 shape)
+   *    refuses rather than becoming claimable by whoever signs in next;
+   *  - an owner row that is missing, or somehow not in the seeded org, refuses.
+   *
+   * Returns true when a write happened, so the caller can log the claim.
+   */
+  claimOwnerIdentity(session: { name: string; email: string }): boolean {
+    const owner = this.users.get(OWNER_USER_ID);
+    if (!owner) return false;
+    if (owner.orgId !== SEED_ORG_ID) return false;
+    // The O-11 disk shape: an email key that was erased loads as undefined.
+    // Fail closed — a corrupt root of trust is repaired by support, not claimed.
+    if (owner.email !== null && typeof owner.email !== 'string') return false;
+    const claim = decideOwnerClaim({ name: owner.name, email: owner.email }, session);
+    if (!claim) return false;
+    this.users.set(owner.id, {
+      ...owner,
+      name: claim.name,
+      email: claim.email,
+      updatedAt: new Date().toISOString(),
+    });
     this.touch();
+    return true;
   }
 
   /**

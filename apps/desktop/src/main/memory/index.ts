@@ -65,6 +65,7 @@ import type { PlatformEventType } from '@neuropause/shared';
 import type { IpcBroadcaster } from '@neuropause/shared';
 import { runOutsidePrincipal } from '../tenancy/backgroundPrincipal';
 import type { TenantScope } from '@neuropause/shared';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 const log = createLogger('memory');
 
@@ -107,6 +108,11 @@ export interface MemorySubsystem {
 
 export async function initMemory(deps: MemorySubsystemDeps): Promise<MemorySubsystem> {
   await memoryStore.load();
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('memory-stores', async () => {
+    await Promise.allSettled([memoryStore.flush(), memoryAuditLog.flush()]);
+  });
   // P13C Round 7 — the audit trail carries assistant-written record titles.
   memoryAuditLog.bindScope(deps.scope);
   await memoryAuditLog.load();

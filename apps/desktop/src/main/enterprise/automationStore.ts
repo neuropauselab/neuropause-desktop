@@ -225,6 +225,32 @@ export class AutomationStore {
     return rule;
   }
 
+  /**
+   * P13C ROUND 24 — O-8. DURABLE ONCE-PER-OCCURRENCE.
+   *
+   * Records that the schedule tick has claimed `occurrenceKey` for this rule, so
+   * the claim survives the process that made it. Written BEFORE the fire, which
+   * is where the in-memory guard sets its own entry — the two must agree, or a
+   * restart changes the delivery promise from at-most-once to at-least-once
+   * without anyone choosing that.
+   *
+   * SCOPED THROUGH `get(id)`, so this is not a back door: a foreign id is "not
+   * found" here exactly as it is for `setStatus`, and the tick calls it inside
+   * the rule owner's own principal.
+   *
+   * Returns false when the id resolves to nothing, so the caller can tell
+   * "claimed" from "there was nothing to claim" instead of assuming.
+   */
+  async recordScheduledOccurrence(id: string, occurrenceKey: string): Promise<boolean> {
+    this.load();
+    const rule = this.get(id);
+    if (!rule) return false;
+    if (rule.lastScheduledOccurrence === occurrenceKey) return true;
+    rule.lastScheduledOccurrence = occurrenceKey;
+    await this.persist();
+    return true;
+  }
+
   /** The CALLER'S active rules — the interactive runner's working set. */
   activeRules(): AutomationRule[] {
     this.load();

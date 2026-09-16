@@ -1,0 +1,23 @@
+{
+  "_template": true,
+  "_readme": [
+    "TEMPLATE ONLY — NOT A TRUST LIST. scripts/authority-admission.cjs treats a trust file with _template: true or an empty trusted_issuers as AUTHORITY_TRUST_ABSENT and DENIES.",
+    "The real file is release-policy/authority-trust.json. It must be committed by a repository admin who is NOT the release subject (cannot push release tags, does not author the release workflows, does not run the build) through a reviewed pull request.",
+    "It must NOT be generated, copied or edited by any script, workflow or tool. No script in this repository writes it; the gate only reads it.",
+    "trusted_issuers: identities allowed to issue np-authority/1 objects. Each must be different from every reviewer and from every subject principal.",
+    "issuer_keys: for every trusted issuer, its Ed25519 PUBLIC key as PEM (SPKI). Private keys never enter the repository, CI, or any variable/secret.",
+    "allowed_reviewers: identities allowed to approve the protected deployment; must not overlap trusted_issuers.",
+    "consumed_nonces: the single-use ledger. After every ADMITTED release the admin appends that authority's decision_nonce here via reviewed PR; the gate never writes it.",
+    "accept_synthetic_authorities must stay false: FORENSIC_SYNTHETIC_ONLY objects are for tests only and are rejected in production."
+  ],
+  "schema_version": "np-authority/1",
+  "signature_algorithm": "ed25519",
+  "scope": "production-release",
+  "tag_pattern": "v*",
+  "trusted_issuers": [],
+  "issuer_keys": {},
+  "allowed_reviewers": [],
+  "consumed_nonces": [],
+  "deployment_time_validity": true,
+  "accept_synthetic_authorities": false
+}

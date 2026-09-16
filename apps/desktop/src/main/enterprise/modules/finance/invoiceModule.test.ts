@@ -26,7 +26,7 @@ import {
   type PlatformEventInput,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../../ipc/secureBridge';
-import { EnterpriseModuleRegistry, buildModuleHandlers } from '../../framework';
+import { EnterpriseModuleRegistry, INTERNAL_ACTION_ORIGIN, buildModuleHandlers } from '../../framework';
 import { createInvoiceModule, type InvoiceAiRunner } from './invoiceModule';
 import { runInvoiceAi } from './invoiceAi';
 import { createOrderModule } from '../sales/orderModule';
@@ -235,7 +235,7 @@ async function createIn(moduleId: string, fields: Record<string, unknown>) {
 }
 
 function act(moduleId: string, id: string, action: string) {
-  return handler(IpcChannel.EnterpriseModuleAction)({ moduleId, id, action }) as Promise<{
+  return handler(IpcChannel.EnterpriseModuleAction)({ moduleId, id, action, origin: INTERNAL_ACTION_ORIGIN }) as Promise<{
     ok: boolean;
     message?: string;
     error?: string;

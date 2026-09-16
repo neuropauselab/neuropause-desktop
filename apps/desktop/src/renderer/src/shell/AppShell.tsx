@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { Session } from '@neuropause/shared';
 import { useShell } from '@renderer/state/ShellProvider';
 import { useScale } from '@renderer/state/ScaleProvider';
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary';
+import { RuntimeFailureNotice } from './RuntimeFailureNotice';
 import { WorkspaceErrorBoundary } from '@renderer/components/WorkspaceErrorBoundary';
 import { Spinner } from '@renderer/components/Spinner';
 import { ipc } from '@renderer/lib/ipc';
@@ -15,12 +16,14 @@ import { VoiceWidget } from '../voice/VoiceWidget';
 import { PerformanceOverlay } from './PerformanceOverlay';
 import { PerfSampler } from '@renderer/state/PerfSampler';
 import { HomeView } from '@renderer/views/HomeView';
-import { OnboardingWizard } from '@renderer/onboarding/OnboardingWizard';
 import { FirstRunExperience } from '@renderer/firstRun/FirstRunExperience';
 import { setWorkspaceType } from '@renderer/firstRun/workspaceTypeStore';
 import { onExperienceProfileChanged } from '@renderer/firstRun/experienceProfileEvents';
 import type { ExperienceProfile } from '@neuropause/shared';
 import { SECTIONS, type SectionId } from './sections';
+import { useIsLocalMode } from './useIsLocalMode';
+import { useTenantSwitchEpoch } from './useTenantSwitchEpoch';
+import { CloudUnavailableLocal } from './CloudUnavailableLocal';
 import { PreviewBanner } from './PreviewBanner';
 import { TRANSITION, sectionVariants } from '@renderer/lib/motion';
 import { useDelayedFlag } from '@renderer/lib/useDelayedFlag';
@@ -249,6 +252,8 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
     closeActiveTab,
   } = useShell();
   const { zoomIn, zoomOut, reset } = useScale();
+  // S17 — whole-section cloud surfaces show honest absence in local mode.
+  const localMode = useIsLocalMode();
 
   // Live refs so the once-subscribed menu handler always sees current values.
   const openRef = useRef(commandOpen);
@@ -318,6 +323,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   // `pending`, the full-screen experience renders INSTEAD of the workspace and
   // the checklist wizard; a completed/skipped profile also feeds the
   // workspace-type nav filter. Null = not yet loaded (render nothing extra).
+  // GATE 26 (round 61): increments once per REAL org-workspace switch; keys the
+  // view host below so the mounted surface refetches under the new tenant.
+  const tenantEpoch = useTenantSwitchEpoch();
   const [experienceProfile, setExperienceProfile] = useState<ExperienceProfile | null>(null);
   // Re-read when the profile is reset from inside the app (Understand →
   // "Answer the setup questions"). Without this the shell keeps the profile it
@@ -325,20 +333,55 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   // making the button look broken.
   const [profileEpoch, setProfileEpoch] = useState(0);
   useEffect(() => onExperienceProfileChanged(() => setProfileEpoch((n) => n + 1)), []);
+  /**
+   * P13C ROUND 36 — GATE 1. The sticky boot-window race, un-stuck.
+   *
+   * `xp:profile.get` is a SECURE runtime channel registered at the END of
+   * `initRuntimeCore`, while this shell mounts seconds earlier on a restored
+   * session. When the invoke raced the registration, the catch below pinned a
+   * wrong "skipped" profile for the ENTIRE session — this effect's only
+   * re-run trigger was an in-app profile reset. The ref records that the
+   * failure happened during the boot window; the runtime-ready broadcast
+   * (served by the base router, which cannot race) bumps `profileEpoch` once,
+   * re-running this exact effect the moment the channel actually exists.
+   */
+  const profileLoadRacedBoot = useRef(false);
+  // Round 36 — Gate 13: the Sign-In detour. Hides the first-run takeover
+  // WITHOUT persisting anything; cleared when the user leaves Settings, at
+  // which point the still-pending flow resumes at its persisted step.
+  const [signInDetour, setSignInDetour] = useState(false);
+  useEffect(() => {
+    if (signInDetour && activeSection !== 'settings') setSignInDetour(false);
+  }, [signInDetour, activeSection]);
+  useEffect(
+    () =>
+      ipc.runtime.onStateChanged((s) => {
+        if (s.state === 'ready' && profileLoadRacedBoot.current) {
+          profileLoadRacedBoot.current = false;
+          setProfileEpoch((n) => n + 1);
+        }
+      }),
+    [],
+  );
   useEffect(() => {
     ipc.firstRun
       .get()
       .then((p) => {
+        profileLoadRacedBoot.current = false;
         setExperienceProfile(p);
         setWorkspaceType(p.workspaceType);
       })
       .catch((err: unknown) => {
-        // Fail OPEN to the legacy wizard, never to nothing: if this channel is
-        // unreachable (older main process still running, stale build), the
-        // pre-existing onboarding must keep behaving exactly as before.
+        // Fail OPEN to the product, never to a stuck takeover: if this channel is
+        // unreachable (older main process still running, stale build), treat the
+        // profile as already-settled (`skipped`) so the shell renders with NO
+        // onboarding surface, rather than trapping the user behind the first-run
+        // takeover. The runtime-ready retry above upgrades this from permanent to
+        // transient when the cause was the boot window (it re-runs this load).
+        profileLoadRacedBoot.current = true;
         // eslint-disable-next-line no-console
         console.warn(
-          '[first-run] xp:profile.get failed — falling back to the legacy wizard. Is the main process up to date?',
+          '[first-run] xp:profile.get failed — showing the shell without onboarding until the runtime reports ready.',
           err,
         );
         setExperienceProfile({
@@ -371,9 +414,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
       case 'welcome':
         return <WelcomeView />;
       case 'organization':
-        return <OrganizationView />;
+        return localMode ? <CloudUnavailableLocal feature="Organization management" /> : <OrganizationView />;
       case 'store':
-        return <StoreView />;
+        return localMode ? <CloudUnavailableLocal feature="The AI Store" /> : <StoreView />;
       case 'workspace':
         return <WorkspaceView />;
       case 'operations':
@@ -415,7 +458,7 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
       case 'extensibility':
         return <PlatformEcosystemView />;
       case 'opscenter':
-        return <OpsCenterView />;
+        return <OpsCenterView onNavigate={(id) => goToSection(id as SectionId)} />;
       case 'developer':
         return <DeveloperView />;
       case 'ecosystem':
@@ -534,6 +577,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
   return (
     <div className="app-bg flex h-full w-full flex-col text-ink">
       <Toolbar session={session} />
+      {/* Round 36 — Gate 1: a failed runtime init is SAID, not silently
+          rendered around. Renders nothing on a healthy boot. */}
+      <RuntimeFailureNotice />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main ref={mainRef} className="min-w-0 flex-1 overflow-hidden">
@@ -557,7 +603,20 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               )}
               <div className="min-h-0 flex-1">
                 <WorkspaceErrorBoundary name={activeSection}>
-                  <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
+                  {/*
+                   * GATE 26 (round 61): the view is keyed on the tenant epoch so a
+                   * REAL org-workspace switch remounts it and it refetches under the
+                   * new tenant. Before this, a switch remounted nothing and mounted
+                   * surfaces kept rendering the PREVIOUS tenant's data until the user
+                   * navigated — a UI-truth violation, though never a tenancy breach
+                   * (the record store re-resolves scope per call and fails closed).
+                   * Keyed HERE rather than on ShellProvider so the sidebar, the active
+                   * section and shell state all survive the switch: the user stays
+                   * where they were and the numbers become true.
+                   */}
+                  <Suspense fallback={<ViewFallback />}>
+                    <Fragment key={`tenant-${tenantEpoch}`}>{renderView()}</Fragment>
+                  </Suspense>
                 </WorkspaceErrorBoundary>
               </div>
             </motion.div>
@@ -571,8 +630,9 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
         <VoiceWidget />
       </ErrorBoundary>
       <ErrorBoundary inline name="onboarding">
-        {experienceProfile?.state === 'pending' ? (
+        {experienceProfile?.state === 'pending' && !signInDetour ? (
           <FirstRunExperience
+            profile={experienceProfile}
             onDone={(landing) => {
               ipc.firstRun
                 .get()
@@ -584,16 +644,29 @@ export function AppShell({ session }: { session: Session }): JSX.Element {
               if (landing) goToSection(landing);
             }}
             onSignIn={() => {
-              // The existing auth surface lives in Settings → Identity.
-              void ipc.firstRun.set({ state: 'skipped' }).then((p) => setExperienceProfile(p));
+              /**
+               * P13C ROUND 36 — GATE 13. Sign In is a DETOUR, not a forfeit.
+               * This used to write `state: 'skipped'` — a TERMINAL state —
+               * so a user who tapped Sign In on the welcome screen lost the
+               * AI-routing and workspace questions forever, from a button
+               * that promised authentication. The profile now stays pending;
+               * the takeover hides for the detour and returns (resuming at
+               * the right step) when the user leaves Settings.
+               */
+              setSignInDetour(true);
               goToSection('settings');
             }}
           />
-        ) : experienceProfile ? (
-          // The guided checklist wizard runs AFTER the experience decided the
-          // product shape — never on top of it.
-          <OnboardingWizard onGoTo={goToSection} />
         ) : null}
+        {/*
+          GATE 13 (round 58) — ONE onboarding journey. The first-run experience
+          above is the single onboarding flow; the separate "Welcome to NeuroPause"
+          checklist modal that used to pop the instant first-run finished has been
+          removed (it did no setup — a pure tour that duplicated the journey the
+          user had just completed). Its checklist content lives on, un-popped, as
+          the persistent Getting Started section (WelcomeView), still backed by the
+          same `onboarding:*` service.
+        */}
       </ErrorBoundary>
       {/* Always-mounted invisible runtime performance collector (feeds Diagnostics + the dev overlay). */}
       <ErrorBoundary inline name="perf-sampler">

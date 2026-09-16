@@ -1,0 +1,30 @@
+{
+  "ARTIFACT": "12_DMG_INSTALLATION",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "dmg_sha256": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+  "mounted": true,
+  "app_copied": true,
+  "app_bundle_digest": {
+    "digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+    "file_count": 314
+  },
+  "bundle_identifier": "com.neuropause.desktop",
+  "version": "1.0.0-rc.30",
+  "architectures": [
+    "x86_64",
+    "arm64"
+  ],
+  "signature": true,
+  "notarization": false,
+  "startup": "see 07 (launched from ZIP-extracted app; DMG app digest identical)",
+  "classification": "MEASURED"
+}

@@ -48,6 +48,12 @@ export interface RaiseHoldInput extends HoldView {
    * absence, and recording it as `high_risk` would overstate what is known.
    */
   risk?: DecisionRisk;
+  /**
+   * Optional governed-decision id to record on the hold, so an operator can correlate the hold to the
+   * ExecutionSession (whose `decisionId` is the same BoundDecisionClaim decision). Absent for producers that
+   * have no governed decision (unchanged: the hold's `decisionId` stays null).
+   */
+  decisionId?: string | null;
 }
 
 /** Reasons that describe an ABSENCE rather than a hazard. */
@@ -75,6 +81,7 @@ export function createHoldRaiser(deps: RaiseHoldDeps): HoldRaiser {
       title: input.title,
       subject: input.subject,
       actor,
+      decisionId: input.decisionId ?? null,
     });
 
     // `open` is idempotent per subject. If it handed back a hold that already

@@ -1,0 +1,60 @@
+{
+  "ARTIFACT": "05_SECURITY_SCAN",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "tools_run": [
+    {
+      "tool": "npm audit",
+      "version": "10.8.2",
+      "date": "2026-09-13T04:01:05.801Z",
+      "scope": "prod closure + all"
+    },
+    {
+      "tool": "verify-mac-artifact.cjs secret + endpoint scan",
+      "scope": "published DMG/ZIP bundle",
+      "result": {
+        "status": "PASS",
+        "checks": 2
+      },
+      "files_scanned": 285,
+      "high_confidence_hits": 0
+    }
+  ],
+  "not_run": [
+    "SAST",
+    "gitleaks/trufflehog secret scan of history",
+    "DAST",
+    "container scan"
+  ],
+  "fixed_this_branch": [
+    "refresh reuse chain-burn rollback (session.ts)",
+    "revoked device fail-closed",
+    "password reset revokes sessions",
+    "edge 5xx not treated as credential rejection",
+    "AI budget",
+    "server-side AI gateway"
+  ],
+  "open_findings": [
+    "no trust proxy → per-IP limits collapse",
+    "OAuth auto-link by email without verified-email precondition",
+    "access tokens unrevocable ≤15 min",
+    "AssistantAsk public IPC",
+    "mail undeliverable in production",
+    "no account deletion"
+  ],
+  "mapper_reports": [
+    "certification/public-launch/discovery/backend-auth.json",
+    "certification/public-launch/discovery/desktop-ai.json",
+    "certification/public-launch/discovery/desktop-authz-execution.json"
+  ]
+}

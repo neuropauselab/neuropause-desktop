@@ -19,6 +19,7 @@ import { app, ipcMain } from 'electron';
 import type { ZodSchema } from 'zod';
 import type { EnterprisePermission, IpcChannelName, IpcResponseMap } from '@neuropause/shared';
 import { createLogger } from '../logger';
+import { classifyDenial, stampDenial } from './denialCode';
 import { createBoundedLog } from '../storage/boundedLog';
 import { isTrustedSenderFrame } from './router';
 
@@ -168,6 +169,13 @@ export async function runSecureHandler(
 
 export function registerSecureHandlers(defs: AnySecureHandlerDef[], deps: SecureBridgeDeps): void {
   for (const def of defs) {
+    // P13C O-3. `ipcMain.handle` THROWS on a channel that already has a handler,
+    // which is why the real handler could not simply replace a bootstrap-time
+    // placeholder. Removing first makes registration idempotent: the authority
+    // surface is unchanged (the same def, the same gate, the same audit), and a
+    // channel answered early by `earlyReachability.ts` is taken over here rather
+    // than colliding with it.
+    ipcMain.removeHandler(def.channel);
     ipcMain.handle(def.channel, async (event, rawPayload: unknown) => {
       const started = Date.now();
       try {
@@ -191,8 +199,25 @@ export function registerSecureHandlers(defs: AnySecureHandlerDef[], deps: Secure
           });
         }
         log.warn('IPC handler error', { channel: def.channel, message });
+        // D-6 — THE AUTHORIZATION ERROR CONTRACT.
+        //
+        // This line is where the discriminant used to die. `enterprise/authz.ts`
+        // throws a TYPED `AuthorizationError` carrying the missing permission,
+        // and flattening it to `new IpcError(message)` threw the type away one
+        // frame before the boundary — after which Electron serializes only the
+        // message, leaving the renderer nothing to branch on but English prose.
+        // Seven renderer sites each grew their own regex over that prose, so
+        // rewording a message silently changed behaviour.
+        //
+        // The classification happens HERE, while the original error object is
+        // still in hand and its constructor is still readable. The code rides
+        // out as a prefix (the only field that crosses) and the renderer's
+        // single `invoke` chokepoint strips it before anything is displayed.
+        // Audit and logs above deliberately record the UNSTAMPED message — the
+        // stamp is transport, not content.
+        const code = classifyDenial(err);
         // Surface a clean message to the renderer (never internal stack detail).
-        throw new IpcError(message);
+        throw new IpcError(code === null ? message : stampDenial(code, message));
       }
     });
   }

@@ -8,7 +8,10 @@ import type {
   LicenseValidationStatus,
 } from '@neuropause/shared';
 import { ipc } from '@renderer/lib/ipc';
+import { fetchActiveCloudOrg, AMBIGUOUS_ORG_MESSAGE } from '@renderer/lib/activeOrg';
 import { cn } from '@renderer/lib/cn';
+import { useIsLocalMode } from '@renderer/shell/useIsLocalMode';
+import { CloudUnavailableLocal } from '@renderer/shell/CloudUnavailableLocal';
 import { Icon, type IconName } from '@renderer/components/ui/Icon';
 import { Skeleton } from '@renderer/components/ui/Skeleton';
 
@@ -79,6 +82,13 @@ function fmtDate(iso: string | null): string {
 }
 
 export function SubscriptionCenter(): JSX.Element {
+  // S17 — billing/subscription is a cloud feature: honestly absent in local mode
+  // (no connected account), never a "Sign in to manage billing" error card.
+  if (useIsLocalMode()) return <CloudUnavailableLocal feature="Billing" />;
+  return <SubscriptionCenterContent />;
+}
+
+function SubscriptionCenterContent(): JSX.Element {
   const [org, setOrg] = useState<CloudOrganizationSummary | null>(null);
   const [orgLoaded, setOrgLoaded] = useState(false);
   const [status, setStatus] = useState<LicenseValidationStatus | null>(null);
@@ -99,9 +109,12 @@ export function SubscriptionCenter(): JSX.Element {
     setLoading(true);
     setError(null);
     try {
-      // Source the active org directly (Settings isn't under CloudOrgProvider).
-      const orgs = await ipc.org.list().catch(() => [] as CloudOrganizationSummary[]);
-      const active = orgs?.[0] ?? null;
+      // Round 36 — Gate 15: a failed org list must NEVER render the
+      // create-your-first-org wizard to someone who already has one — that
+      // failure now throws into the error state; ambiguity is said, not
+      // guessed (FINDING-6 rule via the shared resolver).
+      const { orgs, active } = await fetchActiveCloudOrg();
+      if (active === null && orgs.length > 0) throw new Error(AMBIGUOUS_ORG_MESSAGE);
       setOrg(active);
       setOrgLoaded(true);
       if (!active) return;

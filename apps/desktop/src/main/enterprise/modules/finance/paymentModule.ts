@@ -25,13 +25,11 @@ import type {
   SalesPayment,
 } from '@neuropause/shared';
 import {
-  FINANCE_MODULE_ID,
   PAYMENTS_MODULE_ID,
   PAYMENT_KIND,
   calculateInvoiceAmount,
   calculatePaidAmount,
   calculatePaymentHealth,
-  deriveInvoiceAmountPaid,
   formatInvoiceAmount,
   invoiceFromRecord,
   isDuplicateTransaction,
@@ -48,6 +46,7 @@ import {
   type EnterpriseModuleActionContext,
 } from '../../framework';
 import { handlePaymentChangeForGl } from './glPosting';
+import { reconcileInvoiceFromLedger } from './paymentReconcile';
 
 /** The declarative description of a payment — drives store, CRUD, and the UI. */
 export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -61,6 +60,9 @@ export const PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
   titleField: 'paymentNumber',
   // Reuses the Finance write scope — payments are a finance capability.
   permissions: { read: 'operations:read', write: 'operations:manage' },
+  // S57 — the governed clearing affordance (routes to ClearCustomerPayment; the S46 fence
+  // made edit-door clearing impossible, which left pending payments with NO clearing path).
+  actions: [{ key: 'clear', label: 'Clear', icon: 'check' }],
   fields: [
     { key: 'paymentNumber', label: 'Payment #', type: 'text', required: true, placeholder: 'PAY-0001' },
     { key: 'invoiceRef', label: 'Invoice', type: 'text', required: true, placeholder: 'Invoice id or number' },
@@ -175,32 +177,16 @@ export function createPaymentModule(
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, PAYMENTS_MODULE_ID, PAYMENT_KIND);
 
-  /** Re-derive the referenced invoice's paid amount from the ledger + persist it. */
+  /**
+   * Re-derive the referenced invoice's paid amount from the ledger + persist it.
+   * ERP Session 61 — delegates to the ONE shared reconciliation so the customer
+   * payment, vendor payment, and governed reversal paths all derive `amountPaid`
+   * identically (a reversed payment is excluded, re-opening the invoice without
+   * mutating the original). With no reversal records this is byte-identical to
+   * the pre-S61 inline derivation the finance suites pin.
+   */
   async function reconcileInvoice(ref: string, ctx: EnterpriseModuleActionContext): Promise<void> {
-    if (!ref) return;
-    const invModule = ctx.moduleFor(FINANCE_MODULE_ID);
-    if (!invModule) return;
-    await invModule.store.load();
-    const invRecord = findInvoice(invModule.store, ref);
-    if (!invRecord) return;
-    const invoice = invoiceFromRecord(invRecord);
-    // Sum applied (non-void, non-deleted) payments that reference this invoice by
-    // either its id or its number.
-    const ledger = store
-      .list()
-      .map(paymentFromRecord)
-      .filter((p) => p.invoiceRef === invRecord.id || p.invoiceRef === invoice.number);
-    const amountPaid = deriveInvoiceAmountPaid(ledger);
-    // Re-derive the invoice through ITS OWN validate hook (status/outstanding/total).
-    const merged = { ...invRecord.fields, amountPaid };
-    const validation = invModule.hooks.validate({ fields: merged });
-    const values = validation.ok ? validation.values : merged;
-    const updated = invModule.store.update(invRecord.id, {
-      fields: values,
-      actor: ctx.actor(),
-      now: ctx.now(),
-    });
-    if (updated) ctx.emit(invModule, 'updated', updated);
+    await reconcileInvoiceFromLedger(store, ref, ctx);
   }
 
   return defineEnterpriseModule({
@@ -214,12 +200,42 @@ export function createPaymentModule(
         if (!result.ok) return result;
         // FW-8: a bank-reconciled payment is bank-evidenced settled fact — a
         // finalized statement line vouches for it. Immutable through edits.
+        // S55 — STORE-ANCHORED half (census-found forgeable token): the input half
+        // below reads the merged payload, so bankReconciledAt:'' blanked the stamp
+        // and the guard passed. The stored stamp is the authority.
+        if (input.recordId) {
+          const prior = store.get(input.recordId);
+          if (prior && String(prior.fields.bankReconciledAt ?? '')) {
+            return {
+              ok: false,
+              errors: { _: 'This payment is bank-reconciled against a finalized statement — bank-evidenced payments are immutable.' },
+              values: result.values,
+            };
+          }
+        }
         if (String(input.fields?.bankReconciledAt ?? '')) {
           return {
             ok: false,
             errors: { _: 'This payment is bank-reconciled against a finalized statement — bank-evidenced payments are immutable.' },
             values: result.values,
           };
+        }
+        // ERP Session 46 — the transition INTO `cleared` books real GL (Dr Cash / Cr AR via the onChange
+        // reconciler), so it must go through the governed `ReceiveCustomerPayment` command, never a plain
+        // edit. An EDIT (recordId present ⇒ the update door) that moves a NON-cleared payment into `cleared`
+        // is refused — closing the "create pending → edit to cleared" shortcut that minted cash GL around
+        // the command spine. A cleared receipt created through the governed command has no prior record on
+        // that path and is unaffected; a status-less importer row is not compared; voiding/reversal stays a
+        // separate, memo-tracked policy decision.
+        if (input.recordId) {
+          const priorStatus = String(store.get(input.recordId)?.fields.status ?? '');
+          if (priorStatus !== '' && priorStatus !== 'cleared' && String(result.values.status) === 'cleared') {
+            return {
+              ok: false,
+              errors: { status: 'Clearing a payment books cash — record it through New Payment (cleared), not by editing the status.' },
+              values: result.values,
+            };
+          }
         }
         const payment = projectValues(result.values);
         const errors: Record<string, string> = {};
@@ -229,6 +245,18 @@ export function createPaymentModule(
         const invRecord = findInvoice(invoiceStore, payment.invoiceRef);
         if (!invRecord) {
           errors.invoiceRef = 'No matching invoice was found.';
+        } else {
+          // ERP Session 95 — the sell-side MIRROR of the buy-side guard (vendorPaymentModule refuses
+          // paying a draft/cancelled bill). A DRAFT or CANCELLED customer invoice has NO booked
+          // Accounts Receivable — AR is booked only when the invoice is ISSUED (Dr AR / Cr Revenue).
+          // Recording a receipt against it would post Dr Cash / Cr AR and mark it settled against a
+          // liability that was never booked, leaving AR net-negative and revenue unrecognised. Fail
+          // closed — issue the invoice first. (`paid`/over-application is handled by the overpay guard
+          // below; `partially_paid`/`issued` remain payable.)
+          const invStatus = String(invRecord.fields.status ?? '');
+          if (invStatus === 'draft' || invStatus === 'cancelled') {
+            errors.invoiceRef = `Cannot settle a ${invStatus} invoice — issue it first.`;
+          }
         }
 
         const ledger = store.list().map(paymentFromRecord);
@@ -261,6 +289,22 @@ export function createPaymentModule(
       // settlement into the General Ledger (Dr Cash / Cr AR + realized FX,
       // W6-B4.5) — the same reconcile-then-post pattern the Vendor Payments
       // module already uses. A no-op when the GL modules are not wired.
+      // S57 — the DEFINED pending→cleared transition, relocated from the fenced edit door to
+      // an explicit action (semantics unchanged: the status flip; onChange below books
+      // Dr Cash / Cr AR and settles the invoice exactly as it always did). Reached through
+      // the governed ClearCustomerPayment command; void/cleared rows refuse.
+      runAction: async (action, record, actionCtx) => {
+        if (action !== 'clear') return { ok: false, error: `Unknown action "${action}".` };
+        const status = String(record.fields.status ?? '');
+        if (status !== 'pending') {
+          return { ok: false, message: `Only a pending payment can be cleared — this one is ${status || 'status-less'}.` };
+        }
+        const updated = store.update(record.id, { fields: { status: 'cleared' }, actor: actionCtx.actor(), now: actionCtx.now() });
+        if (!updated) return { ok: false, error: 'Payment not found.' };
+        const self = actionCtx.moduleFor(PAYMENTS_MODULE_ID);
+        if (self) actionCtx.emit(self, 'updated', updated);
+        return { ok: true, message: `Payment ${String(record.fields.paymentNumber ?? '')} cleared — cash booked and the invoice reconciled.` };
+      },
       onChange: async (_event, ctx) => {
         await reconcileInvoice(str(_event.record.fields.invoiceRef), ctx);
         await handlePaymentChangeForGl(_event, ctx);

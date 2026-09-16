@@ -1,0 +1,26 @@
+# S131 — dependency update + vulnerability surfacing stream. Declarative, no runtime effect.
+# GitHub raises PRs for security + version updates; the desktop-ci `npm audit` gate is the
+# in-CI enforcement, this is the ongoing update channel. Grouped weekly to bound PR noise.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+    commit-message:
+      prefix: deps
+      prefix-development: deps-dev
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci

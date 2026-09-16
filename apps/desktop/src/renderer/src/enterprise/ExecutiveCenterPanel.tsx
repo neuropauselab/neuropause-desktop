@@ -12,6 +12,7 @@ import { cn } from '@renderer/lib/cn';
 import { formatRelative } from '@renderer/lib/format';
 import { useShell } from '@renderer/state/ShellProvider';
 import { Icon } from '@renderer/components/ui/Icon';
+import { Button } from '@renderer/components/ui/Button';
 import { Card } from '@renderer/components/ui/Card';
 import { EmptyState } from '@renderer/components/ui/EmptyState';
 import { Spinner } from '@renderer/components/Spinner';
@@ -105,6 +106,24 @@ export function ExecutiveCenterPanel(): JSX.Element {
   // reflects Accept/Dismiss immediately without refetching the whole snapshot.
   const [recAction, setRecAction] = useState<Record<string, 'accepted' | 'dismissed'>>({});
   const [busyRec, setBusyRec] = useState<string | null>(null);
+  // S145 — on-demand governed KPI capture (kpi:capture). Reads the active tenant's inventory and writes the
+  // tenant-scoped kpi-snapshots + kpi-exceptions (idempotent, immutable per period); tenant resolved server-side.
+  const [capturing, setCapturing] = useState(false);
+  const [captureMsg, setCaptureMsg] = useState<string | null>(null);
+  const captureKpis = async (): Promise<void> => {
+    setCapturing(true); setCaptureMsg(null);
+    try {
+      const r = (await ipc.intelligence.kpiCapture()) as { ok?: boolean; captured?: boolean };
+      if (!r.ok) { setCaptureMsg('KPI capture is not available.'); return; }
+      setCaptureMsg(r.captured ? 'KPI snapshot captured from the live ledger.' : 'Already captured for this period — snapshots are immutable.');
+      const s = await ipc.intelligence.executiveCenterSnapshot();
+      setSnapshot(s);
+    } catch {
+      setCaptureMsg('KPI capture failed — try again.');
+    } finally {
+      setCapturing(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -211,7 +230,25 @@ export function ExecutiveCenterPanel(): JSX.Element {
     <OpsPanel
       title="Executive Intelligence"
       subtitle={`${attentionCounts.critical} critical · ${attentionCounts.high} high · updated ${formatRelative(snapshot.generatedAt)}`}
+      actions={
+        <Button
+          variant="secondary"
+          size="sm"
+          icon="camera"
+          disabled={capturing}
+          onClick={() => void captureKpis()}
+        >
+          {capturing ? 'Capturing…' : 'Capture KPIs'}
+        </Button>
+      }
     >
+      {/* S145 — on-demand governed KPI capture outcome (kpi:capture). Truthful, never fabricated. */}
+      {captureMsg && (
+        <div className="mb-3 rounded-md border border-[var(--hairline)] px-3 py-2 text-2xs text-muted">
+          {captureMsg}
+        </div>
+      )}
+
       {/* NeuroCore system health (V5.0) — isolated so a telemetry failure can
           never take down the executive dashboard (V5.2.1 fix). */}
       <ErrorBoundary inline name="runtime-health">

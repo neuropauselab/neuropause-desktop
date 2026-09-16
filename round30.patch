@@ -1,0 +1,54 @@
+--- a/scripts/check-workflows.sh
++++ b/scripts/check-workflows.sh
+@@ -54,18 +54,42 @@
+ 
+ # ── Check 1 · IT HAS TO PARSE ───────────────────────────────────────────────
+ #
+-# python3 with PyYAML, installed if absent rather than skipped. A check that
+-# quietly skips when its dependency is missing reports success on the exact
+-# runs where it did nothing, which is worse than not having it.
+-if ! python3 -c 'import yaml' 2>/dev/null; then
+-  python3 -m pip install --quiet --disable-pip-version-check pyyaml >/dev/null 2>&1 || {
+-    echo "check-workflows: FAILED — could not obtain a YAML parser; refusing to report success"
+-    exit 1
+-  }
++# P13C ROUND 30 — W-9. THE CHECK HAS TO RUN WHERE THE EDITS HAPPEN.
++#
++# This asked for python3 + PyYAML and, failing that, refused. That is correct on
++# the Ubuntu runner, where PyYAML is present, and useless on a macOS developer
++# machine, where the system python has no PyYAML and `pip install` is refused by
++# an externally-managed environment. So the guard ran green in CI and could not
++# run at all on the laptop where the workflow files are actually written — which
++# is precisely where a parse error needs catching, minutes before it is pushed.
++#
++# Ruby ships with macOS and carries Psych, so `Psych.parse_file` is a pure
++# syntax check with no gem install. Tried in order; refusing is still the last
++# resort, because a checker that skips silently reports success on the runs
++# where it did nothing.
++PARSER=""
++if python3 -c 'import yaml' 2>/dev/null; then
++  PARSER="python"
++elif command -v ruby >/dev/null 2>&1 && ruby -ryaml -e 'Psych' 2>/dev/null; then
++  PARSER="ruby"
++elif python3 -m pip install --quiet --disable-pip-version-check pyyaml >/dev/null 2>&1; then
++  PARSER="python"
++else
++  echo "check-workflows: FAILED — no YAML parser available (tried python3+PyYAML, ruby+Psych)"
++  echo "  Install one, or run this in CI. Refusing to report success without parsing."
++  exit 1
+ fi
+ 
++parse_one() {
++  if [ "$PARSER" = "ruby" ]; then
++    ruby -ryaml -e 'Psych.parse_file(ARGV[0])' "$1" 2>/tmp/wf-parse-err
++  else
++    python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$1" 2>/tmp/wf-parse-err
++  fi
++}
++
+ for f in $FILES; do
+-  if python3 -c "import sys,yaml; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/tmp/wf-parse-err; then
++  if parse_one "$f"; then
+     echo "  parse OK   $f"
+   else
+     echo "  PARSE FAIL $f"

@@ -1,0 +1,107 @@
+{
+  "ARTIFACT": "05_DEPENDENCY_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-002",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "see": "certification/public-launch/04_DEPENDENCY_INVENTORY.json",
+  "prod_vulnerabilities": {
+    "info": 0,
+    "low": 0,
+    "moderate": 5,
+    "high": 1,
+    "critical": 0,
+    "total": 6
+  },
+  "findings": [
+    {
+      "PACKAGE": "body-parser",
+      "VERSION": "1.20.5 - 1.20.6",
+      "SEVERITY": "moderate",
+      "DIRECT_TRANSITIVE": "TRANSITIVE",
+      "ADVISORIES": [
+        "qs"
+      ],
+      "EXPLOITABILITY": "HTTP query-string DoS vectors on the backend; mitigated by request size limits and rate limits, not eliminated",
+      "RUNTIME_REACHABILITY": "backend request path",
+      "MITIGATION": "not upgraded in this branch (NP-GLOBAL-PUBLIC-LAUNCH-001 §5: no upgrades merely to green a scanner)",
+      "DECISION": "HUMAN — release owner to accept or schedule upgrade; recorded, not hidden"
+    },
+    {
+      "PACKAGE": "express",
+      "VERSION": "4.22.2",
+      "SEVERITY": "moderate",
+      "DIRECT_TRANSITIVE": "DIRECT",
+      "ADVISORIES": [
+        "qs"
+      ],
+      "EXPLOITABILITY": "HTTP query-string DoS vectors on the backend; mitigated by request size limits and rate limits, not eliminated",
+      "RUNTIME_REACHABILITY": "backend request path",
+      "MITIGATION": "not upgraded in this branch (NP-GLOBAL-PUBLIC-LAUNCH-001 §5: no upgrades merely to green a scanner)",
+      "DECISION": "HUMAN — release owner to accept or schedule upgrade; recorded, not hidden"
+    },
+    {
+      "PACKAGE": "js-yaml",
+      "VERSION": "4.0.0 - 4.3.1",
+      "SEVERITY": "high",
+      "DIRECT_TRANSITIVE": "DIRECT",
+      "ADVISORIES": [
+        "JS-YAML: Quadratic CPU consumption in !!omap resolution (3.x and 4.x) — CVE-2026-59870 fix not backported (https://github.com/advisories/GHSA-5p4m-2wfm-xmqj)",
+        "js-yaml: maxTotalMergeKeys does not limit CPU use for empty merge sources (https://github.com/advisories/GHSA-2883-xcg3-v3hh)"
+      ],
+      "EXPLOITABILITY": "requires attacker-controlled YAML; the only YAML parsed at runtime is the update feed from the release host",
+      "RUNTIME_REACHABILITY": "desktop main process (electron-updater feed parse)",
+      "MITIGATION": "not upgraded in this branch (NP-GLOBAL-PUBLIC-LAUNCH-001 §5: no upgrades merely to green a scanner)",
+      "DECISION": "HUMAN — release owner to accept or schedule upgrade; recorded, not hidden"
+    },
+    {
+      "PACKAGE": "qs",
+      "VERSION": "2.2.5 - 6.15.3",
+      "SEVERITY": "moderate",
+      "DIRECT_TRANSITIVE": "TRANSITIVE",
+      "ADVISORIES": [
+        "qs array-limit bypass via bracket-key comma parsing (https://github.com/advisories/GHSA-x5fp-wj9c-mxmx)",
+        "qs: Denial of Service via Attacker Controlled isBuffer (https://github.com/advisories/GHSA-4mjr-xmp4-gh2g)"
+      ],
+      "EXPLOITABILITY": "HTTP query-string DoS vectors on the backend; mitigated by request size limits and rate limits, not eliminated",
+      "RUNTIME_REACHABILITY": "backend request path",
+      "MITIGATION": "not upgraded in this branch (NP-GLOBAL-PUBLIC-LAUNCH-001 §5: no upgrades merely to green a scanner)",
+      "DECISION": "HUMAN — release owner to accept or schedule upgrade; recorded, not hidden"
+    },
+    {
+      "PACKAGE": "react-router",
+      "VERSION": "6.0.0 - 7.17.0",
+      "SEVERITY": "moderate",
+      "DIRECT_TRANSITIVE": "TRANSITIVE",
+      "ADVISORIES": [
+        "React Router: Open redirect via backslash in <Link> and useNavigate (CVE-2025-68470 bypass) (https://github.com/advisories/GHSA-wrjc-x8rr-h8h6)",
+        "React Router: Arbitrary Constructor Injection via deserializeErrors() in React Router SSR Hydration (https://github.com/advisories/GHSA-337j-9hxr-rhxg)"
+      ],
+      "EXPLOITABILITY": "open-redirect / SSR hydration in the web app (apps/web); desktop renderer does not use SSR",
+      "RUNTIME_REACHABILITY": "apps/web only",
+      "MITIGATION": "not upgraded in this branch (NP-GLOBAL-PUBLIC-LAUNCH-001 §5: no upgrades merely to green a scanner)",
+      "DECISION": "HUMAN — release owner to accept or schedule upgrade; recorded, not hidden"
+    },
+    {
+      "PACKAGE": "react-router-dom",
+      "VERSION": "6.0.0-alpha.0 - 7.17.0",
+      "SEVERITY": "moderate",
+      "DIRECT_TRANSITIVE": "DIRECT",
+      "ADVISORIES": [
+        "react-router"
+      ],
+      "EXPLOITABILITY": "open-redirect / SSR hydration in the web app (apps/web); desktop renderer does not use SSR",
+      "RUNTIME_REACHABILITY": "apps/web only",
+      "MITIGATION": "not upgraded in this branch (NP-GLOBAL-PUBLIC-LAUNCH-001 §5: no upgrades merely to green a scanner)",
+      "DECISION": "HUMAN — release owner to accept or schedule upgrade; recorded, not hidden"
+    }
+  ]
+}

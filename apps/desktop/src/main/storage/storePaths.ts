@@ -45,12 +45,39 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     // P13C Round 17 (D-5) — the per-organization AI preference. Customer state,
     // so it must be inside backup and inside pre-migration rollback like the rest.
     'tenant-ai-preference.json',
+    // S17/FG-6 — the device-local principal. Its id must be stable across
+    // restarts (owner claim + governed-actor correlation); backing it up lets a
+    // restore recover the id rather than mint a fresh one.
+    'local-principal.json',
+    // P13C GATE 11 — the two SECRET vaults were outside backup: a corruption or
+    // an accidental delete lost every credential with no restore path, and (with
+    // the quarantine fix) a quarantined vault had no good copy to recover from.
+    // Both hold ONLY safeStorage (OS-keychain) ciphertext — a backup copy is
+    // undecryptable on any other machine, so including them adds same-machine
+    // restore durability without widening the secret's blast radius. `vault.bin`
+    // is the app refresh token + provider secrets; `connector-vault.bin` is the
+    // per-workspace connector tokens.
+    'vault.bin',
+    'connector-vault.bin',
+    // P13C Gate 11 (round 43) — customer-facing configuration/state stores that
+    // were persisted but outside backup AND outside pre-migration rollback. Each
+    // has exactly one production creator (verified). A file that does not exist
+    // on a given install is simply skipped by `filesForPath`, so listing them is
+    // purely additive.
+    'experience-profile.json', // onboarding profile (resume + AI-mode choice)
+    'ai-config.json', // provider/model configuration
+    'ai-routing-usage.json', // per-location usage counters
+    'identity.json', // device identity evidence
+    'workspace-contexts.json', // per-user "views on this device"
+    'webhooks.json', // configured inbound webhooks
+    'delivery-preferences.json', // executive-summary delivery prefs
+    'sync-state.json', // unified sync cursors/state
   ],
   workspace: ['enterprise-workspaces.json', 'enterprise-org.json'],
   knowledgeGraph: ['graph.json', 'unified-store.json'],
   aiWorker: ['workforce-registry.json', 'workforce-jobs.json', 'workforce-audit.json'],
   plugin: ['plugins.json', 'plugins', 'plugin-data'],
-  aiMemory: ['memory.json'],
+  aiMemory: ['memory.json', 'memory-audit.json'],
   timeline: ['timeline'],
   // The user's business records — every enterprise-module store, by prefix.
   business: [
@@ -59,6 +86,43 @@ export const DOMAIN_FILES: Record<MaintenanceDomain, string[]> = {
     'enterprise-governance.json',
     'automations.json',
     'health-history.json',
+    // P13C Gate 11 (round 43) — customer records, governed-action evidence and
+    // audit trails that were persisted but outside backup + pre-migration
+    // rollback. Losing any of these silently loses tenant data or the trail that
+    // proves what happened to it.
+    'decision-records.json', // governed decision records
+    'holds.json', // governance holds awaiting resolution
+    'opportunity-decisions.json',
+    'outcome-revisions.json',
+    'erp-document-lines.json', // ERP document line items
+    'erp-approvals.json', // ERP approval trail
+    // ERP Session 36 — the governed platform command spine (Sessions 18/31) was
+    // persisted but OUTSIDE backup AND pre-migration rollback, exactly the class
+    // this registry closes. Both are DurableJsonStore files under the data dir with
+    // one production creator each (ipc/handlers/platformCommandIpc.ts:
+    // buildPlatformCommandHandlers). They MUST be captured together (one domain,
+    // one coherent snapshot pass, all-or-nothing restore): the journal holds every
+    // committed command's idempotency result + immutable domain event + outbox
+    // delivery state, and the delivered-event sink is its downstream at-least-once
+    // confirmation. Losing the journal silently loses every ERP command's dedupe
+    // key, event and delivery state with no restore path.
+    'platform-command-journal.json', // S18 durable command journal (idempotency + event + outbox)
+    'platform-command-journal.intents.json', // S40 command-intent ledger (IN_FLIGHT / HOLD; crash-recovery)
+    'platform-delivered-events.json', // S31 delivered-event sink (outbox delivery confirmation)
+    'medical-device-traceability.json', // regulated traceability records
+    'data-plane-provenance.json', // import provenance (the audit trail itself)
+    'data-plane-mappings.json', // remembered column→field mappings
+    'data-plane-relationships.json', // resolved cross-record relationships
+    'notification-inbox.json',
+    'action-records.json', // connector action evidence store
+    'm365-governed-actions.json', // governed M365 action ledger
+    'connector-controls.json',
+    'enterprise-personalization.json',
+    'platform-operators.json',
+    'marketplace-policy.json',
+    'documents.json', // document metadata
+    'documents', // document blobs (directory)
+    'sandbox', // sandbox workspaces/scenarios/executions/artifacts/datasets/validation/lab (directory)
   ],
   assistant: ['assistant-conversations.json', 'feedback.json'],
 };

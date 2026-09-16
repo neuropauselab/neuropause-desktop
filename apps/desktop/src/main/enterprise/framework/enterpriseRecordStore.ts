@@ -212,6 +212,23 @@ export class EnterpriseRecordStore extends EventEmitter {
   }
 
   /**
+   * The tenant scope this store would read/write under RIGHT NOW, or `null`
+   * (DENY). Read-only — it exposes the SAME decision every read/write already
+   * makes via `scopeOrDeny`, and computes nothing new.
+   *
+   * ERP Session 15: a caller that must coalesce concurrent work per tenant needs
+   * a key that is provably the store's OWN write boundary — not a separately
+   * resolved scope that could drift from it. The canonical-chart single-flight
+   * latch keys off this so the latch key and the account writes can never target
+   * different tenants, in every path (session, boot fan-out, companion, sandbox),
+   * without importing the `activeTenantScope` composition root. It crosses no
+   * tenant: it returns only the caller's own resolved scope.
+   */
+  resolvedScope(): TenantScope | null {
+    return this.scopeOrDeny();
+  }
+
+  /**
    * The active scope, or `null` meaning DENY. Named as a decision, not a read.
    *
    * An explicit per-store binding always wins over the test fallback, so
@@ -292,6 +309,10 @@ export class EnterpriseRecordStore extends EventEmitter {
        * `flush()` still awaits the in-flight write, and callers that need the
        * bytes on disk still use it.
        */
+      // P13C round 33: re-mark dirty — the flag was cleared before the failed
+      // write, so without this the pending change would never be retried and a
+      // single transient ENOSPC/EPERM lost the mutation until the next edit.
+      this.dirty = true;
       log.error('Enterprise record store persist failed', {
         moduleId: this.moduleId,
         error: String(err),

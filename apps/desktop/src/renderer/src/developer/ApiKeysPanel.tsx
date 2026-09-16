@@ -16,13 +16,16 @@ import { relativeTime } from './lib';
 const GRANT_TYPES: OAuthGrantType[] = ['authorization_code', 'client_credentials', 'refresh_token'];
 
 export function ApiKeysPanel(): JSX.Element {
-  const { keys, oauthApps, createKey, revokeKey, createOAuthApp, deleteOAuthApp } = useDeveloper();
+  const { keys, oauthApps, createKey, revokeKey, rotateKey, createOAuthApp, deleteOAuthApp } = useDeveloper();
 
   const [keyModal, setKeyModal] = useState(false);
   const [keyName, setKeyName] = useState('');
   const [keyScopes, setKeyScopes] = useState<Set<ApiScope>>(new Set(['marketplace:read']));
   const [newSecret, setNewSecret] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // S146 — key rotation: which row is rotating, and an honest error if the store refuses.
+  const [rotatingId, setRotatingId] = useState<string | null>(null);
+  const [rotateError, setRotateError] = useState<string | null>(null);
 
   const [appModal, setAppModal] = useState(false);
   const [appName, setAppName] = useState('');
@@ -52,6 +55,29 @@ export function ApiKeysPanel(): JSX.Element {
     }
   };
 
+  // S146 — rotate a key: mint a fresh secret and revoke the old id atomically. The new secret is
+  // revealed once through the same one-time modal as creation. A governed refusal (unknown/revoked/
+  // other-tenant key → { error }) is shown honestly, never silently swallowed.
+  const rotate = async (id: string): Promise<void> => {
+    setRotatingId(id);
+    setRotateError(null);
+    try {
+      const res = await rotateKey(id);
+      if (res && typeof res === 'object' && 'secret' in res) {
+        setNewSecret(res.secret);
+      } else {
+        const msg = res && typeof res === 'object' && 'error' in res ? res.error : null;
+        setRotateError(
+          msg === 'not_found'
+            ? 'That key could not be rotated — it may already be revoked.'
+            : 'Key rotation is not available right now.',
+        );
+      }
+    } finally {
+      setRotatingId(null);
+    }
+  };
+
   const submitApp = async (): Promise<void> => {
     if (!appName.trim() || appGrants.size === 0) return;
     setBusy(true);
@@ -77,6 +103,9 @@ export function ApiKeysPanel(): JSX.Element {
         subtitle="Bearer tokens for the API gateway, scoped to least privilege"
         actions={<Button size="sm" variant="primary" icon="plus" onClick={() => setKeyModal(true)}>New key</Button>}
       >
+        {rotateError && (
+          <div className="mb-3 rounded-md border border-[var(--hairline)] px-3 py-2 text-2xs text-sysorange">{rotateError}</div>
+        )}
         {keys.length === 0 ? (
           <EmptyState icon="lock" title="No API keys" description="Create a scoped key to call the gateway." compact action={<Button size="sm" icon="plus" onClick={() => setKeyModal(true)}>New key</Button>} />
         ) : (
@@ -99,7 +128,14 @@ export function ApiKeysPanel(): JSX.Element {
                 <td className="px-4 py-2.5 text-muted" title={k.scopes.join(', ')}>{k.scopes.length} scope{k.scopes.length === 1 ? '' : 's'}</td>
                 <td className="px-4 py-2.5 text-muted">{k.lastUsedAt ? relativeTime(k.lastUsedAt) : 'never'}</td>
                 <td className="px-4 py-2.5">{k.revokedAt ? <StatusBadge tone="red" label="Revoked" /> : <StatusBadge tone="green" label="Active" />}</td>
-                <td className="px-4 py-2.5 text-right">{!k.revokedAt && <IconAction icon="trash" label="Revoke" tone="red" onClick={() => void revokeKey(k.id)} />}</td>
+                <td className="px-4 py-2.5">
+                  {!k.revokedAt && (
+                    <div className="flex items-center justify-end gap-1">
+                      <IconAction icon="refresh" label="Rotate" disabled={rotatingId !== null} onClick={() => void rotate(k.id)} />
+                      <IconAction icon="trash" label="Revoke" tone="red" disabled={rotatingId !== null} onClick={() => void revokeKey(k.id)} />
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
           </OpsTable>

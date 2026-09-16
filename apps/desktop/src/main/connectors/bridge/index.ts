@@ -840,6 +840,9 @@ function provenanceFor(
   return {
     recordId,
     moduleId,
+    // NP-010 §2: a connector read is ONE source — uncorroborated. 'verified'
+    // is reserved for corroboration against an independent source.
+    sourceTrust: 'unverified-source',
     // The file-shaped fields are filled with what is TRUE for a connector
     // rather than left blank: "HubSpot Contacts" is where this came from, and
     // a reader of the provenance view should see that, not an empty cell.

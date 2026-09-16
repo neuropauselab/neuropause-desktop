@@ -18,6 +18,8 @@ import { EventEmitter } from 'node:events';
 import { promises as fs } from 'node:fs';
 import type { WorkforceAuditEntry, WorkforceAuditPage } from '@neuropause/shared';
 import { AuditChain, type AuditChainSnapshot, type AuditVerifyResult } from '../../security/auditChain';
+import type { AuditSigningKey, SignedAuditHead } from '../../security/auditSigner';
+import { signAuditChainHead, verifyAuditChainIntegrity } from '../../security/signedAuditChain';
 import { createLogger } from '../../logger';
 import type { TenantScope } from '@neuropause/shared';
 import { TenantOwnership } from '../../tenancy/tenantOwnedStore';
@@ -66,6 +68,16 @@ function canonicalEntry(e: WorkforceAuditEntry): string {
 interface AuditFile {
   entries: WorkforceAuditEntry[];
   integrity?: AuditChainSnapshot;
+  /** S115 — optional Ed25519 signature over the chain head. Absent ⇒ UNSIGNED (backward-compatible). */
+  signature?: SignedAuditHead;
+}
+
+/** S115 — the safe, read-only audit-integrity status shape exposed at the UI boundary. No secrets. */
+export interface AuditIntegritySurface {
+  state: 'SIGNED' | 'UNSIGNED' | 'VERIFICATION_FAILED';
+  algorithm?: string;
+  keyId?: string;
+  keyVersion?: number;
 }
 
 export interface AuditQuery {
@@ -85,6 +97,10 @@ export class AuditLog extends EventEmitter {
   private dirty = false;
   private readonly maxEntries: number;
   private readonly chain = new AuditChain<WorkforceAuditEntry>(canonicalEntry, 'workforce-governance');
+  /** S115 — optional durable Ed25519 signing key + last persisted signature (head-signing). */
+  private signingKey?: AuditSigningKey;
+  private lastSignature?: SignedAuditHead;
+  private static readonly NS = 'workforce-governance';
 
   constructor(
     private readonly filePath: string,
@@ -94,12 +110,33 @@ export class AuditLog extends EventEmitter {
     this.maxEntries = Math.max(1, opts.maxEntries ?? DEFAULT_MAX_ENTRIES);
   }
 
+  /**
+   * S115 — attach the durable Ed25519 signing key (from the OS keychain via DurableAuditKeyProvider).
+   * Must be called BEFORE load() so verification can run on the persisted signature. Optional: with no
+   * key the chain still works and reports UNSIGNED (backward-compatible).
+   */
+  attachSigningKey(key: AuditSigningKey): void {
+    this.signingKey = key;
+  }
+
+  /**
+   * S115 — the read-only audit-integrity status for the security-ops surface. Verifies the live chain
+   * AND (if present) the signature over the current head, fail-closed. Returns ONLY safe fields
+   * (state + algorithm + keyId + keyVersion) — never key material, never the head/entries.
+   */
+  integrityStatus(): AuditIntegritySurface {
+    const vks = this.signingKey ? [{ keyId: this.signingKey.keyId, version: this.signingKey.version, algorithm: 'Ed25519' as const, publicKeyPem: this.signingKey.publicKeyPem }] : [];
+    const s = verifyAuditChainIntegrity(AuditLog.NS, this.chain, this.entries, vks, this.lastSignature);
+    return { state: s.state, ...(s.algorithm ? { algorithm: s.algorithm } : {}), ...(s.keyId ? { keyId: s.keyId } : {}), ...(s.keyVersion !== undefined ? { keyVersion: s.keyVersion } : {}) };
+  }
+
   async load(): Promise<void> {
     if (this.loaded) return;
     try {
       const raw = await fs.readFile(this.filePath, 'utf8');
       const data = JSON.parse(raw) as Partial<AuditFile>;
       this.entries = Array.isArray(data.entries) ? data.entries : [];
+      this.lastSignature = data.signature; // S115 — recover the persisted signature (undefined ⇒ UNSIGNED)
       if (this.chain.restore(data.integrity)) {
         const report = this.chain.verify(this.entries);
         if (!report.ok) {
@@ -129,7 +166,11 @@ export class AuditLog extends EventEmitter {
   }
 
   private async persist(): Promise<void> {
-    const file: AuditFile = { entries: this.entries, integrity: this.chain.snapshot() };
+    // S115 — if a durable signing key is attached, sign the current chain head (namespace-bound).
+    if (this.signingKey) {
+      this.lastSignature = signAuditChainHead(this.signingKey, AuditLog.NS, this.chain);
+    }
+    const file: AuditFile = { entries: this.entries, integrity: this.chain.snapshot(), ...(this.lastSignature ? { signature: this.lastSignature } : {}) };
     const tmp = `${this.filePath}.tmp`;
     await fs.writeFile(tmp, JSON.stringify(file), { mode: 0o600 });
     await fs.rename(tmp, this.filePath);

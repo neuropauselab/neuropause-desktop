@@ -46,6 +46,14 @@ interface WorkforceContextValue {
   policies: PolicyRule[];
   /** P8.6 — installed worker packages (P8.5 install service). */
   installs: WorkerInstallSummary[];
+  /**
+   * GATE 15 (round 47) — non-null when the last installs read FAILED. The read
+   * used to be swallowed into `[]`, so a denied `workforce:installs` rendered
+   * as "no installed packages" — an answer, and the wrong one. Partial
+   * degradation is kept (a failed installs read must not sink the whole
+   * workforce view); the failure is exposed for surfaces to say.
+   */
+  installsError: string | null;
   refreshAll: () => Promise<void>;
   loadWorker: (id: string) => Promise<Worker | null>;
   runSkill: (workerId: string, skillId: string, input?: Record<string, unknown>) => Promise<Job | null>;
@@ -76,7 +84,11 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
   const [policies, setPolicies] = useState<PolicyRule[]>([]);
   const [intelligence, setIntelligence] = useState<WorkforceIntelligence | null>(null);
   const [installs, setInstalls] = useState<WorkerInstallSummary[]>([]);
+  const [installsError, setInstallsError] = useState<string | null>(null);
   const detailCache = useRef(new Map<string, Worker>());
+
+  const describeInstallsError = (err: unknown): string =>
+    err instanceof Error && err.message ? err.message : 'The installed-packages read failed.';
 
   const refreshAll = useCallback(async () => {
     try {
@@ -86,7 +98,18 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
         ipc.workforce.audit({ limit: 200 }),
         ipc.workforce.policies(),
         ipc.workforce.intelligence(),
-        ipc.workforce.installs().catch(() => [] as WorkerInstallSummary[]),
+        // Partial degradation is deliberate — a failed installs read must not
+        // sink the whole view — but the failure is RECORDED, never silent.
+        ipc.workforce.installs().then(
+          (ins2) => {
+            setInstallsError(null);
+            return ins2;
+          },
+          (err: unknown) => {
+            setInstallsError(describeInstallsError(err));
+            return [] as WorkerInstallSummary[];
+          },
+        ),
       ]);
       setWorkers(w);
       setIntelligence(intel);
@@ -107,7 +130,9 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       const [ins, w] = await Promise.all([ipc.workforce.installs(), ipc.workforce.workers()]);
       setInstalls(ins);
       setWorkers(w);
+      setInstallsError(null);
     } catch (err) {
+      setInstallsError(describeInstallsError(err));
       log.error('Failed to refresh installs', err);
     }
   }, []);
@@ -271,6 +296,7 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       auditTotal,
       policies,
       installs,
+      installsError,
       refreshAll,
       loadWorker,
       runSkill,
@@ -297,6 +323,7 @@ export function WorkforceProvider({ children }: { children: ReactNode }): JSX.El
       auditTotal,
       policies,
       installs,
+      installsError,
       refreshAll,
       loadWorker,
       runSkill,

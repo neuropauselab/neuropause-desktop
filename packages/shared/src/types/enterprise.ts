@@ -50,6 +50,15 @@ export interface Organization {
   type?: OrganizationType;
   /** Optional so a pre-P11 file parses; absent is read as `active`. */
   status?: OrganizationStatus;
+  /**
+   * The protected owner of this tenant — the root-of-trust member the owner
+   * guards key on (P13C round 40). For the seeded organization this is the
+   * compile-time `OWNER_USER_ID`; for provisioned organizations it is recorded
+   * once at provisioning (the creator) and never reassigned by member edits.
+   * Optional so pre-round-40 files parse; absent rows are healed on load from
+   * the provisioned owner's row where it is unambiguous.
+   */
+  ownerUserId?: string;
   createdAt: string;
   updatedAt: string;
   metadata: Record<string, unknown>;
@@ -664,4 +673,21 @@ export interface ExecutiveSnapshot {
   approvals: ApprovalsSummary;
   intelligence: IntelligenceSummary;
   operations: OperationsSummary;
+  /**
+   * OS-track L1 Workspace Foundation — the tenant-scoped domain rollup (people ·
+   * customers · projects · documents · … : per-domain scoped count + state), a
+   * READ/aggregate-only projection of the governed module stores. Present once
+   * wired; optional for older snapshots/builds. A domain with no store → state
+   * 'unavailable' (never a fabricated 0); unresolved scope → the field is absent.
+   */
+  workspaceDomain?: {
+    scopeResolved: boolean;
+    slices: {
+      domain: string;
+      moduleId: string;
+      label: string;
+      count: number;
+      state: 'present' | 'unavailable';
+    }[];
+  } | null;
 }

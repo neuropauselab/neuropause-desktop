@@ -16,6 +16,7 @@ import { ipc } from '@renderer/lib/ipc';
 import type { SectionId } from '@renderer/shell/sections';
 import { setPendingSearchQuery } from '@renderer/search/searchHandoff';
 import { consumePendingAssistantQuery } from './assistantHandoff';
+import { setPendingMailProposal } from '@renderer/connectors/m365ProposalHandoff';
 import { AssistantView } from './AssistantView';
 
 export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => void }): JSX.Element {
@@ -27,16 +28,49 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
   const conversationRef = useRef<string | null>(null);
   conversationRef.current = conversation?.id ?? null;
 
+  // Round 39 — Gate 26: `assistant:conversations` is a SECURE runtime channel
+  // registered at the end of composition, while this host mounts immediately
+  // when Assistant was the restored section — live evidence showed the load
+  // failing with "No handler registered" on a real relaunch and STAYING
+  // failed for the session. Same cure as AppShell's profile load (Gate 1):
+  // record that the failure raced the boot window and re-run once on the
+  // runtime-ready broadcast, which the base router serves and cannot race.
+  const listLoadRacedBoot = useRef(false);
+
   const refreshList = useCallback((): void => {
+    // Round 36 — Gate 15: a failed conversation-list read used to render as
+    // "no conversations" — a user's history apparently gone, in silence. The
+    // failure now lands in the live-note channel the assistant surface
+    // already renders; the next successful refresh clears it.
     ipc.assistant
       .conversations()
-      .then((r) => setSummaries(r.conversations))
-      .catch(() => setSummaries([]));
+      .then((r) => {
+        listLoadRacedBoot.current = false;
+        setSummaries(r.conversations);
+      })
+      .catch((err: unknown) => {
+        listLoadRacedBoot.current = true;
+        setSummaries([]);
+        const reason = err instanceof Error && err.message ? err.message : 'the request failed';
+        setLiveNote(`Your conversations could not be loaded — ${reason}`);
+      });
   }, []);
 
   useEffect(() => {
     refreshList();
   }, [refreshList]);
+
+  useEffect(
+    () =>
+      ipc.runtime.onStateChanged((s) => {
+        if (s.state === 'ready' && listLoadRacedBoot.current) {
+          listLoadRacedBoot.current = false;
+          setLiveNote(null);
+          refreshList();
+        }
+      }),
+    [refreshList],
+  );
 
   // Live progress: phase notes while a turn runs; step changes refresh the thread.
   useEffect(() => {
@@ -119,14 +153,23 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
     }
   }, [refreshList]);
 
+  // Round 36 — Gate 15: pick/pin/delete were silent no-ops on failure. One
+  // transient note (the live-note channel the user already watches) says so.
+  const sayFailed = useCallback((what: string) => {
+    return (err: unknown): void => {
+      const reason = err instanceof Error && err.message ? err.message : 'the request failed';
+      setLiveNote(`${what} failed — ${reason}`);
+    };
+  }, []);
+
   const onPick = useCallback((id: string): void => {
     ipc.assistant
       .conversation(id)
       .then((c) => {
         if (c) setConversation(c);
       })
-      .catch(() => undefined);
-  }, []);
+      .catch(sayFailed('Opening the conversation'));
+  }, [sayFailed]);
 
   const onNew = useCallback((): void => setConversation(null), []);
 
@@ -138,9 +181,9 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
           if (c && c.id === conversationRef.current) setConversation(c);
           refreshList();
         })
-        .catch(() => undefined);
+        .catch(sayFailed(pinned ? 'Pinning' : 'Unpinning'));
     },
-    [refreshList],
+    [refreshList, sayFailed],
   );
 
   const onDelete = useCallback(
@@ -151,14 +194,25 @@ export function AssistantHost({ onNavigate }: { onNavigate?: (id: SectionId) => 
           if (conversationRef.current === id) setConversation(null);
           refreshList();
         })
-        .catch(() => undefined);
+        .catch(sayFailed('Deleting the conversation'));
     },
-    [refreshList],
+    [refreshList, sayFailed],
   );
 
   const onOpenNavigation = useCallback(
-    (section: string, query: string | null): void => {
+    (
+      section: string,
+      query: string | null,
+      mailIntent?: { to: string[]; subject: string; body: string } | null,
+      // FG-14 — the envelope's own correlationId, forwarded verbatim as evidence lineage.
+      correlationId?: string,
+    ): void => {
       if (section === 'search' && query) setPendingSearchQuery(query);
+      // Slice-13 — a mail.send intent detected this turn is handed to the ONE M365WritePanel via the Slice-12 feed.
+      // The mailbox is consumed once on EntraConnectorPanel mount; setting it here ties it to the clicked message.
+      if (section === 'connectors' && mailIntent) {
+        setPendingMailProposal(correlationId === undefined ? mailIntent : { ...mailIntent, correlationId });
+      }
       onNavigate?.(section as SectionId);
     },
     [onNavigate],

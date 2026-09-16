@@ -230,7 +230,7 @@ export function AppDetail({ slug }: { slug: string }): JSX.Element {
                 <Info label="Developer" value={app.developer.name} />
                 <Info label="Category" value={app.category.name} />
                 <Info label="Runtime" value={appTypeLabel(app.appType)} />
-                <Info label="Platform" value="macOS (Apple Silicon)" />
+                <Info label="Platform" value="macOS (Intel & Apple Silicon)" />
                 <Info label="Pricing" value={pricingLabel(app.pricingKind)} />
                 {app.latestVersion && <Info label="Version" value={app.latestVersion.version} />}
                 {app.latestVersion?.channel && <Info label="Channel" value={app.latestVersion.channel} />}

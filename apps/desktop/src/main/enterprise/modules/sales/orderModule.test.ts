@@ -24,7 +24,7 @@ import {
   type SalesOrder,
 } from '@neuropause/shared';
 import type { SecureHandlerDef } from '../../../ipc/secureBridge';
-import { EnterpriseModuleRegistry, buildModuleHandlers } from '../../framework';
+import { EnterpriseModuleRegistry, INTERNAL_ACTION_ORIGIN, buildModuleHandlers } from '../../framework';
 import { ORDER_DESCRIPTOR, createOrderModule, type OrderAiRunner } from './orderModule';
 import { runOrderAi } from './orderAi';
 
@@ -277,6 +277,7 @@ function act(id: string, action: string) {
     moduleId: 'sales-orders',
     id,
     action,
+    origin: INTERNAL_ACTION_ORIGIN,
   }) as Promise<{ ok: boolean; message?: string; error?: string }>;
 }
 

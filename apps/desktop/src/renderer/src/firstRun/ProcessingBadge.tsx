@@ -47,6 +47,7 @@ export function ProcessingBadge({
       >
         <Icon name={LOCATION_ICON[model.location] ?? 'cpu'} size={11} aria-hidden="true" />
         <span>{model.label}</span>
+        {model.modelName && <span className="opacity-70">· {model.modelName}</span>}
         <button
           type="button"
           className="ml-0.5 rounded-full px-1 text-[10px] font-semibold uppercase tracking-wide text-faint hover:text-ink focus-visible:outline focus-visible:outline-2"

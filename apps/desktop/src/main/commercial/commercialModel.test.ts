@@ -323,3 +323,27 @@ describe('determinism + never-throws-on-empty', () => {
     expect(buildCommercialAnalytics(emptyState()).roiRatio).toBeNull(); // no cost → no ratio
   });
 });
+
+/* ── P13C ROUND 36 — GATE 5: a throwing validator is not a valid license ──── */
+
+import { resolveLicenseState } from './commercialModel';
+
+describe('resolveLicenseState (round 36)', () => {
+  it('a THROWN validator (null status) answers unknown — never a false valid', () => {
+    expect(resolveLicenseState(null, true)).toBe('unknown');
+    expect(resolveLicenseState(null, false)).toBe('unknown');
+  });
+  it('an evaluation that ran passes its state through', () => {
+    expect(resolveLicenseState({ evaluation: { state: 'grace' } }, true)).toBe('grace');
+    expect(resolveLicenseState({ evaluation: { state: 'invalid' } }, true)).toBe('invalid');
+  });
+  it('no license record with a subscription keeps its documented valid meaning', () => {
+    expect(resolveLicenseState({ evaluation: null }, true)).toBe('valid');
+    expect(resolveLicenseState({ evaluation: null }, false)).toBe('invalid');
+  });
+  it('unknown bands as watch — attention, never healthy and never asserted breach', () => {
+    expect(licenseBand('unknown')).toBe('watch');
+    expect(licenseBand('valid')).toBe('healthy');
+    expect(licenseBand('invalid')).toBe('critical');
+  });
+});

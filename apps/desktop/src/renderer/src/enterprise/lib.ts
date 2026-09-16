@@ -150,16 +150,36 @@ export function saveWidgetPrefs(key: string, ids: Set<string>): void {
 
 /* ── navigation preferences (which enterprise surfaces are shown) ── */
 
-const NAV_KEY = 'np.enterprise.nav';
+/**
+ * P13C ROUND 36 — GATE 5. STORE WHAT WAS HIDDEN, NOT WHAT WAS ALLOWED.
+ *
+ * The old scheme persisted the ENABLED set under `np.enterprise.nav` — but the
+ * only writer (Customize) manages 8 of the 16 Enterprise tabs, so its first
+ * save silently excluded the other 8, and `loadNavPrefs` (called with all 16)
+ * INTERSECTED against that stored subset: Executive, Process Explorer,
+ * Production Schedule, Operator Console, Relationship Intelligence, Trust
+ * Center, Favorites and Modules vanished permanently, with no in-app recovery
+ * — the reset button never cleared the key and the lost tabs were not listed
+ * in Customize to re-enable.
+ *
+ * Storing the HIDDEN set inverts the failure mode: a tab nobody ever toggled
+ * off can never disappear, whatever subset of tabs the writing surface happens
+ * to manage. The legacy enabled-list key is DISCARDED on first read — a user
+ * who deliberately hid one of the 8 managed tabs loses that one preference
+ * once (trivially re-settable), which is the right trade against users who
+ * lost half their navigation.
+ */
+const NAV_KEY = 'np.enterprise.nav'; // legacy enabled-list; migrated away (round 36)
+const NAV_HIDDEN_KEY = 'np.enterprise.nav.hidden';
 
 export function loadNavPrefs(all: readonly string[]): Set<string> {
   try {
-    const raw = localStorage.getItem(NAV_KEY);
+    localStorage.removeItem(NAV_KEY); // discard the legacy lossy format
+    const raw = localStorage.getItem(NAV_HIDDEN_KEY);
     if (raw) {
-      const ids = JSON.parse(raw) as string[];
-      const next = new Set(ids.filter((id) => all.includes(id)));
-      next.add('command'); // the home surface is always available
-      return next;
+      const hidden = new Set(JSON.parse(raw) as string[]);
+      hidden.delete('command'); // the home surface is always available
+      return new Set(all.filter((id) => !hidden.has(id)));
     }
   } catch {
     /* default to all */
@@ -167,11 +187,15 @@ export function loadNavPrefs(all: readonly string[]): Set<string> {
   return new Set(all);
 }
 
-export function saveNavPrefs(ids: Set<string>): void {
+/**
+ * Persist the toggles from a surface that manages `managed` tabs: hidden =
+ * managed − enabled. Tabs outside `managed` are untouched by construction.
+ */
+export function saveNavPrefs(enabled: Set<string>, managed: readonly string[]): void {
   try {
-    const next = new Set(ids);
-    next.add('command');
-    localStorage.setItem(NAV_KEY, JSON.stringify([...next]));
+    const hidden = managed.filter((id) => id !== 'command' && !enabled.has(id));
+    localStorage.setItem(NAV_HIDDEN_KEY, JSON.stringify(hidden));
+    localStorage.removeItem(NAV_KEY);
   } catch {
     /* best-effort */
   }

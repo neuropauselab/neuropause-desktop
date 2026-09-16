@@ -96,3 +96,85 @@ describe('buildModelRouter — config + Vault aware', () => {
     expect(r.resolve('deep').model).toBe('claude-custom-model');
   });
 });
+
+/* ── P13C ROUND 34 — the tenant preference clamps the route plan (D-1) ────── */
+
+import { tenantAiPreferenceStore } from './tenantAiPreferenceInstance';
+import { OPENAI_CREDENTIAL_ID } from './providerManager';
+import { promises as fsp } from 'node:fs';
+
+describe('round 34 — tenant AI preference reaches the router', () => {
+  afterEach(async () => {
+    // Unbind and remove the singleton's stray persistence from the test cwd.
+    tenantAiPreferenceStore.bindScope(() => null);
+    await fsp.rm('tenant-ai-preference.json', { force: true }).catch(() => undefined);
+  });
+
+  it('a tenant local_only choice clamps a platform-external install — the D-1 fix', async () => {
+    // The exact reported failure: fresh install, env API key present, user
+    // chose "On this device". Before round 34 this routed to api.anthropic.com.
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-env-fixture');
+    tenantAiPreferenceStore.bindScope(() => ({ tenantId: 'org-a', workspaceId: 'ws-a' }));
+    await tenantAiPreferenceStore.setMine('local_only');
+
+    const { mode, candidates } = await assembleRouteCandidates();
+    expect(mode).toBe('local_only');
+    const plan = planRoute(mode, candidates);
+    // No attempt may be external — the law, observed at the router.
+    for (const attempt of plan.attempts) expect(attempt.location).not.toBe('external');
+    // And the external candidate is named as skipped, not silently absent.
+    expect(plan.skipped.some((s) => s.provider === 'anthropic')).toBe(true);
+  });
+
+  it('with no preference row the platform mode stands — legacy installs unchanged', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'sk-env-fixture');
+    const { mode } = await assembleRouteCandidates();
+    expect(mode).toBe('external'); // documented pre-mode behaviour for claude-default
+  });
+
+  it('a tenant preference can never WIDEN the platform mode', async () => {
+    saveAiConfig({ mode: 'local_only' });
+    tenantAiPreferenceStore.bindScope(() => ({ tenantId: 'org-a', workspaceId: 'ws-a' }));
+    await tenantAiPreferenceStore.setMine('private_first');
+    const { mode } = await assembleRouteCandidates();
+    expect(mode).toBe('local_only'); // min(platform, tenant)
+  });
+});
+
+describe('round 34 — OpenAI provider routing', () => {
+  it('an openai-selected install with a Vault key routes external with openai leading', async () => {
+    await credentialStore.setSecret(OPENAI_CREDENTIAL_ID, 'sk-openai-fixture');
+    saveAiConfig({ provider: 'openai' });
+    const { mode, candidates } = await assembleRouteCandidates();
+    expect(mode).toBe('external');
+    const plan = planRoute(mode, candidates);
+    expect(plan.attempts[0]).toMatchObject({ provider: 'openai', location: 'external' });
+    // Anthropic (no key) is skipped as not configured, not silently dropped.
+    expect(plan.skipped.some((s) => s.provider === 'anthropic')).toBe(true);
+  });
+
+  it('openai is a consented fallback candidate in private_first', async () => {
+    await credentialStore.setSecret(OPENAI_CREDENTIAL_ID, 'sk-openai-fixture');
+    saveAiConfig({ mode: 'private_first', externalConsent: true });
+    const { mode, candidates } = await assembleRouteCandidates();
+    const plan = planRoute(mode, candidates);
+    expect(plan.attempts[0]?.provider).toBe('ollama'); // local leads
+    expect(plan.attempts.some((a) => a.provider === 'openai')).toBe(true);
+  });
+
+  it('without consent, an openai key alone never becomes an eligible external route', async () => {
+    await credentialStore.setSecret(OPENAI_CREDENTIAL_ID, 'sk-openai-fixture');
+    saveAiConfig({ mode: 'private_first', externalConsent: false });
+    const { mode, candidates } = await assembleRouteCandidates();
+    const plan = planRoute(mode, candidates);
+    expect(plan.attempts.every((a) => a.location !== 'external')).toBe(true);
+  });
+
+  it('a config model override applies to openai across all tiers', async () => {
+    await credentialStore.setSecret(OPENAI_CREDENTIAL_ID, 'sk-openai-fixture');
+    saveAiConfig({ provider: 'openai', model: 'gpt-4o-mini' });
+    const r = await buildModelRouter();
+    expect(r.isConfigured()).toBe(true);
+    expect(r.resolve('fast').model).toBe('gpt-4o-mini');
+  });
+});

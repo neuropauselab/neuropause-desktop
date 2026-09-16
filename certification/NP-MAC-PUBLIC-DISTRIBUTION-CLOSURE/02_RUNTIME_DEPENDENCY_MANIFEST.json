@@ -1,0 +1,1263 @@
+{
+  "ARTIFACT": "02_RUNTIME_DEPENDENCY_MANIFEST",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "rule": "runtime-required = exact bare specifiers required by out/main + out/preload bundles, plus direct dependencies, plus their in-asar package.json closure",
+  "bundle_specifiers": [
+    {
+      "specifier": "electron-updater",
+      "package": "electron-updater",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/electron-updater",
+      "resolved_in_asar": "node_modules/electron-updater/out/main.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "@neuropause/cst/dist/src/kernel.js",
+      "package": "@neuropause/cst",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/@neuropause/cst",
+      "resolved_in_asar": "node_modules/@neuropause/cst/dist/src/kernel.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "@neuropause/cst/dist/src/stores.js",
+      "package": "@neuropause/cst",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/@neuropause/cst",
+      "resolved_in_asar": "node_modules/@neuropause/cst/dist/src/stores.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "@neuropause/cst/dist/src/types.js",
+      "package": "@neuropause/cst",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/@neuropause/cst",
+      "resolved_in_asar": "node_modules/@neuropause/cst/dist/src/types.js",
+      "RESOLVABLE": true
+    },
+    {
+      "specifier": "ws",
+      "package": "ws",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "packaged_root": "node_modules/ws",
+      "resolved_in_asar": "node_modules/ws/index.js",
+      "RESOLVABLE": true
+    }
+  ],
+  "dependency_matrix": [
+    {
+      "package": "electron-updater",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "resolved_version": "6.8.9",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/electron-updater",
+      "entry_detail": "node_modules/electron-updater/out/main.js"
+    },
+    {
+      "package": "@neuropause/cst",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "resolved_version": "1.3.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@neuropause/cst",
+      "entry_detail": "entry \"dist/index.js\" not found under node_modules/@neuropause/cst"
+    },
+    {
+      "package": "ws",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "out/main/index.js"
+      ],
+      "resolved_version": "8.21.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/ws",
+      "entry_detail": "node_modules/ws/index.js"
+    },
+    {
+      "package": "@neuropause/companion-protocol",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "0.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/companion-protocol",
+      "entry_detail": "node_modules/@neuropause/companion-protocol/src/index.ts"
+    },
+    {
+      "package": "@neuropause/shared",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "0.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/shared",
+      "entry_detail": "node_modules/@neuropause/shared/src/index.ts"
+    },
+    {
+      "package": "@neuropause/solution-packs",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "0.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/solution-packs",
+      "entry_detail": "node_modules/@neuropause/solution-packs/src/index.ts"
+    },
+    {
+      "package": "qrcode.react",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "4.2.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/qrcode.react",
+      "entry_detail": "node_modules/qrcode.react/lib/index.js"
+    },
+    {
+      "package": "recharts",
+      "classification": "DIRECT_RUNTIME",
+      "required_by": [
+        "apps/desktop/package.json"
+      ],
+      "resolved_version": "2.15.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/recharts",
+      "entry_detail": "node_modules/recharts/lib/index.js"
+    },
+    {
+      "package": "fs-extra",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "10.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/fs-extra",
+      "entry_detail": "node_modules/fs-extra/lib/index.js"
+    },
+    {
+      "package": "js-yaml",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "4.3.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/js-yaml",
+      "entry_detail": "node_modules/js-yaml/index.js"
+    },
+    {
+      "package": "lazy-val",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "1.0.5",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lazy-val",
+      "entry_detail": "node_modules/lazy-val/out/main.js"
+    },
+    {
+      "package": "lodash.escaperegexp",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "4.1.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lodash.escaperegexp",
+      "entry_detail": "node_modules/lodash.escaperegexp/index.js"
+    },
+    {
+      "package": "lodash.isequal",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "4.5.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lodash.isequal",
+      "entry_detail": "node_modules/lodash.isequal/index.js"
+    },
+    {
+      "package": "semver",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "7.7.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/semver",
+      "entry_detail": "node_modules/semver/index.js"
+    },
+    {
+      "package": "tiny-typed-emitter",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "2.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/tiny-typed-emitter",
+      "entry_detail": "node_modules/tiny-typed-emitter/lib/index.js"
+    },
+    {
+      "package": "builder-util-runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "electron-updater"
+      ],
+      "resolved_version": "9.7.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/builder-util-runtime",
+      "entry_detail": "node_modules/builder-util-runtime/out/index.js"
+    },
+    {
+      "package": "@noble/ciphers",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.3.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@noble/ciphers",
+      "entry_detail": "node_modules/@noble/ciphers/index.js"
+    },
+    {
+      "package": "@noble/curves",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.9.7",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@noble/curves",
+      "entry_detail": "node_modules/@noble/curves/index.js"
+    },
+    {
+      "package": "@noble/hashes",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.8.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@noble/hashes",
+      "entry_detail": "node_modules/@noble/hashes/index.js"
+    },
+    {
+      "package": "@scure/base",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "1.2.6",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@scure/base",
+      "entry_detail": "node_modules/@scure/base/lib/index.js"
+    },
+    {
+      "package": "zod",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/companion-protocol"
+      ],
+      "resolved_version": "3.25.76",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/zod",
+      "entry_detail": "node_modules/zod/index.cjs"
+    },
+    {
+      "package": "@neuropause/industry",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/solution-packs"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/industry",
+      "entry_detail": "node_modules/@neuropause/industry/src/index.ts"
+    },
+    {
+      "package": "clsx",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "2.1.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/clsx",
+      "entry_detail": "node_modules/clsx/dist/clsx.js"
+    },
+    {
+      "package": "eventemitter3",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "4.0.7",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/eventemitter3",
+      "entry_detail": "node_modules/eventemitter3/index.js"
+    },
+    {
+      "package": "lodash",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "4.18.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/lodash",
+      "entry_detail": "node_modules/lodash/lodash.js"
+    },
+    {
+      "package": "react-is",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "18.3.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/prop-types/node_modules/react-is",
+      "entry_detail": "node_modules/prop-types/node_modules/react-is/index.js"
+    },
+    {
+      "package": "react-smooth",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "4.0.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/react-smooth",
+      "entry_detail": "node_modules/react-smooth/lib/index.js"
+    },
+    {
+      "package": "recharts-scale",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "0.4.5",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/recharts-scale",
+      "entry_detail": "node_modules/recharts-scale/lib/index.js"
+    },
+    {
+      "package": "tiny-invariant",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "1.3.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/tiny-invariant",
+      "entry_detail": "node_modules/tiny-invariant/dist/tiny-invariant.cjs.js"
+    },
+    {
+      "package": "victory-vendor",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts"
+      ],
+      "resolved_version": "36.9.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/victory-vendor",
+      "entry_detail": "entry \"index.js\" not found under node_modules/victory-vendor"
+    },
+    {
+      "package": "graceful-fs",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "fs-extra"
+      ],
+      "resolved_version": "4.2.11",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/graceful-fs",
+      "entry_detail": "node_modules/graceful-fs/graceful-fs.js"
+    },
+    {
+      "package": "jsonfile",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "fs-extra"
+      ],
+      "resolved_version": "6.2.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/jsonfile",
+      "entry_detail": "node_modules/jsonfile/index.js"
+    },
+    {
+      "package": "universalify",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "fs-extra"
+      ],
+      "resolved_version": "2.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/universalify",
+      "entry_detail": "node_modules/universalify/index.js"
+    },
+    {
+      "package": "argparse",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "js-yaml"
+      ],
+      "resolved_version": "2.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/argparse",
+      "entry_detail": "node_modules/argparse/argparse.js"
+    },
+    {
+      "package": "debug",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "builder-util-runtime"
+      ],
+      "resolved_version": "4.4.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/debug",
+      "entry_detail": "node_modules/debug/src/index.js"
+    },
+    {
+      "package": "sax",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "builder-util-runtime"
+      ],
+      "resolved_version": "1.6.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/sax",
+      "entry_detail": "node_modules/sax/lib/sax.js"
+    },
+    {
+      "package": "@neuropause/runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/runtime",
+      "entry_detail": "node_modules/@neuropause/runtime/src/index.ts"
+    },
+    {
+      "package": "@neuropause/cloud-core",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/cloud-core",
+      "entry_detail": "node_modules/@neuropause/cloud-core/src/index.ts"
+    },
+    {
+      "package": "@neuropause/shared-cloud",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/shared-cloud",
+      "entry_detail": "node_modules/@neuropause/shared-cloud/src/index.ts"
+    },
+    {
+      "package": "@neuropause/security",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/security",
+      "entry_detail": "node_modules/@neuropause/security/src/index.ts"
+    },
+    {
+      "package": "@neuropause/persistence",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/persistence",
+      "entry_detail": "node_modules/@neuropause/persistence/src/index.ts"
+    },
+    {
+      "package": "@neuropause/connectors",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/connectors",
+      "entry_detail": "node_modules/@neuropause/connectors/src/index.ts"
+    },
+    {
+      "package": "@neuropause/integrations",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/integrations",
+      "entry_detail": "node_modules/@neuropause/integrations/src/index.ts"
+    },
+    {
+      "package": "@neuropause/ai-runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/ai-runtime",
+      "entry_detail": "node_modules/@neuropause/ai-runtime/src/index.ts"
+    },
+    {
+      "package": "@neuropause/nems",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/nems",
+      "entry_detail": "node_modules/@neuropause/nems/src/index.ts"
+    },
+    {
+      "package": "@neuropause/connectivity",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/connectivity",
+      "entry_detail": "node_modules/@neuropause/connectivity/src/index.ts"
+    },
+    {
+      "package": "@neuropause/intelligence",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/intelligence",
+      "entry_detail": "node_modules/@neuropause/intelligence/src/index.ts"
+    },
+    {
+      "package": "@neuropause/automation",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/automation",
+      "entry_detail": "node_modules/@neuropause/automation/src/index.ts"
+    },
+    {
+      "package": "@neuropause/execution",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/execution",
+      "entry_detail": "node_modules/@neuropause/execution/src/index.ts"
+    },
+    {
+      "package": "@neuropause/federation",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/federation",
+      "entry_detail": "node_modules/@neuropause/federation/src/index.ts"
+    },
+    {
+      "package": "@neuropause/cloudops",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/cloudops",
+      "entry_detail": "node_modules/@neuropause/cloudops/src/index.ts"
+    },
+    {
+      "package": "@neuropause/business",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/industry"
+      ],
+      "resolved_version": "0.0.0-preview.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@neuropause/business",
+      "entry_detail": "node_modules/@neuropause/business/src/index.ts"
+    },
+    {
+      "package": "fast-equals",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-smooth"
+      ],
+      "resolved_version": "5.4.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/fast-equals",
+      "entry_detail": "node_modules/fast-equals/dist/cjs/index.cjs"
+    },
+    {
+      "package": "prop-types",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-smooth"
+      ],
+      "resolved_version": "15.8.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/prop-types",
+      "entry_detail": "node_modules/prop-types/index.js"
+    },
+    {
+      "package": "react-transition-group",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-smooth"
+      ],
+      "resolved_version": "4.4.5",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/react-transition-group",
+      "entry_detail": "node_modules/react-transition-group/cjs/index.js"
+    },
+    {
+      "package": "decimal.js-light",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "recharts-scale"
+      ],
+      "resolved_version": "2.5.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/decimal.js-light",
+      "entry_detail": "node_modules/decimal.js-light/decimal.js"
+    },
+    {
+      "package": "@types/d3-array",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.2.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-array",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-array"
+    },
+    {
+      "package": "@types/d3-ease",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-ease",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-ease"
+    },
+    {
+      "package": "@types/d3-interpolate",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-interpolate",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-interpolate"
+    },
+    {
+      "package": "@types/d3-scale",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "4.0.9",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-scale",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-scale"
+    },
+    {
+      "package": "@types/d3-shape",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.1.8",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-shape",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-shape"
+    },
+    {
+      "package": "@types/d3-time",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-time",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-time"
+    },
+    {
+      "package": "@types/d3-timer",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-timer",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-timer"
+    },
+    {
+      "package": "d3-array",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.2.4",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-array",
+      "entry_detail": "node_modules/d3-array/src/index.js"
+    },
+    {
+      "package": "d3-ease",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-ease",
+      "entry_detail": "node_modules/d3-ease/src/index.js"
+    },
+    {
+      "package": "d3-interpolate",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-interpolate",
+      "entry_detail": "node_modules/d3-interpolate/src/index.js"
+    },
+    {
+      "package": "d3-scale",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "4.0.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-scale",
+      "entry_detail": "node_modules/d3-scale/src/index.js"
+    },
+    {
+      "package": "d3-shape",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.2.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-shape",
+      "entry_detail": "node_modules/d3-shape/src/index.js"
+    },
+    {
+      "package": "d3-time",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-time",
+      "entry_detail": "node_modules/d3-time/src/index.js"
+    },
+    {
+      "package": "d3-timer",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "victory-vendor"
+      ],
+      "resolved_version": "3.0.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-timer",
+      "entry_detail": "node_modules/d3-timer/src/index.js"
+    },
+    {
+      "package": "ms",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "debug"
+      ],
+      "resolved_version": "2.1.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/ms",
+      "entry_detail": "node_modules/ms/index.js"
+    },
+    {
+      "package": "@electric-sql/pglite",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@neuropause/persistence"
+      ],
+      "resolved_version": null,
+      "DECLARED": true,
+      "RESOLVED": false,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/@electric-sql/pglite",
+      "entry_detail": "node_modules/@electric-sql/pglite/dist/index.cjs"
+    },
+    {
+      "package": "loose-envify",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "prop-types"
+      ],
+      "resolved_version": "1.4.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/loose-envify",
+      "entry_detail": "node_modules/loose-envify/index.js"
+    },
+    {
+      "package": "object-assign",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "prop-types"
+      ],
+      "resolved_version": "4.1.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/object-assign",
+      "entry_detail": "node_modules/object-assign/index.js"
+    },
+    {
+      "package": "@babel/runtime",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-transition-group"
+      ],
+      "resolved_version": "7.29.7",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@babel/runtime",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@babel/runtime"
+    },
+    {
+      "package": "dom-helpers",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "react-transition-group"
+      ],
+      "resolved_version": "5.2.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/dom-helpers",
+      "entry_detail": "node_modules/dom-helpers/cjs/index.js"
+    },
+    {
+      "package": "@types/d3-color",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@types/d3-interpolate"
+      ],
+      "resolved_version": "3.1.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-color",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-color"
+    },
+    {
+      "package": "@types/d3-path",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "@types/d3-shape"
+      ],
+      "resolved_version": "3.1.1",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/@types/d3-path",
+      "entry_detail": "entry \"index.js\" not found under node_modules/@types/d3-path"
+    },
+    {
+      "package": "internmap",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-array"
+      ],
+      "resolved_version": "2.0.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/internmap",
+      "entry_detail": "node_modules/internmap/src/index.js"
+    },
+    {
+      "package": "d3-color",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-interpolate"
+      ],
+      "resolved_version": "3.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-color",
+      "entry_detail": "node_modules/d3-color/src/index.js"
+    },
+    {
+      "package": "d3-format",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-scale"
+      ],
+      "resolved_version": "3.1.2",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-format",
+      "entry_detail": "node_modules/d3-format/src/index.js"
+    },
+    {
+      "package": "d3-time-format",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-scale"
+      ],
+      "resolved_version": "4.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-time-format",
+      "entry_detail": "node_modules/d3-time-format/src/index.js"
+    },
+    {
+      "package": "d3-path",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "d3-shape"
+      ],
+      "resolved_version": "3.1.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/d3-path",
+      "entry_detail": "node_modules/d3-path/src/index.js"
+    },
+    {
+      "package": "js-tokens",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "loose-envify"
+      ],
+      "resolved_version": "4.0.0",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": true,
+      "packaged_path": "node_modules/js-tokens",
+      "entry_detail": "node_modules/js-tokens/index.js"
+    },
+    {
+      "package": "csstype",
+      "classification": "TRANSITIVE_RUNTIME",
+      "required_by": [
+        "dom-helpers"
+      ],
+      "resolved_version": "3.2.3",
+      "DECLARED": true,
+      "RESOLVED": true,
+      "PACKAGED": true,
+      "ENTRY_PRESENT": false,
+      "packaged_path": "node_modules/csstype",
+      "entry_detail": "entry \"index.js\" not found under node_modules/csstype"
+    }
+  ],
+  "counts": {
+    "required_packages": 85,
+    "direct_runtime": 8,
+    "missing": 0
+  }
+}

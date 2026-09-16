@@ -1,0 +1,784 @@
+{
+  "key": "control-plane",
+  "repo": "/Users/saurabhpatel/Desktop/np-public-launch",
+  "branch": "pilot/public-launch",
+  "head": "cec399f",
+  "audited_at": "2026-09-12",
+  "mode": "READ_ONLY",
+  "scope_read": [
+    "apps/backend/src/pilot/{types,authority,router,service,repository,memoryRepository}.ts",
+    "apps/backend/src/pilot/{service,router.enforcement}.test.ts",
+    "apps/backend/src/db/migrations/0013_pilot.sql",
+    "apps/backend/src/pausecloud/interfaces.ts",
+    "apps/backend/src/runtime/backendRuntime.ts (+test)",
+    "apps/backend/src/sync/{types,schemas,router,service,repository,memoryRepository}.ts",
+    "apps/backend/src/auth/{requireAuth,jwt,session}.ts (auth boundary only)",
+    "apps/backend/src/app.ts (mount lines)",
+    "apps/backend/src/platform/events.ts, middleware/audit.ts",
+    "apps/cloud/src/index.ts (+integration.test names)",
+    "packages/cloud-core/src/{index,lib/ids,services/gateway/gateway,services/security/requestSigner,services/audit/auditChain,services/events/versioning,services/sync/syncSchema}.ts",
+    "packages/shared-cloud/src/index.ts",
+    "node_modules/@neuropause/cst 1.3.0 (kernel.js, types.d.ts, stores.d.ts, README)",
+    "apps/desktop/src/main/cst/{governedAction,boundDecisionClaim,boundDecisionClaimMint,sendTransition,importTransition}.ts",
+    "apps/desktop/src/main/workforce/execution/{boundaryB,router}.ts (claim wiring)",
+    "apps/desktop/src/main/companion/gatewayServer.ts (WS sections)",
+    "certification/pilot-gate-closure/{PILOT-OPERATOR-DESIGNATION.json,GATE-STATUS-BOARD.md}"
+  ],
+  "commands_executed": [
+    "git rev-parse --short HEAD; git branch --show-current",
+    "git log --oneline -- apps/backend/src/pilot apps/backend/src/db/migrations/0013_pilot.sql",
+    "git show --stat 61b1503",
+    "rg (many targeted greps; see facts)",
+    "cd apps/backend && npx vitest run src/pilot/service.test.ts src/pilot/router.enforcement.test.ts  => 2 files, 32 tests passed"
+  ],
+  "control_objects": {
+    "backend_pilot": [
+      {
+        "object": "ConsentRecord",
+        "fields": [
+          "id(uuid)",
+          "userId",
+          "version",
+          "createdAt"
+        ],
+        "src": "apps/backend/src/pilot/types.ts:37-42",
+        "db": "consents (0013_pilot.sql:3-8)"
+      },
+      {
+        "object": "PilotEnrollment",
+        "fields": [
+          "id(uuid)",
+          "userId(UNIQUE)",
+          "state(11-value CHECK)",
+          "consentId(FK consents)",
+          "decisionId(uuid, NO FK)",
+          "startedAt",
+          "updatedAt"
+        ],
+        "src": "apps/backend/src/pilot/types.ts:44-52",
+        "db": "pilot_enrollments (0013_pilot.sql:11-22)"
+      },
+      {
+        "object": "PilotEvent",
+        "fields": [
+          "id(uuid)",
+          "userId",
+          "enrollmentId(FK)",
+          "eventType(9-value closed vocab)",
+          "metadata(jsonb)",
+          "createdAt"
+        ],
+        "src": "apps/backend/src/pilot/types.ts:54-61",
+        "db": "pilot_events (0013_pilot.sql:24-32)"
+      },
+      {
+        "object": "HumanDecision",
+        "fields": [
+          "id(uuid)",
+          "actorId(FK users)",
+          "decisionType('commercial'|'pilot'|'institutional')",
+          "subject(text)",
+          "decision(text)",
+          "reason(text)",
+          "createdAt"
+        ],
+        "absent_fields": [
+          "AUTHORITY_BASIS",
+          "POLICY_VERSION",
+          "SIGNATURE",
+          "role",
+          "subjectUserId(separate column)",
+          "evidenceRef",
+          "verificationRef",
+          "expiresAt",
+          "nonce/idempotencyKey",
+          "formRef"
+        ],
+        "src": "apps/backend/src/pilot/types.ts:63-71",
+        "db": "human_decisions (0013_pilot.sql:34-42)"
+      },
+      {
+        "object": "DecisionContext (in-memory only, not persisted)",
+        "fields": [
+          "actorId",
+          "subjectId",
+          "action",
+          "targetId?"
+        ],
+        "src": "apps/backend/src/pilot/authority.ts:23-32"
+      },
+      {
+        "object": "AuthorityDecision",
+        "values": [
+          "ALLOW",
+          "DENY",
+          "UNKNOWN"
+        ],
+        "src": "apps/backend/src/pilot/authority.ts:34"
+      }
+    ],
+    "backend_sync": [
+      {
+        "object": "StoredSyncRecord",
+        "fields": [
+          "orgId",
+          "entityType",
+          "entityId",
+          "version(client-supplied int)",
+          "updatedAt(client-supplied)",
+          "deleted",
+          "data",
+          "deviceId(body-supplied, unverified)",
+          "seq(server monotonic)"
+        ],
+        "src": "apps/backend/src/sync/types.ts:4-9, schemas.ts:12-25"
+      }
+    ],
+    "pausecloud_design_only": [
+      {
+        "object": "EvidenceObject/EvidenceReference/ProvenanceRecord/RetentionPolicy/DeletionRequest/DeletionDecision/StorageReceipt",
+        "status": "DESIGN_ONLY / NOT_IMPLEMENTED (header)",
+        "src": "apps/backend/src/pausecloud/interfaces.ts:1-13",
+        "note": "DeletionDecision.decidedByHumanId 'machine ids are invalid here by contract' (interfaces.ts:63) — contract by comment only, no runtime check"
+      }
+    ],
+    "desktop_cst_kernel_1_3_0": [
+      {
+        "object": "TransitionRequest",
+        "fields": [
+          "transitionId",
+          "requestId",
+          "actor{id,type,tenantId}",
+          "action",
+          "target{tenantId,resourceType,resourceId,version}",
+          "purpose",
+          "intent",
+          "relationships?",
+          "expectedPostState",
+          "consequence(C0-C4)",
+          "reversibility",
+          "policyVersion",
+          "idempotencyKey",
+          "evidence[]",
+          "quantities?",
+          "approval?",
+          "recoveryOf?"
+        ],
+        "src": "node_modules/@neuropause/cst/dist/src/types.d.ts:116-141"
+      },
+      {
+        "object": "Approval",
+        "fields": [
+          "approvalId",
+          "transitionId",
+          "approver(Actor)",
+          "action",
+          "scope",
+          "resourceVersion",
+          "purpose",
+          "policyVersion",
+          "issuedAt",
+          "expiresAt",
+          "constraints?",
+          "consumed"
+        ],
+        "src": "types.d.ts:55-73"
+      },
+      {
+        "object": "EvidenceRef",
+        "fields": [
+          "evidenceId",
+          "source",
+          "observedAt",
+          "freshnessRequirementMs"
+        ],
+        "src": "types.d.ts:74-80"
+      },
+      {
+        "object": "TransitionOutcome",
+        "fields": [
+          "transitionId",
+          "verdict",
+          "reason",
+          "claimed",
+          "fencingToken",
+          "executed",
+          "executionId",
+          "duplicateSuppressed",
+          "observedPostState",
+          "verification",
+          "deviation",
+          "timeline",
+          "relationshipAssessment",
+          "verificationProposition",
+          "outcomeClass"
+        ],
+        "src": "types.d.ts:143-179"
+      }
+    ],
+    "desktop_bound_decision_claim": [
+      {
+        "object": "EffectBinding (exactly 8 fields)",
+        "fields": [
+          "executor",
+          "target",
+          "accountId",
+          "actionId",
+          "params",
+          "actor",
+          "tenantId",
+          "decisionId"
+        ],
+        "excluded_deliberately": [
+          "policyVersion"
+        ],
+        "src": "apps/desktop/src/main/cst/boundDecisionClaim.ts:35-45"
+      },
+      {
+        "object": "BoundDecisionClaim",
+        "fields": [
+          "decisionId",
+          "nonce",
+          "bindingDigest(sha256 canonical)",
+          "issuedAt",
+          "expiresAt"
+        ],
+        "src": "boundDecisionClaim.ts:52-58"
+      },
+      {
+        "object": "ProposalApproval (shared)",
+        "fields": [
+          "decision",
+          "decidedBy",
+          "decidedAt",
+          "note"
+        ],
+        "src": "packages/shared/src/types/workforceJobs.ts:21-26"
+      },
+      {
+        "object": "GovernanceVerdict (shared)",
+        "fields": [
+          "requestId(=decisionId)",
+          "workerId",
+          "skillId",
+          "decision",
+          "reasons",
+          "checks",
+          "evaluations",
+          "trustScore",
+          "risk",
+          "decidedAt"
+        ],
+        "src": "packages/shared/src/types/workforceGovernance.ts:92-103; decisionId mapping boundDecisionClaimMint.ts:83"
+      }
+    ],
+    "certification_human_decision_record": [
+      {
+        "object": "PILOT_OPERATOR_DESIGNATION (JSON, not a runtime object)",
+        "schema": "np.pilot.authority-decision/v1",
+        "fields_present": [
+          "DECISION_ID",
+          "MACHINE=COMPUTER_B",
+          "CUSTODY=COMPUTER_B",
+          "RECORD_CLASS=HUMAN_DECISION_RECORDED_BY_MACHINE",
+          "DESIGNATION.{OPERATOR_NAME,ORGANIZATION,DESIGNATED_BY,DESIGNATED_AT_UTC,VERBATIM_INSTRUCTION,EVIDENCE_MODE=DECLARED}"
+        ],
+        "fields_not_supplied": [
+          "OPERATOR_ROLE",
+          "OPERATOR_CONTACT",
+          "AUTHORITY_BASIS",
+          "RELATIONSHIP_TO_DECISION_AUTHORITY",
+          "SIGNATURE"
+        ],
+        "src": "certification/pilot-gate-closure/PILOT-OPERATOR-DESIGNATION.json:1-60"
+      }
+    ]
+  },
+  "id_field_census": {
+    "backend_cloud_cloudcore_sharedcloud_non_test_word_hits": {
+      "CONTROL_ID": 0,
+      "RUN_ID": 0,
+      "SESSION_ID": 0,
+      "ACTION_ID": 0,
+      "EVIDENCE_ID": 0,
+      "VERIFICATION_ID": 0,
+      "DECISION_ID": 0,
+      "POLICY_VERSION": 0,
+      "controlId": 0,
+      "runId": 0,
+      "sessionId": 0,
+      "actionId": 0,
+      "evidenceId": 0,
+      "verificationId": 0,
+      "policyVersion": 0,
+      "decisionId": 8,
+      "deviceId": 74,
+      "userId": 271
+    },
+    "desktop_cst_non_test_word_hits": {
+      "policyVersion": 16,
+      "decisionId": 13,
+      "actionId": 11,
+      "requestId": 11,
+      "transitionId": 9,
+      "approvalId": 6,
+      "idempotencyKey": 6,
+      "evidenceId": 0,
+      "verificationId": 0,
+      "executionId": 0,
+      "runId": 0,
+      "controlId": 0
+    },
+    "shared_cloud_id_aliases": [
+      "UserId usr_*",
+      "OrgId org_*",
+      "TeamId team_*",
+      "DeviceId dev_*",
+      "SessionId ses_*",
+      "EventId evt_*",
+      "NotificationId ntf_*",
+      "AuditId aud_*"
+    ],
+    "shared_cloud_src": "packages/shared-cloud/src/index.ts:21-28"
+  },
+  "facts": [
+    {
+      "fact": "Repo HEAD is cec399f on branch pilot/public-launch",
+      "evidence": "git rev-parse --short HEAD; git branch --show-current",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Pilot control plane consists of exactly two commits: c151e19 (2026-09-06, lifecycle) and 61b1503 (2026-09-12, authority enforcement + tests)",
+      "evidence": "git log --oneline -- apps/backend/src/pilot apps/backend/src/db/migrations/0013_pilot.sql",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Pilot router is mounted at /pilot behind requireAuth with DEFAULT deps { repo: sqlPilotRepository } and NO authority evaluator",
+      "evidence": "apps/backend/src/app.ts:112; apps/backend/src/pilot/router.ts:56",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "POST /pilot/decision passes uid(req) as BOTH actorId and subjectUserId; actor !== subject is unreachable via HTTP",
+      "evidence": "apps/backend/src/pilot/router.ts:108; router.enforcement.test.ts:95-101",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "applyHumanDecision evaluates resolveAuthority(ownAuthority(deps), ctx) BEFORE the value-domain check and before any repository read; anything other than explicit 'ALLOW' throws PilotError('human_decision_required')",
+      "evidence": "apps/backend/src/pilot/service.ts:121-131",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "human_decision_required maps to HTTP 403 (pilot_human_decision_required)",
+      "evidence": "apps/backend/src/pilot/router.ts:23-30,40-43",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "The only shipped evaluator NO_AUTHORITY_CONFIGURED returns 'UNKNOWN' for every context; no evaluator returning ALLOW exists in non-test source anywhere in apps/ or packages/",
+      "evidence": "apps/backend/src/pilot/authority.ts:46-50; rg 'AuthorityEvaluator|resolveAuthority|ownAuthority|NO_AUTHORITY_CONFIGURED' apps packages (non-test hits only in pilot/authority.ts and pilot/service.ts)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "resolveAuthority hardens against non-object/inherited/throwing/coerced evaluators (own-property check, try/catch, strict === 'ALLOW'|'DENY')",
+      "evidence": "apps/backend/src/pilot/authority.ts:56-86,102-106",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Targeted vitest run of the two pilot test files: 2 files passed, 32 tests passed (service.test.ts 24, router.enforcement.test.ts 8)",
+      "evidence": "cd apps/backend && npx vitest run src/pilot/service.test.ts src/pilot/router.enforcement.test.ts",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Enforcement test mounts requireAuth + createPilotRouter with real JWT verification and asserts ZERO writes (decisions length 0, state unchanged, decisionId unchanged) for all six outcome states, for a different principal, and for an unauthenticated caller",
+      "evidence": "apps/backend/src/pilot/router.enforcement.test.ts:72-122",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Positive control NP-ENF-015-027 proves an injected development ALLOW evaluator reaches the write (decision row + state change); production supplies none",
+      "evidence": "apps/backend/src/pilot/service.test.ts:227-253",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Prototype-pollution injection of Object.prototype.authority is refused with no write (NP-ENF-015-016)",
+      "evidence": "apps/backend/src/pilot/service.test.ts:204-225; authority.ts:93-106",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "GATE-STATUS-BOARD declares '32/32 pilot tests pass' and 'Backend test suite 450/450, 39 files' at 61b1503 — the 32/32 figure is independently reproduced here; the 450/450 figure was NOT re-run",
+      "evidence": "certification/pilot-gate-closure/GATE-STATUS-BOARD.md:14-17",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "HumanDecision persisted shape is {id, actorId, decisionType, subject, decision, reason, createdAt}; decisionType is hard-coded 'commercial' and subject is the string 'pilot_enrollment:<id>'",
+      "evidence": "apps/backend/src/pilot/types.ts:63-71; service.ts:136-142; 0013_pilot.sql:34-42",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "HumanDecision carries NO authority basis, signature, role, policy version, evidence reference, verification reference, expiry, or nonce",
+      "evidence": "apps/backend/src/pilot/types.ts:63-71; 0013_pilot.sql:34-42; rg -i 'stale|expir|nonce|ttl|replay|audit\\(' apps/backend/src/pilot => 0 hits",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "pilot_enrollments.decision_id is a bare uuid with NO foreign key to human_decisions and NO CHECK that outcome states require a non-null decision_id; the invariant lives only in service.ts",
+      "evidence": "apps/backend/src/db/migrations/0013_pilot.sql:19; service.ts:132-143",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No audit_log row is written on a pilot decision (accepted or refused); middleware/audit.ts audit() is not called from apps/backend/src/pilot",
+      "evidence": "rg 'audit\\(' apps/backend/src/pilot => 0; apps/backend/src/middleware/audit.ts:9-25",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "setEnrollmentState uses COALESCE($3, decision_id) so machine transitions (DAY7_READY/DAY30_READY) pass null and never clear a prior decisionId",
+      "evidence": "apps/backend/src/pilot/repository.ts:44-46; service.ts:152-159",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "The only machine-driven state transitions are PILOT_ACTIVE->DAY7_READY (day>=7) and PILOT_ACTIVE->DAY30_READY (day>=30), triggered on GET /pilot/status",
+      "evidence": "apps/backend/src/pilot/service.ts:148-159; router.ts:79-85",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "policyVersion / policy_version / POLICY_VERSION does not exist anywhere in apps/backend/src, apps/cloud/src, packages/cloud-core/src, packages/shared-cloud/src, packages/shared/src, or the 13 backend migrations",
+      "evidence": "rg 'policyVersion|policy_version|POLICY_VERSION|policy-version' (non-test) => 0 hits; ls apps/backend/src/db/migrations => 0001..0013",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "In the desktop, policyVersion exists only as four adapter-internal string constants: 'm365-send-policy-1', 'm365-action-policy-1', 'dp-import-policy-1', 'finance-journal-post-policy-1'",
+      "evidence": "apps/desktop/src/main/connectors/index.ts:628; cst/governedAction.ts:68; dataPlane/index.ts:711; enterprise/modules/finance/journalPostTransition.ts:75",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cst kernel 1.3.0 declares 'STALE_POLICY' in the ReasonCode vocabulary but NEVER emits it; kernel.js contains no comparison of req.policyVersion or approval.policyVersion against PolicyStore.version; policyVersion is used only as a label in the verification proposition scope",
+      "evidence": "node_modules/@neuropause/cst/dist/src/types.d.ts:42; rg STALE_POLICY node_modules/@neuropause/cst/src node_modules/@neuropause/cst/dist/src => types only; kernel.js:85 (policy.evaluate(actor,action,consequence)), kernel.js:363 (scope label)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "BoundDecisionClaim DELIBERATELY excludes policyVersion because 'the policy set is unversioned' and 'no authoritative per-decision policy version exists at Boundary A' (I-A3-STEP2-FINDING-1)",
+      "evidence": "apps/desktop/src/main/cst/boundDecisionClaim.ts:24-29,44; boundDecisionClaimMint.ts:16-18",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Backend control plane has no staleness/replay/expiry/nonce rejection for control objects; the only time-bound checks are JWT access-token exp (jsonwebtoken verify) and refresh-session expires_at/revoked_at/rotated_to",
+      "evidence": "apps/backend/src/auth/jwt.ts:25-31; requireAuth.ts:19-26; session.ts:66-77; rg -i 'stale|expir|nonce|ttl|replay' apps/backend/src/pilot apps/backend/src/sync (non-test) => 1 hit (sync 'stale' status label)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cloud-core RequestSigner enforces a 5-minute replay window ('stale' error) but createCloud/RequestSigner/composeBackendRuntime are NOT wired into the Express app; they are library/demonstrator code",
+      "evidence": "packages/cloud-core/src/services/security/requestSigner.ts:39,54-56; grep 'createCloud|composeBackendRuntime|RequestSigner' apps/backend/src/app.ts => 0; rg 'composeBackendRuntime\\(' apps/backend/src (non-test) => definition only",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cst kernel rejects stale/expired control inputs: APPROVAL_EXPIRED (HOLD), EVIDENCE_STALE (HOLD), STALE_RESOURCE_VERSION (HOLD), APPROVAL_CONSUMED (DENY), RELATIONSHIP_CONTEXT_STALE (HOLD), APPROVAL_MISMATCH/APPROVAL_SCOPE_VIOLATION (DENY)",
+      "evidence": "node_modules/@neuropause/cst/dist/src/kernel.js:100-104,141-176,178-184,288-298",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cst kernel enforces MODEL_SELF_AUTHORIZATION: an AI actor without approval is HELD, and an approval whose approver.type === 'AI' is DENIED",
+      "evidence": "node_modules/@neuropause/cst/dist/src/kernel.js:112-131",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "All three desktop CST adapters assert actor type 'HUMAN' by construction and set approver = actor (the same principal); PolicyStore is constructed with only (grants, version) so sodActions is undefined and the SEPARATION_OF_DUTIES guard cannot fire",
+      "evidence": "apps/desktop/src/main/cst/governedAction.ts:264,287,318-321; sendTransition.ts:160,199,231-233; importTransition.ts:138,181,217-219; kernel.js:136-140 requires decision.separationOfDuties",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "In the desktop adapters the C3 Approval is minted in the same call from a boolean `confirmed` flag with issuedAt=now and expiresAt=now+15min, so APPROVAL_EXPIRED cannot fire in practice for these paths",
+      "evidence": "apps/desktop/src/main/cst/governedAction.ts:66,207,283-297; sendTransition.ts:60,199-206; importTransition.ts:50,181-188",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "The `confirmed` boolean originates from the IPC request (renderer) and is folded into a main-process-minted Approval; the main process, not the backend, is the authorization boundary for M365/import writes",
+      "evidence": "apps/desktop/src/main/connectors/index.ts:620-636 (r.confirmed); dataPlane/index.ts:706-713",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "BoundDecisionClaim is minted per approved proposal at Boundary A (execution/router.ts governedRequests) and re-verified at Boundary B (boundaryB.ts) by recomputing the sha256 canonical digest; EXPIRED is checked against an authoritative nowMs",
+      "evidence": "apps/desktop/src/main/workforce/execution/router.ts:97-118; boundaryB.ts:60-82; cst/boundDecisionClaim.ts:105-125",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "BoundDecisionClaim is explicitly NOT a bearer token (no HMAC/Ed25519, in-process by-reference only) and does NOT perform durable single-use consumption in the primitive",
+      "evidence": "apps/desktop/src/main/cst/boundDecisionClaim.ts:17-19; boundaryB.ts:13-16",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "No token 'computer-a', 'computer-b', 'COMPUTER_A', or 'COMPUTER_B' exists in apps/backend/src, apps/cloud/src, apps/desktop/src/main, packages/cloud-core/src, packages/shared-cloud/src, packages/shared/src",
+      "evidence": "rg -n -i 'computer[-_ ]a\\b|computer[-_ ]b\\b|COMPUTER_A|COMPUTER_B' (those dirs) => 0 hits",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "The only in-repo references to COMPUTER_A are a certification authorship-normalization tool and its test (documentation identity canonicalization), not runtime code",
+      "evidence": "rg -l (repo, excl node_modules/dist) => certification/public-launch/tools/authorship-normalize.cjs, authorship-normalize.test.cjs; lines 5-23 of the .cjs",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No 'observer' or 'verifier' role exists in backend/cloud/cloud-core/shared-cloud; the only 'verifier' hits are PKCE code-verifier strings",
+      "evidence": "rg -i '\\bobserver\\b|\\bverifier\\b|VERIFIER_|OBSERVER_' (non-test) => 7 hits, all apps/backend/src/auth/pkce.ts and auth/router.ts:150",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Evidence root /Users/saurabhpatel/neuropause-desktop contains 43 files referencing COMPUTER_A (NP-B-016/017/020/021, NP-B-NEXT-AUTHORITY-INTAKE, NP-G0-H17-B) — the A/B separation is a custody/procedural construct recorded in documents, not a runtime role",
+      "evidence": "rg -l -i 'computer[-_ ]a\\b|COMPUTER_A' /Users/saurabhpatel/neuropause-desktop => 43 files",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "VERIFIER_DESIGNATION is NOT_DESIGNATED; PILOT_OPERATOR designation record carries MACHINE=COMPUTER_B, CUSTODY=COMPUTER_B, EVIDENCE_MODE=DECLARED, and AUTHORITY_BASIS / SIGNATURE / OPERATOR_ROLE NOT_SUPPLIED",
+      "evidence": "certification/pilot-gate-closure/PILOT-OPERATOR-DESIGNATION.json:4-5,17-33,45-48",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "No WebSocket, SSE (EventSource / text/event-stream), or socket.io channel exists in apps/backend/src, apps/cloud/src, packages/cloud-core/src, packages/shared-cloud/src; apps/backend/package.json has no ws dependency",
+      "evidence": "rg 'WebSocket|EventSource|text/event-stream|socket\\.io|from '\\''ws'\\''|wss?://' (those dirs, non-test) => 0; grep ws apps/backend/package.json => none",
+      "classification": "ABSENT"
+    },
+    {
+      "fact": "The desktop companion gateway runs a WebSocketServer on /events (LAN) that accepts exactly ONE inbound message (the sealed hello via ws.once('message')) and thereafter only pushes sealed event frames; RPC writes go through POST /rpc handleRpc — the WS carries no command/authorization intake",
+      "evidence": "apps/desktop/src/main/companion/gatewayServer.ts:26,408-409,595-631,650; grep on('message' => only line 607 once('message')",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Companion WS hello is authenticated against the paired device registry and freshness-checked (sentAt within skew window) but deliberately NOT sequence-checked (mobile client sends seq:0); a captured hello frame is replayable for ~90s (documented M-9)",
+      "evidence": "apps/desktop/src/main/companion/gatewayServer.ts:434-460 (comment), 615-618",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Companion WS/HTTP transport implies device identity + event READ push, never write authority; the gateway also refuses when the desktop is signed out",
+      "evidence": "apps/desktop/src/main/companion/gatewayServer.ts:12-16,616-618 (!this.deps.isSignedIn())",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cloud-core Gateway is transport-agnostic and trusts a caller-supplied RouteContext{authenticated:boolean, roles[]}; it 'does not mint identity'; it is not bound to HTTP/TLS",
+      "evidence": "packages/cloud-core/src/services/gateway/gateway.ts:1-10,17-20,63-99; apps/cloud/src/index.ts:10-13",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "apps/cloud createCloud is a composition of in-memory primitives with 'no HTTP listener, no database'; apps/cloud is not a running server",
+      "evidence": "apps/cloud/src/index.ts:6-8,55-89",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Backend HTTP authority is: Bearer JWT (HS256, issuer 'neuropause', audience 'neuropause-desktop', TTL env.JWT_ACCESS_TTL) -> req.userId; there is no device attestation, no request signing, and no per-request nonce",
+      "evidence": "apps/backend/src/auth/jwt.ts:11-32; requireAuth.ts:13-27",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Sync push authorizes by org membership only (getMemberRole non-null); body deviceId is accepted without verifying it belongs to the caller; client-supplied version/updatedAt drive last-write-wins via shared resolveSync",
+      "evidence": "apps/backend/src/sync/router.ts:43-57; schemas.ts:22-25; service.ts:51-57; packages/shared/src/types/sync.ts:127-136; rg 'devices|deviceRepo|getDevice' apps/backend/src/sync (non-test) => 0",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Sync entity types that clients may push include 'organization', 'membership', 'connector_config', 'org_prefs' — whether any consumer treats sync_state membership rows as an authority source was NOT examined (outside this subsystem)",
+      "evidence": "apps/backend/src/sync/schemas.ts:3-10",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Sync 'stale' is a per-item RESULT STATUS (the stored record wins) returned to the client, not a rejection of stale authorization",
+      "evidence": "apps/backend/src/sync/service.ts:78-86",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Desktop runtimeCore re-checks cloud-org roles client-side as defense in depth and declares 'The backend remains the ultimate authority; an unreachable backend refuses'",
+      "evidence": "apps/desktop/src/main/runtimeCore.ts:415-435",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "backendRuntime.ts (NCEA 10.2C) composes only the devices service over an in-memory repo onto a cloud-core EventBus; app.ts is 'intentionally left unchanged'; it is a demonstrator with no production call site",
+      "evidence": "apps/backend/src/runtime/backendRuntime.ts:1-10,36-54; rg composeBackendRuntime (non-test) => definition only",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cloud-core AuditChain derives content-addressed auditId = contentId('aud', prevId|'ROOT', actor, action, target, deviceId, at, dataHash) and verifyChain detects broken links/tampering; it is in-memory and not wired to backend audit_log",
+      "evidence": "packages/cloud-core/src/services/audit/auditChain.ts:30-41,50-60; apps/backend/src/middleware/audit.ts (separate Postgres audit_log)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cloud-core event versioning exists (EventUpcasterRegistry, per-event payload `version`) — this is schema versioning of events, not a policy version",
+      "evidence": "packages/cloud-core/src/services/events/versioning.ts:1-33; eventBus.ts:16-25",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "cst README (frozen 1.3.0) declares 'Independent review: NOT DONE' and 'DETECTION COMPLETENESS: NOT ESTABLISHED'; its dist/index.js main entry is recorded as a frozen-package defect",
+      "evidence": "node_modules/@neuropause/cst/README.md:31-33; apps/desktop/src/main/cst/importTransition.ts:11-16",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "cst Guards interface: 'Production MUST run with every guard on; there is no supported configuration in which a guard is off'; desktop adapters construct CstKernel without a guards override (ALL_GUARDS)",
+      "evidence": "node_modules/@neuropause/cst/dist/src/kernel.d.ts:12-38; governedAction.ts:335-337; importTransition.ts:241",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Desktop adapters supply `evidence: []` to the kernel for M365 governed actions, so EVIDENCE_STALE can never fire on those paths",
+      "evidence": "apps/desktop/src/main/cst/governedAction.ts:314",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "PauseCloud interfaces separate existence/reference/retention/provenance/verification and forbid delete() on the provider; nothing implements them and no adapter exists",
+      "evidence": "apps/backend/src/pausecloud/interfaces.ts:1-13,79-85",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "GATE-STATUS-BOARD records that certification/baseline.json was deliberately NOT regenerated because that would 'designate a baseline' (MG-02, MACHINE_ACTION_ALLOWED: false)",
+      "evidence": "certification/pilot-gate-closure/GATE-STATUS-BOARD.md:21-24",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Human-decision form §13 states 'Machine must not assign any class' (reviewer briefing pack)",
+      "evidence": "certification/pilot-gate-closure/REVIEWER-BRIEFING-PACK.md:9; HANDOFF-2026-09-12.md §4",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Because production supplies no evaluator, there is currently NO path by which any human decision can be recorded through the backend; the HUMAN DECISION stage of the invariant is representable only in certification JSON artifacts",
+      "evidence": "apps/backend/src/app.ts:112 + service.ts:121-131 + authority.ts:46-50; certification/pilot-gate-closure/PILOT-OPERATOR-DESIGNATION.json",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "AI is never an authorization authority in the backend pilot plane (no AI actor concept; authority is a human-designated evaluator that does not exist); in the desktop cst plane the AI rule is kernel-enforced but the actor type is asserted by the adapter",
+      "evidence": "authority.ts:1-20; kernel.js:112-131; governedAction.ts:264",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "The client is not the final authorization authority for pilot outcomes (server-side evaluator gate) but IS the effective source of `confirmed` for desktop C3 approvals and of version/updatedAt for LWW sync",
+      "evidence": "router.ts:103-110; connectors/index.ts:625; sync/service.ts:56-57",
+      "classification": "DERIVED"
+    },
+    {
+      "fact": "A network connection / valid bearer token never yields ALLOW on the pilot decision path (tests prove authenticated callers get 403 with zero writes)",
+      "evidence": "router.enforcement.test.ts:75-109",
+      "classification": "MEASURED"
+    }
+  ],
+  "gate_assessments": [
+    {
+      "gate": "COMPUTER-A/B CONTROL — no direct Computer-A runtime coupling to desktop/backend",
+      "status": "PASS",
+      "reason": "0 hits for computer-a/COMPUTER_A/COMPUTER_B/observer/verifier roles in any app or package runtime source (MEASURED). A/B separation exists only as document custody (43 evidence-root files, certification JSON)."
+    },
+    {
+      "gate": "COMPUTER-A/B CONTROL — verification/observer object exists in the control plane (EVIDENCE -> VERIFICATION stage)",
+      "status": "FAIL",
+      "reason": "No VERIFICATION_ID / EVIDENCE_ID / observer identity / verifier role exists in backend, cloud, cloud-core or shared-cloud (ABSENT). PauseCloud evidence interfaces are DESIGN_ONLY. The only verification objects are inside the desktop cst kernel (VerificationProposition) and are per-transition, never surfaced to a Computer-A role."
+    },
+    {
+      "gate": "COMPUTER-A/B CONTROL — verifier designation",
+      "status": "WAITING_FOR_HUMAN",
+      "reason": "VERIFIER_DESIGNATION = NOT_DESIGNATED (PILOT-OPERATOR-DESIGNATION.json WHAT_REMAINS_OPEN). Machine may not designate."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY (backend) — fail-closed enforcement of the consequential decision path",
+      "status": "PASS",
+      "reason": "MEASURED: 32/32 pilot tests pass in a targeted run; production deps supply no evaluator; every POST /pilot/decision (any outcome state, any principal, unauthenticated) returns 403 with zero repository writes; prototype-pollution and coercion probes refused; positive control proves discrimination."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY (backend) — a human decision can actually be recorded through the control plane",
+      "status": "WAITING_FOR_HUMAN",
+      "reason": "No AuthorityEvaluator returning ALLOW exists; supplying one is a DESIGNATION requiring MR-04 (authority.ts:16-19). Until designated, the HUMAN DECISION stage is unrepresentable in the backend and lives only in certification JSON."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY (backend) — human decision object shape (DECISION_ID, ACTOR, AUTHORITY_BASIS, POLICY_VERSION, SIGNATURE, evidence/verification refs)",
+      "status": "FAIL",
+      "reason": "HumanDecision = {id, actorId, decisionType, subject, decision, reason, createdAt}. AUTHORITY_BASIS, POLICY_VERSION, SIGNATURE, role, evidenceRef, verificationRef, expiry, nonce all ABSENT (types.ts:63-71; 0013_pilot.sql:34-42). Router forces actor === subject (router.ts:108). No audit_log write. decision_id has no FK and no CHECK."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY (backend) — stale authorization rejected",
+      "status": "FAIL",
+      "reason": "No expiry/nonce/version/replay binding exists on HumanDecision or the decision request (ABSENT; grep 0). Only the bearer JWT exp and refresh-session expiry are time-bound. cloud-core RequestSigner (5-min window) is not wired into the Express app. Moot while no evaluator exists, but must be designed before one is."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY — policy_version exists",
+      "status": "FAIL",
+      "reason": "ABSENT in backend/cloud/shared (0 hits). In desktop it is four adapter-internal string constants; the frozen cst 1.3.0 kernel never compares request/approval policyVersion to PolicyStore.version (STALE_POLICY declared, never emitted — MEASURED). BoundDecisionClaim deliberately omits it because the policy set is unversioned."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY — AI is never the authorization authority",
+      "status": "PASS",
+      "reason": "Backend: authority is a human-designated evaluator, none exists; no AI actor concept. Desktop cst: MODEL_SELF_AUTHORIZATION guard enforced in kernel (kernel.js:112-131), adapters assert actor type HUMAN (assertion, not verification — see gaps)."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY — network connection does not imply authorization",
+      "status": "PASS",
+      "reason": "Authenticated bearer callers receive 403 with zero writes on the decision path (MEASURED). No ws/SSE channel exists in backend. Companion WS grants read push only after sealed device auth."
+    },
+    {
+      "gate": "HUMAN-AUTHORITY — client is not the final authorization authority",
+      "status": "MEASURABLE",
+      "reason": "PASS for pilot outcomes (server-side evaluator gate). NOT PASS for desktop C3 approvals (renderer `confirmed` boolean -> main-process Approval with approver===actor, SoD not declared) and for LWW sync (client-supplied version/updatedAt decide winner; deviceId unverified). Whether sync_state 'membership' rows are consumed as authority was not examined."
+    }
+  ],
+  "gaps": [
+    "Did not read apps/backend/src/devices/* or organizations/* to determine whether sync_state 'membership'/'organization' rows are ever consumed as an authority source (out of subsystem).",
+    "Did not execute the full backend suite (450/450 is DECLARED from GATE-STATUS-BOARD, not re-measured); only the two pilot files were run.",
+    "Did not execute cst 1.3.0 negative-control/mutation suites (README figures are DECLARED).",
+    "Did not read the 43 evidence-root files referencing COMPUTER_A in depth; only confirmed their existence and that the concept is documentary.",
+    "Did not inspect the workforce ExecuteEngine Step-5 durable single-use consumption path beyond boundaryB.ts and execution/router.ts.",
+    "PauseCloud (apps/backend/src/pausecloud) is DESIGN_ONLY; nothing measurable exists for the EVIDENCE plane on the backend.",
+    "Did not verify whether the desktop cst adapters' actor type 'HUMAN' is ever derived from an authenticated identity claim rather than asserted by the adapter."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Add migration: FK pilot_enrollments.decision_id -> human_decisions(id) and CHECK ((state IN (outcome states)) = (decision_id IS NOT NULL)) so the DB enforces the human-decision invariant, not only service.ts",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/db/migrations/0014_pilot_decision_constraints.sql"
+      ],
+      "risk": "Additive; no production rows expected; must keep COALESCE semantics in repository.ts:45"
+    },
+    {
+      "action": "Write an audit_log row (middleware/audit.ts audit()) on both the refusal and the accepted branch of applyHumanDecision, carrying actorId, subjectId, action, authority answer",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/pilot/service.ts",
+        "apps/backend/src/pilot/router.ts"
+      ],
+      "risk": "None to enforcement; audit() swallows failures"
+    },
+    {
+      "action": "Extend HumanDecision persisted shape with subjectUserId, authorityBasis, policyVersion, evidenceRef, verificationRef, decisionFormRef, expiresAt and a client-supplied idempotency key (schema + zod + repo), leaving values to human input",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/pilot/types.ts",
+        "repository.ts",
+        "memoryRepository.ts",
+        "router.ts",
+        "service.ts",
+        "0014 migration"
+      ],
+      "risk": "Shape is a contract decision — field SET should be human-approved before implementation"
+    },
+    {
+      "action": "Stop passing uid(req) as subject in router.ts:108; accept a validated subjectUserId in DecisionBody so actor/subject separation is representable (no widening while evaluator is absent)",
+      "effort": "S",
+      "files": [
+        "apps/backend/src/pilot/router.ts",
+        "router.enforcement.test.ts"
+      ],
+      "risk": "None while resolveAuthority yields UNKNOWN; tests must be updated"
+    },
+    {
+      "action": "Record cst 1.3.0 non-emission of STALE_POLICY (declared ReasonCode, no kernel comparison of policyVersion) in certification/source-update/CST-1.3.0-DEFECTS-FOUND.md",
+      "effort": "S",
+      "files": [
+        "certification/source-update/CST-1.3.0-DEFECTS-FOUND.md"
+      ],
+      "risk": "Docs only; frozen package must not be edited"
+    },
+    {
+      "action": "Sync push: verify body.deviceId belongs to the authenticated user via the devices repository before applyChange",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/sync/router.ts",
+        "apps/backend/src/sync/router.test.ts"
+      ],
+      "risk": "Could reject legitimate pushes from unregistered devices; needs device registration flow confirmation"
+    }
+  ],
+  "human_decisions_required": [
+    "MR-04: designate the decision authority (who may answer ALLOW) — prerequisite for any AuthorityEvaluator implementation; machine may not designate.",
+    "VERIFIER_DESIGNATION (Computer-A verifier role) — NOT_DESIGNATED; whether a runtime verification/observer object is required for public launch or remains procedural.",
+    "HumanDecision record contract: whether AUTHORITY_BASIS, SIGNATURE, OPERATOR_ROLE, POLICY_VERSION and evidence/verification references are mandatory fields (form §1 asks for them; PILOT-OPERATOR-DESIGNATION.json leaves them NOT_SUPPLIED).",
+    "Whether approver === actor (self-confirmation via renderer `confirmed` boolean) is acceptable for M365 send/action and data-import C3 approvals, or whether sodActions must be declared in PolicyStore (would DENY all current confirmed paths).",
+    "Whether a versioned policy set (real policy_version) is required before launch, given the frozen kernel does not enforce policy staleness and BoundDecisionClaim omits it by design.",
+    "Whether 'organization'/'membership'/'connector_config' entity types should remain client-pushable through LWW sync.",
+    "Standing open gates carried from the designation record: HD-19-CLASS, BASELINE_AUTHORITY (TR-GPR-01 DESIGNATED:false), PILOT_CLAIM_SET_ADOPTION (PC-01..04), GATE-INTENDED-USE (23 blank fields)."
+  ]
+}

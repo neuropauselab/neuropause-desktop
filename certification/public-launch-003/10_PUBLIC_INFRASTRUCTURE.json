@@ -1,0 +1,71 @@
+{
+  "ARTIFACT": "10_PUBLIC_INFRASTRUCTURE",
+  "SEAM": "NP-PUBLIC-LAUNCH-003",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:37:51.847Z",
+  "branch_head": "6175f3633925b0e7088f85b877563b71d7a3bbc0",
+  "measured_at": "2026-09-13T04:37:51.847Z",
+  "dns": {
+    "neuropause033.com": {
+      "A": [],
+      "AAAA": [],
+      "CNAME": []
+    },
+    "www.neuropause033.com": {
+      "A": [],
+      "AAAA": [],
+      "CNAME": []
+    },
+    "api.neuropause033.com": {
+      "A": [
+        "172.67.202.47",
+        "104.21.22.28"
+      ],
+      "AAAA": [
+        "2606:4700:3032::6815:161c",
+        "2606:4700:3031::ac43:ca2f"
+      ],
+      "CNAME": []
+    }
+  },
+  "mx": "0 neuropause033-com.mail.protection.outlook.com.",
+  "ns": [
+    "norah.ns.cloudflare.com.",
+    "max.ns.cloudflare.com."
+  ],
+  "whois": {
+    "registry_expiry": "2026-09-15T08:07:40Z",
+    "registrar": "GoDaddy.com, LLC",
+    "status": [
+      "ACTIVE",
+      "clientDeleteProhibited",
+      "clientRenewProhibited",
+      "clientTransferProhibited"
+    ]
+  },
+  "https": {
+    "https://neuropause033.com/": "DNS unresolvable (curl 6)",
+    "https://neuropause033.com/download.html": "DNS unresolvable",
+    "https://neuropause033.com/downloads/NeuroPause.dmg": "DNS unresolvable",
+    "https://neuropause033.com/updates/beta-mac.yml": "DNS unresolvable",
+    "https://api.neuropause033.com/health": "HTTP 530 (Cloudflare, origin unreachable)"
+  },
+  "edge_certificate": {
+    "edge_ip": "104.21.22.28",
+    "subject": "CN=neuropause033.com",
+    "issuer": "Google Trust Services WE1",
+    "notBefore": "2026-08-05",
+    "notAfter": "2026-11-03",
+    "san": [
+      "neuropause033.com",
+      "info.neuropause033.com",
+      "*.info.neuropause033.com"
+    ]
+  },
+  "update_feed_public": "NOT_MEASURED (apex unresolvable)",
+  "artifact_public": "NOT_MEASURED",
+  "host_ssh": "NOT_PERFORMED (session policy)",
+  "mutations_performed": "NONE"
+}

@@ -51,6 +51,74 @@ describe('OrgStore — seed', () => {
   });
 });
 
+describe('OrgStore — removeProvisionedOrganization (GATE 23 rollback)', () => {
+  it('removes ONLY the named org and its rows, leaving the seeded org intact', async () => {
+    const s = await newStore(tempPath());
+    const seededUsers = s.usersFor(ORG_ID).length;
+    const seededRoles = s.rolesFor(ORG_ID).length;
+
+    const org = s.createOrganization('Doomed Co');
+    s.createRole({ orgId: org.id, name: 'Owner', description: '', permissions: [], builtIn: true });
+    s.createUser({ orgId: org.id, name: 'Owner', title: 'Owner', email: 'o@doomed.test' });
+    expect(s.organization(org.id)).not.toBeNull();
+    expect(s.rolesFor(org.id)).toHaveLength(1);
+    expect(s.usersFor(org.id)).toHaveLength(1);
+
+    s.removeProvisionedOrganization(org.id);
+
+    // The doomed org and everything it owned are gone…
+    expect(s.organization(org.id)).toBeNull();
+    expect(s.rolesFor(org.id)).toHaveLength(0);
+    expect(s.usersFor(org.id)).toHaveLength(0);
+    // …and the seeded org is byte-for-byte unaffected.
+    expect(s.organization(ORG_ID)).not.toBeNull();
+    expect(s.usersFor(ORG_ID)).toHaveLength(seededUsers);
+    expect(s.rolesFor(ORG_ID)).toHaveLength(seededRoles);
+  });
+
+  it('REFUSES to remove the seeded organization', async () => {
+    const s = await newStore(tempPath());
+    expect(() => s.removeProvisionedOrganization(ORG_ID)).toThrow(/seeded organization cannot be removed/i);
+    expect(s.organization(ORG_ID)).not.toBeNull();
+  });
+
+  it('is a no-op for an unknown org id', async () => {
+    const s = await newStore(tempPath());
+    expect(() => s.removeProvisionedOrganization('org_does_not_exist')).not.toThrow();
+  });
+});
+
+// GATE 23 — organization names are unique case-insensitively GLOBALLY.
+describe('OrgStore — name uniqueness (Gate 23)', () => {
+  it('rejects a duplicate organization name globally — fail closed', async () => {
+    const s = await newStore(tempPath());
+    s.createOrganization('Northwind Health');
+    expect(() => s.createOrganization('Northwind Health')).toThrow(
+      /An organization named "Northwind Health" already exists\./,
+    );
+    // The second create did not land — exactly one 'Northwind Health' exists.
+    expect(s.listOrganizations().filter((o) => o.name === 'Northwind Health')).toHaveLength(1);
+  });
+
+  it('rejects a case-insensitive / whitespace duplicate — including the seeded org name', async () => {
+    const s = await newStore(tempPath());
+    // Seeded org is 'NeuroPause'; a cased/padded variant must be refused.
+    expect(() => s.createOrganization('  neuropause ')).toThrow(/already exists/);
+    // And a second custom org collides case-insensitively with the first.
+    s.createOrganization('Alpha Industries');
+    expect(() => s.createOrganization('ALPHA INDUSTRIES')).toThrow(/already exists/);
+  });
+
+  it('allows a unique organization name (the gate is not "always no")', async () => {
+    const s = await newStore(tempPath());
+    const a = s.createOrganization('Globex');
+    const b = s.createOrganization('Initech');
+    expect(a.name).toBe('Globex');
+    expect(b.name).toBe('Initech');
+    expect(a.id).not.toBe(b.id);
+  });
+});
+
 describe('OrgStore — CRUD', () => {
   it('creates, updates, and deletes units (re-parenting children)', async () => {
     const s = await newStore(tempPath());
@@ -103,12 +171,18 @@ describe('OrgStore — syncWorkers', () => {
     expect(s.usersFor(ORG_ID).find((u) => u.workerId === 'w-fin')).toBeUndefined();
   });
 
-  it('renames the owner via setOwnerIdentity', async () => {
+  it('claims the owner via claimOwnerIdentity under the first-claim rule', async () => {
     const s = await newStore(tempPath());
-    s.setOwnerIdentity('Saurabh Patel', 'saurabh@example.com');
+    expect(s.claimOwnerIdentity({ name: 'Saurabh Patel', email: 'saurabh@example.com' })).toBe(true);
     const owner = s.user(OWNER_USER_ID);
     expect(owner?.name).toBe('Saurabh Patel');
     expect(owner?.email).toBe('saurabh@example.com');
+    // Same account with a new display name refreshes the name only.
+    expect(s.claimOwnerIdentity({ name: 'S. Patel', email: 'saurabh@example.com' })).toBe(true);
+    expect(s.user(OWNER_USER_ID)?.name).toBe('S. Patel');
+    // A different account never rebinds a claimed owner.
+    expect(s.claimOwnerIdentity({ name: 'Eve', email: 'eve@evil.test' })).toBe(false);
+    expect(s.user(OWNER_USER_ID)?.email).toBe('saurabh@example.com');
   });
 });
 
@@ -213,12 +287,17 @@ describe('OrgStore — ownership (NEW-H6)', () => {
     const victim = await newStore(path);
     const before = victim.user(OWNER_USER_ID)!;
     expect(before.orgId).toBe(ORG_ID);
+    // The legitimate first sign-in claims the row — the rule is install-level.
+    expect(victim.claimOwnerIdentity({ name: 'Real Owner', email: 'real@example.test' })).toBe(true);
+    await victim.flush();
 
     const attacker = await asAttacker(path);
     expect(attacker.updateUser(OWNER_USER_ID, { email: 'attacker@evil.test' })).toBeNull();
-    attacker.setOwnerIdentity('Attacker', 'attacker@evil.test');
+    // Round 32: the second door is shut by the claim rule itself — a claimed
+    // owner is never rebound, whatever scope the caller resolves to.
+    expect(attacker.claimOwnerIdentity({ name: 'Attacker', email: 'attacker@evil.test' })).toBe(false);
 
-    expect(attacker.user(OWNER_USER_ID)!.email).toBe(before.email);
+    expect(attacker.user(OWNER_USER_ID)!.email).toBe('real@example.test');
   });
 
   it('a foreign tenant cannot delete seeded units or members', async () => {

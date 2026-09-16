@@ -12,7 +12,7 @@ export interface BarDatum {
 export function BarChart({
   data,
   height = 96,
-  color = 'rgb(var(--accent))',
+  color = 'rgb(var(--accent-ch))',
   highlightLast = true,
   showLabels = true,
 }: {

@@ -1,0 +1,11 @@
+version: 1.0.0-rc.30
+files:
+  - url: NeuroPause-1.0.0-rc.30-universal-mac.zip
+    sha512: K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==
+    size: 231627130
+  - url: NeuroPause-universal.dmg
+    sha512: iMnGU5RpzyXY3ltTLbknwBENKQu1ztrn2Ha/9I3Pj3RfLQEe8V8b/umVLVEOxjUua5wemDXxAYPlRZV0KVstdQ==
+    size: 232533468
+path: NeuroPause-1.0.0-rc.30-universal-mac.zip
+sha512: K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==
+releaseDate: '2026-09-13T03:56:59.338Z'

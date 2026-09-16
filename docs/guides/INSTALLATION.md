@@ -4,7 +4,7 @@
 
 ## What you need
 
-A Mac with Apple Silicon (M-series). The current pilot artifact is built for arm64 (`NeuroPause-arm64.dmg`); an Intel build is produced only on request (`package:mac:universal`). macOS 13 or later recommended.
+A Mac running macOS 12 (Monterey) or later — **Apple Silicon or Intel**. The pilot artifact is a **universal** build (`NeuroPause-universal.dmg`, published as `NeuroPause.dmg`) that runs natively on both architectures, so there is no separate Intel build to request. macOS 12.0 is the floor the binary itself declares (`LSMinimumSystemVersion`).
 
 ## Install
 

@@ -96,6 +96,21 @@ export function createAccountingPeriodModule(storePath: string): EnterpriseModul
         const result = validateEnterpriseRecordInput(ACCOUNTING_PERIOD_DESCRIPTOR, input);
         if (!result.ok) return result;
 
+        // S55 — STORE-ANCHORED half (census-found forgeable token, the CONSEQUENTIAL
+        // instance): a crafted update supplying closedAt:'' reopened a CLOSED period
+        // through the edit door — around the `reopen` action — re-enabling posting into
+        // a locked month with an audit row that says only 'updated'. The stored stamp
+        // is the authority; reopening goes through the reopen action alone.
+        if (input.recordId) {
+          const prior = store.get(input.recordId);
+          if (prior && str(prior.fields.closedAt)) {
+            return {
+              ok: false,
+              errors: { _: 'Closed periods are immutable — reopen the period first.' },
+              values: result.values,
+            };
+          }
+        }
         // closedAt is stamped exclusively by the `close` action (which bypasses
         // this hook by design). Reaching validate WITH a closedAt therefore means
         // an edit of a closed period (or a forged create) — both are refused.

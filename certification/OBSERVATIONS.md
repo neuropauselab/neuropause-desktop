@@ -111,3 +111,75 @@ pushed). The default branch carries the certified tree. Verified by
 `git diff 093f391 origin/main` — the merge preserved the branch content exactly.
 The gate consequence stands until the next freeze: G1 and G18 remain NOT RUN
 until a baseline is frozen ON main.
+
+## O-7 · a merge bumped the product version with no human decision
+
+Merging ec28f45 (a 7-line documentation commit) into main produced:
+  apps/desktop/package.json  1.0.0-rc.15 -> 1.0.0-rc.16
+  package.json               1.0.0-rc.15 -> 1.0.0-rc.16
+Nobody asked for it. It is committed as bd38e68 and pushed to origin/main.
+
+The FIRST merge (d3e0ad9) did NOT bump — `git diff 093f391 d3e0ad9` was empty.
+So the trigger is conditional, not unconditional, and that is worse: a bump
+that fires sometimes cannot be reasoned about.
+
+CONSEQUENCE: main is no longer byte-identical to BASELINE-d825317dfb27, which
+records rc.15. The O-6 resolution note above was true when written and is now
+stale by exactly this diff.
+
+G18 (release provenance) CANNOT PASS while a version can change without a
+decision. An installer hash referenced by a certification artifact is worthless
+if the version it carries was assigned by a hook nobody invoked.
+
+NOT DIAGNOSED. NOT FIXED. Mechanism to be identified in round23.
+
+### O-7 · CORRECTED 2026-08-13
+The claim "every commit in this repository carries one identity" was WRONG.
+`verify-freeze.sh` — written to check exactly this — printed 5c55995 authored by
+Dishant Dobariya <dishantdobariya91@gmail.com>, a second identity, and correctly
+withheld the single-identity note because it counts authors rather than trusting
+the assertion. The true, narrower finding: commits authored ON THAT MAC all carry
+Saurabh's configured git identity, so c25052d names the machine and not the
+person; PR merges through GitHub's UI carry the real account. The remedy is
+unchanged (per-user identity or signed commits); the diagnosis was overstated.
+
+### O-3 · FIXED 2026-08-13, corroborated live
+Handler registered in bootstrap before createMainWindow(); registerSecureHandlers
+takes the channel over via ipcMain.removeHandler. Unit test 6/6.
+LIVE: slow start forced by an unreachable backend — 4 session-restore retries,
+totalMs 4596, ZERO "No handler registered". Negative control is the 13:09 run on
+the pre-round23 build: same condition, the error twice.
+STATED LIMIT: 4596ms, not the 11789ms of the original failure. The argument for
+the fix is ORDERING (no renderer can exist before the handler), not timing.
+
+### O-4 · FIXED 2026-08-13, observed on screen
+Unreachable backend now renders ONE banner — the F-7 notice with the failure
+class. The second banner ("Could not reach the NeuroPause backend. Is it
+running?") is suppressed via status.cause, not message matching. UI test 5/5.
+Screenshots at 20:25 show one banner where the 18:44 screenshots showed two.
+
+## O-10 — eight gate verdicts were recorded under the wrong identity
+
+Found 2026-08-13, at BASELINE-ee7e55790755.
+
+`git config user.email` was set **in this repository's own .git/config** to
+`neuropause033@gmail.com` (Saurabh Patel). Every commit of round24a, round24b
+and round24c therefore carries Saurabh as author, and the first recording of
+G0, G0b, G0c, G0d, G0e, G0f, G12 and G13 carries him as `recorded_by` — on
+records whose work was done by Dishant, including a G13 row whose own `owner`
+field says Dishant.
+
+This is O-7 in a worse form. O-7 said the repository cannot attribute a change
+to a person. This says it attributes them confidently to the wrong person, in
+a signed certification artifact, where nothing in the record contradicts it.
+
+The identity is corrected at repository scope and the eight verdicts are
+re-recorded, so `recorded_by` becomes true. `head_author` stays Saurabh,
+because the commits are immutable and rewriting them would change their SHAs
+and invalidate this baseline — a large operation to fix an attribution that is
+better stated than erased. The divergence between `head_author` and
+`recorded_by` on these eight rows IS the finding, and it is left visible.
+
+Open: nothing enforces that a commit's author is the person who did the work.
+A repository on a shared machine will keep producing this until the identity
+is checked by the recorder rather than trusted from git.

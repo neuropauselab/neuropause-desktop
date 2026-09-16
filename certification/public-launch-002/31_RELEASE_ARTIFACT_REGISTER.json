@@ -1,0 +1,70 @@
+{
+  "ARTIFACT": "31_RELEASE_ARTIFACT_REGISTER",
+  "DIRECTIVE": "NP-GLOBAL-PUBLIC-LAUNCH-002",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.801Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch",
+    "describe": "v1.0.0-rc.29-6-g8331185",
+    "porcelain": 115
+  },
+  "RELEASE_ID": "NP-OS-1.0.0-rc.30-8331185ba41f",
+  "artifacts": [
+    {
+      "platform": "macos",
+      "architecture": "universal",
+      "artifact_type": "installer",
+      "filename": "NeuroPause-universal.dmg",
+      "version": "1.0.0-rc.30",
+      "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+      "tree_digest": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+      "build_digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+      "sha256": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+      "sha512_base64": "iMnGU5RpzyXY3ltTLbknwBENKQu1ztrn2Ha/9I3Pj3RfLQEe8V8b/umVLVEOxjUua5wemDXxAYPlRZV0KVstdQ==",
+      "size": 232533468,
+      "signing_status": "SIGNED",
+      "notarization_status": "NOT_NOTARIZED",
+      "distribution_url": "NOT_PUBLISHED",
+      "update_url": "NOT_PUBLISHED",
+      "local_path": "../../neuropause-desktop/NP-PUBLIC-LAUNCH-ARTIFACTS/mac/NeuroPause-universal.dmg",
+      "public": true
+    },
+    {
+      "platform": "macos",
+      "architecture": "universal",
+      "artifact_type": "update-payload",
+      "filename": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "version": "1.0.0-rc.30",
+      "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+      "tree_digest": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+      "build_digest": "d4ebea63dd3a045ce9e611bbafe088c6e0350a1676832e8ad3fa19d9f3703e63",
+      "sha256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+      "sha512_base64": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==",
+      "size": 231627130,
+      "signing_status": "SIGNED",
+      "notarization_status": "NOT_NOTARIZED",
+      "distribution_url": "NOT_PUBLISHED",
+      "update_url": "NOT_PUBLISHED",
+      "local_path": "../../neuropause-desktop/NP-PUBLIC-LAUNCH-ARTIFACTS/mac/NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "public": true
+    },
+    {
+      "platform": "windows",
+      "architecture": "x64",
+      "artifact_type": "installer",
+      "filename": "NeuroPause-Setup.exe",
+      "version": "1.0.0-rc.30",
+      "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+      "sha256": "fc13c84d041ece69cae5737126a6e60cfada55491a7a12d759b8bb2e911bb4e4",
+      "size": 111896057,
+      "signing_status": "UNSIGNED",
+      "distribution_url": "NOT_PUBLISHED",
+      "local_path": "../../neuropause-desktop/NP-PUBLIC-LAUNCH-ARTIFACTS/win/NeuroPause-Setup.exe",
+      "public": true
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "ARTIFACT": "22_NEGATIVE_CONTROL",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "harness": "apps/desktop/scripts/verify-mac-artifact.controls.cjs",
+  "results": [
+    {
+      "control": "NEG-DEP",
+      "gate": "DEPENDENCIES",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [DEPENDENCIES] every exact specifier required by the main/preload bundles resolves inside the asar: ws (from out/main/index.js)\n  FAIL  [DEPENDENCIES] every runtime-required package (bundle requires + direct deps + their asar closure) is packaged: ws (DIRECT_RUNTIME via out/main/index.js)\n  FAIL  [DEPENDENCIES] direct dependency packaged: ws\n  FAIL  [SIGNING] codesign --verify --deep --strict: dated:/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-meMcYH/zip/NeuroPause.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/."
+    },
+    {
+      "control": "NEG-ENTRY",
+      "gate": "DEPENDENCIES",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [DEPENDENCIES] every exact specifier required by the main/preload bundles resolves inside the asar: electron-updater (from out/main/index.js)\n  FAIL  [SIGNING] codesign --verify --deep --strict: dated:/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-ZFIxQK/zip/NeuroPause.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/.\n  FAIL  [NOTARIZATION] artifact notarized (per status marker): one or more Apple credentials are absent\n  FAIL  [NOTARIZATION] stapler validate (ticket stapled): Processing: /var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-ZFIxQK/zip/NeuroPause.app"
+    },
+    {
+      "control": "NEG-ARCH",
+      "gate": "ARCHITECTURE",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [ARCHITECTURE] every Mach-O carries x86_64 + arm64: Contents/MacOS/NeuroPause [arm64]\n  FAIL  [NOTARIZATION] artifact notarized (per status marker): one or more Apple credentials are absent\n  FAIL  [NOTARIZATION] stapler validate (ticket stapled): Processing: /var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-AmJs7V/zip/NeuroPause.app\n  FAIL  [NOTARIZATION] spctl --assess --type execute accepts: /var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-AmJs7V/zip/NeuroPause.app: rejected"
+    },
+    {
+      "control": "NEG-BYTE",
+      "gate": "FEED",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed sha512 == zip sha512: K5IBBvujSmLUkZDX0TN7+W+G… vs DCUvGAdeczwruwvaC7I77yPZ…\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [SIGNING] codesign --verify --deep --strict: _w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-hZLoMT/zip/NeuroPause.app: invalid or unsupported format for signature\n  FAIL  [SIGNING] every nested Mach-O passes codesign --verify --strict: 14 checked, 1 failing\n  FAIL  [NOTARIZATION] artifact notarized (per status marker): one or more Apple credentials are absent"
+    },
+    {
+      "control": "NEG-NAME",
+      "gate": "FEED",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed path == zip filename: NeuroPause-1.0.0-rc.30-arm64-mac.zip vs NeuroPause-1.0.0-rc.30-universal-mac.zip\n  FAIL  [FEED] feed files[].size == zip size: zip not in files[]\n  FAIL  [FEED] feed file exists: NeuroPause-1.0.0-rc.30-arm64-mac.zip\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [FEED] no stale arm64-only reference in feed"
+    },
+    {
+      "control": "NEG-URL",
+      "gate": "CONFIG",
+      "expected": "FAIL",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true,
+      "fail_lines": "  FAIL  [CONTAINERS] dmg present: missing\n  FAIL  [FEED] feed file exists: NeuroPause-universal.dmg\n  FAIL  [SIGNING] codesign --verify --deep --strict: dated:/private/var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-Qk2qIy/zip/NeuroPause.app/Contents/Frameworks/Electron Framework.framework/Versions/Current/.\n  FAIL  [NOTARIZATION] artifact notarized (per status marker): one or more Apple credentials are absent\n  FAIL  [NOTARIZATION] stapler validate (ticket stapled): Processing: /var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-Qk2qIy/zip/NeuroPause.app\n  FAIL  [NOTARIZATION] spctl --assess --type execute accepts: /var/folders/vm/16b_w9q179q4d6m4r3bhngd40000gn/T/np-mac-verify-Qk2qIy/zip/NeuroPause.app: a sealed resource is missing or invalid"
+    }
+  ],
+  "all_ok": true
+}

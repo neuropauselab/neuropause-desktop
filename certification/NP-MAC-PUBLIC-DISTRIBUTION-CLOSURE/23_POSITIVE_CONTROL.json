@@ -1,0 +1,99 @@
+{
+  "ARTIFACT": "23_POSITIVE_CONTROL",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "results": [
+    {
+      "control": "POSITIVE",
+      "gate": "CONTAINERS",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "FEED",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "ZIP",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "PLIST",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "ARCHITECTURE",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "DEPENDENCIES",
+      "expected": "PASS|WARN",
+      "observed": "WARN",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "SIGNING",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "CONFIG",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "SECRETS",
+      "expected": "PASS|WARN",
+      "observed": "PASS",
+      "verifier_exit": 1,
+      "ok": true
+    },
+    {
+      "control": "POSITIVE",
+      "gate": "NOTARIZATION",
+      "expected": "(recorded, not asserted)",
+      "observed": "FAIL",
+      "verifier_exit": 1,
+      "ok": true
+    }
+  ],
+  "artifact_sha256": {
+    "dmg": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+    "zip": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075"
+  }
+}

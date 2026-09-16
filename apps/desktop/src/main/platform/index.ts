@@ -14,6 +14,7 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { app, Notification } from 'electron';
+import { registerShutdownFlush } from '../shutdownFlush';
 import type {
   AuthStatus,
   DiagnosticsReport,
@@ -43,6 +44,7 @@ import { EventBus } from './eventBus';
 import type { TenantScope } from '@neuropause/shared';
 import { TimelineService } from './timelineService';
 import { PlatformEventApi } from './eventApi';
+import { platformBusRef } from './platformBusRef';
 import { registerSubscribers } from './subscribers';
 import { DiagnosticsService, makeCheck, type DiagnosticProbe } from './diagnostics';
 
@@ -158,6 +160,9 @@ export async function initPlatform(deps: {
   await timeline.init();
 
   const api = new PlatformEventApi(bus, timeline);
+  // S120 — publish the ONE tenant-scoped replay handle for the governed connector-lineage read.
+  // Not a second bus: a reference to this same api's replay (which wraps the single EventBus).
+  platformBusRef.current = api;
 
   /**
    * The viewer resolver, late-bound. P13C ROUND 9 — F5.
@@ -317,3 +322,17 @@ export async function initPlatform(deps: {
     dispose: () => timeline.dispose(),
   };
 }
+
+/**
+ * P13C ROUND 37 — GATE 16. The timeline drain finally has a caller.
+ *
+ * `dispose()` (the awaited flush of the 2000ms-interval timeline writer) was
+ * exported and called by NOTHING — up to one interval of platform/audit
+ * events vanished on every quit. Registered at module scope on the shared
+ * shutdown barrier; the actual timeline instance is resolved lazily at quit
+ * time through `platformDisposeRef`, which `initPlatform`'s caller sets.
+ */
+export const platformDisposeRef: { current: (() => Promise<void>) | null } = { current: null };
+registerShutdownFlush('platform-timeline', async () => {
+  await platformDisposeRef.current?.();
+});

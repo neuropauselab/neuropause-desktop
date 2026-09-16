@@ -1,0 +1,565 @@
+{
+  "key": "windows",
+  "generated": "2026-09-12",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399ff0c352bce04e5a0c96f3ab5c0b92559be",
+    "version": "1.0.0-rc.30",
+    "porcelain_lines": 0,
+    "classification": "MEASURED",
+    "evidence": "git log -1 / git branch --show-current / node -e require(package.json).version"
+  },
+  "summary": "Windows distribution is NSIS x64 (oneClick:false, perMachine:false) + portable + win zip, built only by .github/workflows/windows-release.yml on windows-latest, unsigned (WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD absent from `gh secret list`; every existing installer has an empty PE certificate table), with a generic-provider update feed at https://neuropause033.com/updates (beta.yml, path NeuroPause-Setup.exe). At rc.30 there is NO Windows artifact: the last successful windows-release run is v1.0.0-rc.27 (2026-09-07), which CHANGELOG rc.28 documents as enterprise-dead on arrival; rc.28 failed on the Gate-26 dataImportShellJourney race and rc.29 failed ONLY on ui-tests/macosJourney.test.tsx ('resolveModules is not a function' at line 149) while the same commit passed on ubuntu (desktop-ci 34126195483, ubuntu-24.04, 98/98 UI files). The public distribution path is dead today: the apex neuropause033.com has NO A/AAAA/CNAME record (NOERROR, empty answer, also from 1.1.1.1 and 8.8.8.8), the Cloudflare edge returns HTTP 530 for /downloads/NeuroPause-Setup.exe and /updates/beta.yml, api.neuropause033.com/health returns 530 (error 1033, tunnel down), the registry expiry for neuropause033.com is 2026-09-15 (3 days), and the repo variable PUBLISH_TO_SITE is unset so CI never publishes to the site. The only publicly downloadable Windows build is the rc.27 GitHub Release (repo is PUBLIC, not private as electron-builder.yml line 36 claims). Prior Windows install tests were run on a Windows 11 Pro ARM64 (build 26100) guest under QEMU 11.1.0 qemu-system-aarch64 -accel hvf in /Users/saurabhpatel/vm-win11, executing the x64 installer under Microsoft x64-on-ARM emulation; the rig (qemu, HVF, 35 GB win11.qcow2, firmware, uploadserver.py, .ps1/.cmd runners) is present on this Mac and re-runnable, but no native-x64 hardware run and no GUI SmartScreen click-through were ever recorded (all installs used the silent /S switch). MSIX/Store/winget: ABSENT.",
+  "facts": [
+    {
+      "id": "F001",
+      "fact": "win targets: nsis x64, zip x64, portable x64; win.icon icon.ico",
+      "evidence": "apps/desktop/electron-builder.yml:80-91",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F002",
+      "fact": "nsis block: oneClick:false, perMachine:false, allowToChangeInstallationDirectory:true, createDesktopShortcut:true, createStartMenuShortcut:true, shortcutName NeuroPause, artifactName NeuroPause-Setup.${ext}",
+      "evidence": "apps/desktop/electron-builder.yml:92-99",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F003",
+      "fact": "No portable.artifactName, no win.publisherName, no win.certificateFile, no win.signingHashAlgorithms, no win.requestedExecutionLevel, no verifyUpdateCodeSignature override in electron-builder.yml",
+      "evidence": "apps/desktop/electron-builder.yml (whole file, 99 lines)",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "F004",
+      "fact": "publish: provider generic, url https://neuropause033.com/updates, channel beta; comment claims 'The GitHub repo is private' as the rationale",
+      "evidence": "apps/desktop/electron-builder.yml:35-45",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F005",
+      "fact": "GitHub repo neuropauselab/neuropause-desktop visibility is PUBLIC (isPrivate:false) — the private-repo rationale in electron-builder.yml:36, website/DOWNLOADS.md:24-28 and docs/windows/UPDATE-VERIFICATION.md:7-21 is stale",
+      "evidence": "gh repo view --json visibility,isPrivate",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F006",
+      "fact": "package:win = generate-notices + generate-build-info + electron-vite build + electron-builder --win --x64 --publish never + verify:release -- --platform win",
+      "evidence": "apps/desktop/package.json scripts.package:win",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F007",
+      "fact": "desktop `test` script runs both vitest configs (node suite + vitest.ui.config.ts); root test:release runs each workspace's test, so the windows-release Test step executes the UI suite including macosJourney",
+      "evidence": "apps/desktop/package.json scripts.test; package.json scripts.test:release; .github/workflows/windows-release.yml:70-71",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F008",
+      "fact": "Toolchain: electron-builder 26.15.3, electron-updater 6.8.9, electron 42.8.1; .nvmrc = 20",
+      "evidence": "node -e require('electron-builder/package.json').version ...; .nvmrc",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F009",
+      "fact": "windows-release.yml: triggers workflow_dispatch + push tags v*; runs-on windows-latest; permissions contents:write; steps checkout, setup-node (.nvmrc), verify tag==package version (tags only), npm ci, typecheck:release, lint:release, test:release, Package Windows, Verify release artifacts, upload installer-only artifact, upload full artifact, publish installer to site, publish update feed to site, Publish GitHub Release (tags only)",
+      "evidence": ".github/workflows/windows-release.yml:12-278",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F010",
+      "fact": "Signing is env-driven: WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD exported only if secrets.WIN_CSC_LINK is non-empty; otherwise 'No signing certificate secret; producing an unsigned build.'",
+      "evidence": ".github/workflows/windows-release.yml:78-107",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F011",
+      "fact": "gh secret list shows APPLE_APP_SPECIFIC_PASSWORD, APPLE_CSC_KEY_PASSWORD, APPLE_CSC_LINK, APPLE_ID, APPLE_TEAM_ID, DEPLOY_SSH_KEY. WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD are ABSENT",
+      "evidence": "gh secret list (2026-09-12)",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F012",
+      "fact": "gh variable list is EMPTY: PUBLISH_TO_SITE and NEUROPAUSE_BACKEND_URL are unset; therefore both 'Publish ... to neuropause033.com' steps (if: vars.PUBLISH_TO_SITE == 'true' && env.HAS_DEPLOY_KEY == 'true') never run and the backend URL falls back to https://api.neuropause033.com",
+      "evidence": "gh variable list; .github/workflows/windows-release.yml:80,204,242",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F013",
+      "fact": "Site publish (when enabled) scp's NeuroPause-Setup.exe to root@64.227.128.218:/opt/neuropause-site/website/downloads/ and beta*.yml + NeuroPause-Setup.exe + *.blockmap to /opt/neuropause-site/website/updates/, then cp beta.yml latest.yml and curls https://neuropause033.com/updates/beta.yml",
+      "evidence": ".github/workflows/windows-release.yml:207-258",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F014",
+      "fact": "GitHub Release step attaches apps/desktop/dist/*.exe, *.zip, *.yml, *.blockmap; prerelease for -rc/-beta; the *.yml glob also attaches builder-debug.yml (6182 B, containing runner paths and the NSIS script) — confirmed on the rc.27 release",
+      "evidence": ".github/workflows/windows-release.yml:264-278; gh release view v1.0.0-rc.27 --json assets",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F015",
+      "fact": "Published rc.27 Windows assets: beta.yml (343 B), builder-debug.yml (6182 B), NeuroPause-1.0.0-rc.27-win.zip (154,284,272 B), NeuroPause-Setup.exe (111,894,625 B), NeuroPause-Setup.exe.blockmap (118,425 B), NeuroPause.1.0.0-rc.27.exe (111,591,546 B, the portable build). Download counts: Setup.exe 2, win.zip 1, beta.yml 3, portable 0",
+      "evidence": "gh release view v1.0.0-rc.27 --json assets; gh api repos/neuropauselab/neuropause-desktop/releases/tags/v1.0.0-rc.27",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F016",
+      "fact": "Portable on-disk name is electron-builder's default 'NeuroPause 1.0.0-rc.27.exe' (GitHub renders the space as a dot); no stable, version-free name exists for the portable or the win zip",
+      "evidence": "release asset name NeuroPause.1.0.0-rc.27.exe; electron-builder.yml has no portable.artifactName",
+      "classification": "INFERRED"
+    },
+    {
+      "id": "F017",
+      "fact": "rc.27 beta.yml: version 1.0.0-rc.27; files[0].url NeuroPause-Setup.exe sha512 njsXflzA... size 111894625; path NeuroPause-Setup.exe; releaseDate 2026-09-07T07:27:21.803Z — the Windows update payload is the NSIS installer, not the zip",
+      "evidence": "scratchpad/discovery/rc27-assets/beta.yml (downloaded via gh release download)",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F018",
+      "fact": "gh release list: v1.0.0-rc.27 (2026-09-07), v1.0.0-rc.17, win-round26-test, win-round25-test, v1.0.0-rc.16, rc.13, rc.9, rc.7. No release exists for v1.0.0-rc.28, rc.29 or rc.30 ('release not found'); releases/latest returns 404 (all prereleases)",
+      "evidence": "gh release list; gh release view v1.0.0-rc.29 / rc.30; gh api .../releases/latest",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F019",
+      "fact": "windows-release run history: rc.29 (34126195497) FAILURE at Test; rc.28 (34108402368) FAILURE at Test; rc.27 (34094237013) SUCCESS 16m52s; dispatch 34091774406 SUCCESS; dispatch 34089907841 FAILURE; rc.26/rc.25/rc.24/rc.19/rc.20 FAILURE",
+      "evidence": "gh run list --workflow windows-release.yml",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F020",
+      "fact": "rc.29 windows-release job: node suite 1040/1040 files passed; UI suite 1 failed | 97 passed (98); the ONLY failure is ui-tests/macosJourney.test.tsx > 'the real shell renders the macOS traffic-light gutter, then navigates into a section (loading → success)' with 'TypeError: resolveModules is not a function' at macosJourney.test.tsx:149:5; file duration 1293 ms",
+      "evidence": "scratchpad/discovery/rc29-failed.log lines 9523, 10655-10657, 11361-11378",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F021",
+      "fact": "Same commit f0ba0e8 (tag v1.0.0-rc.29) passed desktop-ci run 34126195483 on Image: ubuntu-24.04: node 1040/1040, UI 98/98, macosJourney.test.tsx ✓ (2 tests) 1105 ms. desktop-ci.yml at v1.0.0-rc.29 was ubuntu-latest only (the 3-OS matrix exists only at HEAD)",
+      "evidence": "scratchpad/discovery/desktopci-rc29-job.log lines 10673, 9526, 11373; git show v1.0.0-rc.29:.github/workflows/desktop-ci.yml:48",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F022",
+      "fact": "rc.28 windows-release failed on ui-tests/dataImportShellJourneyGate26.test.tsx ('leaves no data-plane channel unrouted' — dp:history after clearRoutes), the race CHANGELOG rc.29 describes as made deterministic by the slower Windows filesystem; fixed test-only in ff66e71",
+      "evidence": "scratchpad/discovery/rc28-failed.log line 11243; CHANGELOG.md:46-67; git log v1.0.0-rc.28..v1.0.0-rc.29",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F023",
+      "fact": "macosJourney.test.tsx, appNavigationE2E.test.tsx, ui-tests/setup.ts, BusinessView.tsx and AppShell.tsx are byte-identical between v1.0.0-rc.29 and HEAD cec399f — the rc.29 failure mode is still present at rc.30",
+      "evidence": "git diff --stat v1.0.0-rc.29 HEAD -- <those files> (empty)",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F024",
+      "fact": "macosJourney test flow: route(EnterpriseModulesList → pending Promise assigning resolveModules) [131-135]; mountShell; click 'Business' [147]; waitFor('.np-skeleton') [148]; resolveModules([...]) [149]",
+      "evidence": "apps/desktop/ui-tests/macosJourney.test.tsx:129-151",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F025",
+      "fact": "The harness bridge runs the route handler synchronously inside `invoke` (routes.get(channel) → handler(payload)), so resolveModules is assigned exactly when the renderer calls ipc.enterpriseModules.list()",
+      "evidence": "apps/desktop/ui-tests/setup.ts:94-102 (bridge.invoke); apps/desktop/src/renderer/src/lib/ipc.ts:1627",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F026",
+      "fact": "BusinessView renders <SkeletonLines rows={5}/> (class np-skeleton) on its FIRST render while modules===null (lines 83-90) and only issues ipc.enterpriseModules.list() from a passive effect (useEffect(() => void reload(), [reload]) lines 57-59; reload awaits list() at line 47). The skeleton is therefore in the DOM strictly before the IPC request is made",
+      "evidence": "apps/desktop/src/renderer/src/business/BusinessView.tsx:43-59,83-90; components/ui/Skeleton.tsx:28",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F027",
+      "fact": "BusinessView is code-split: AppShell lazy(() => import('@renderer/business/BusinessView')) behind <Suspense fallback={<ViewFallback/>}>; ViewFallback renders NOTHING under LOADING_FLASH_THRESHOLD_MS (useDelayedFlag) and then a Spinner, never an .np-skeleton",
+      "evidence": "apps/desktop/src/renderer/src/shell/AppShell.tsx:146-147,204-235,617-619; lib/useDelayedFlag.ts:26-38",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F028",
+      "fact": "Race diagnosis: the first click on Business triggers the FIRST dynamic import of the BusinessView chunk in that vitest worker (isolated module cache per test file). On a fast runner the import resolves inside user.click()'s own awaits and act() scope, so React flushes the passive effect synchronously → list() invoked → resolveModules assigned BEFORE waitFor starts. On a slow Windows runner the import resolves AFTER user.click() returned; the Suspense-resolution commit happens outside act(), React schedules the passive effect as a separate scheduler task, the skeleton insertion satisfies waitFor via MutationObserver (microtask), the test continues to line 149 before the effect runs, and resolveModules is still undefined → TypeError. The test waits on a DOM proxy (.np-skeleton) that BusinessView renders before it asks for data, instead of on the precondition itself (the handler having been invoked)",
+      "evidence": "F024-F027; rc29 vs ubuntu logs (F020, F021)",
+      "classification": "INFERRED"
+    },
+    {
+      "id": "F029",
+      "fact": "ui-tests/appNavigationE2E.test.tsx:156-175 carries the identical pattern (deferred resolveModules; waitFor('.np-skeleton'); resolveModules(...)) and is therefore latently racy on slow runners; it passed on windows-latest in the rc.29 run only by timing",
+      "evidence": "apps/desktop/ui-tests/appNavigationE2E.test.tsx:154-178; rc29 UI summary 1 failed | 97 passed",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "F030",
+      "fact": "Proposed minimal deterministic fix (test-only, no sleeps, no production change): gate on the handler invocation. In macosJourney.test.tsx replace lines 131-135 with `let resolveModules!: ...; const modulesRequested = new Promise<void>((requested) => route(IpcChannel.EnterpriseModulesList, () => new Promise<EnterpriseModuleSummary[]>((r) => { resolveModules = r; requested(); })));` and insert `await modulesRequested;` between the skeleton waitFor (line 148) and `resolveModules([financeModule()])` (line 149). Equivalent one-liner: insert `await waitFor(() => expect(resolveModules).toBeTypeOf('function'));` before line 149. Apply the same to appNavigationE2E.test.tsx before line 175. Rejected alternative: pre-warming the lazy chunk via `await import('@renderer/business/BusinessView')` in beforeAll (works, but removes the Suspense phase from what the test exercises)",
+      "evidence": "F024-F029",
+      "classification": "INFERRED"
+    },
+    {
+      "id": "F031",
+      "fact": "apps/desktop/dist contains no Windows artifact (*.exe, *-win.zip, beta.yml, *.blockmap) at HEAD; no local rc.30 Windows build exists",
+      "evidence": "find apps/desktop/dist -maxdepth 1 -name '*.exe' ... (empty)",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "F032",
+      "fact": "apps/desktop/resources/icon.ico exists: MS Windows icon resource, 9 icons up to 256x256 32bpp, 432,254 bytes (docs/windows/WINDOWS-BUILD.md:55 'resources/icon.ico does not exist yet' is stale)",
+      "evidence": "file apps/desktop/resources/icon.ico; ls -la",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F033",
+      "fact": "PE signature check (data directory entry 4 size) on existing installers in /Users/saurabhpatel/vm-win11: NeuroPause-Setup.exe (rc.20, 111,864,376 B), neuropause-setup-rc24.exe, neuropause-setup-rc27.exe (111,894,625 B — same byte size as the published rc.27 asset), neuropause-setup-s166.exe: ALL certTableSize=0 → UNSIGNED; NSIS stub machine 0x14c (PE32 x86) as scripts/make-release-manifest.cjs:106-111 documents",
+      "evidence": "node -e PE parse over vm-win11/*.exe (read-only); shasum -a 256 rc27 = f04a92e1...3768, rc.20 = e861228f...bc90",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F034",
+      "fact": "In-guest Get-AuthenticodeSignature returned NotSigned for the rc.22 installer and installed NeuroPause.exe (S53) and for the s166 installer (S166)",
+      "evidence": "/Users/saurabhpatel/vm-win11/uploads-s53-archive/a.txt AUTHENTICODE_STATUS/INSTALLED_EXE_AUTHENTICODE; uploads-s166-archive/a.txt AUTHENTICODE=NotSigned",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F035",
+      "fact": "scripts/make-release-manifest.cjs reads the PE optional header data-directory entry 4 (Certificate Table) size; 0 → signingStatus 'NOT CONFIGURED'; non-zero → 'SIGNED'; non-PE → 'UNKNOWN'; also records installerArch from the PE machine word and warns 'Windows SmartScreen will warn the user' when unsigned",
+      "evidence": "scripts/make-release-manifest.cjs:48-57,59-65,135,174-176",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F036",
+      "fact": "release/windows/release-manifest.json and release-manifest-portable.json describe 1.0.0-rc.15 (build aec87bd, branch feat/understanding-holds-motion-system, 2026-08-12), artifacts NeuroPause-Founder-Test-Setup.exe (110,820,498 B) / NeuroPause-Founder-Test-Portable.exe (110,517,409 B), signingStatus 'NOT CONFIGURED', installerArch x86, certificationStatus 'PROGRAM 13C — NOT CERTIFIED'; the installer binaries themselves are not tracked",
+      "evidence": "release/windows/release-manifest.json:1-27; release-manifest-portable.json:1-22; git log -- release/windows (927b7bf)",
+      "classification": "DECLARED"
+    },
+    {
+      "id": "F037",
+      "fact": "release/windows/KNOWN-LIMITATIONS.md declares: installer not signed (SmartScreen warning; PE certificate table empty), 'Nobody on the team has run this on Windows' (status NOT TESTED as of 12 Aug), Program 13C NOT CERTIFIED, no local AI model by default, auto-update configured but unproven, version rc.15 from a feature branch",
+      "evidence": "release/windows/KNOWN-LIMITATIONS.md:9-36,98-110",
+      "classification": "DECLARED"
+    },
+    {
+      "id": "F038",
+      "fact": "release/windows/ENGINEERING-STATUS.md (12 Aug 2026) verdict: PROGRAM 13C NOT CERTIFIED; FOUNDER BUILD TEST BUILD; WINDOWS SIGNING NOT CONFIGURED; 'Installed and run on Windows: NOT TESTED — by anyone'",
+      "evidence": "release/windows/ENGINEERING-STATUS.md:20-24,85-95",
+      "classification": "DECLARED"
+    },
+    {
+      "id": "F039",
+      "fact": "Since 12 Aug, real-Windows runs DID happen (superseding F037/F038's 'NOT TESTED'): Gate 20 rc.20 (2026-08-15), rc.21 (2026-08-31), S53 rc.22 (2026-09-02/03), S64 rc.24 (2026-09-03), S165 rc.27 and S166 rc.27+fix (2026-09-07) — all on the QEMU Windows 11 ARM64 guest",
+      "evidence": "certification/windows-runtime-evidence-rc20/RESULTS.md:1-35; certification/windows-runtime-evidence-rc21/RESULTS.md:1-60; certification/SESSION53-WINDOWS-REAL-RUNTIME-ACCEPTANCE.md:1-60; vm-win11/uploads-s53-archive, uploads-s64-archive, uploads-s166-archive; CHANGELOG.md:71-81",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F040",
+      "fact": "Prior Windows install tests used QEMU (Homebrew qemu 11.1.0) `qemu-system-aarch64 -M virt,highmem=on -accel hvf -cpu host -smp 4 -m 8192`, EDK2 pflash (QEMU_EFI.fd / QEMU_VARS.fd), ramfb display, NVMe system disk win11.qcow2, user-mode NAT with hostfwd 2222→22, VNC :5, QEMU monitor unix socket mon.sock (screendump/sendkey)",
+      "evidence": "/Users/saurabhpatel/vm-win11/run-vm.sh:35-54; apps/desktop/.claude/skills/run-windows-vm/scripts/run-vm.sh:46-57",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F041",
+      "fact": "Guest OS measured from inside the VM: Microsoft Windows 11 Pro 10.0.26100 build 26100, ARM 64-bit, CPU 'virt-11.1', 8183 MB RAM, user 'accept', interactive explorer session; the x64 NSIS installer runs under Microsoft's x64-on-ARM emulation",
+      "evidence": "/Users/saurabhpatel/vm-win11/uploads-s53-archive/a.txt:1-11; certification/SESSION53-WINDOWS-REAL-RUNTIME-ACCEPTANCE.md:31-41",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F042",
+      "fact": "Automation in vm-win11: .cmd bootstrap files (boot.cmd, s53.cmd, s165.cmd, s166.cmd, s167.cmd) curl runners from the host at http://10.0.2.2:8099 (uploadserver.py), run PowerShell stage scripts (accept.ps1, gate20run.ps1, gate20-rc21.ps1, s53a/b/c.ps1, s165a/c.ps1, s166a/c.ps1, s167c.ps1), install with `Start-Process <installer> -ArgumentList '/S' -Wait` (silent NSIS per-user), launch the app on the interactive desktop via schtasks, grep %APPDATA%\\@neuropause\\desktop\\logs\\app.log for boot markers, and PUT results back to uploads/. Stage C scripts run the repo's packaged e2e harnesses (s53-pj.cjs, s53-neg.cjs, s53-o2c.cjs, s53-o2cui.cjs, s53-restart.cjs, s56-neg.cjs, s64-rev.cjs) with node-v20.20.2-win-arm64 and NP_APP_BIN pointing at the installed NeuroPause.exe",
+      "evidence": "vm-win11/boot.cmd, s53.cmd, s53a.ps1:39-47, s53c.ps1:6-35, s165a.ps1:57-60, gate20run.ps1:43-47, uploadserver.py",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F043",
+      "fact": "Every recorded Windows install used the silent `/S` switch; no GUI wizard run and no SmartScreen 'More info → Run anyway' click-through was ever measured (silent NSIS installs do not surface SmartScreen); a Windows user's actual first-run gate is therefore undocumented by measurement",
+      "evidence": "vm-win11/*.ps1 Start-Process ... '/S'; absence of any GUI-install evidence in certification/ and vm-win11/uploads-*",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "F044",
+      "fact": "Re-runnability from this Mac: /opt/homebrew/bin/qemu-system-aarch64 and qemu-img exist (QEMU 11.1.0), kern.hv_support=1, host Apple M5 Pro (Mac17,8) arm64, 612 GiB free, win11.qcow2 (35 GB, last modified 7 Sep 15:44), QEMU_EFI.fd/QEMU_VARS.fd, virtio-win.iso, unattend.iso, results.raw and uup/26100.1_PROFESSIONAL_ARM64_EN-US.ISO all present; vm-s*.log files are 0 bytes (no lingering process evidence). The rig is re-runnable (`~/vm-win11/run-vm.sh` + `python3 uploadserver.py`) — NOT executed by this mapper",
+      "evidence": "ls /opt/homebrew/bin/qemu*; sysctl kern.hv_support; df -h; ls -la /Users/saurabhpatel/vm-win11",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F045",
+      "fact": "The tracked skill apps/desktop/.claude/skills/run-windows-vm/SKILL.md and guest/autounattend.xml embed a local admin account name and password for the guest (credential VALUE not reproduced here); SKILL.md documents the full build/boot/drive procedure including gotchas (ramfb, virtio-scsi CD, schtasks launch)",
+      "evidence": "apps/desktop/.claude/skills/run-windows-vm/SKILL.md:58-61 (count of 'password' hits: 2); guest/autounattend.xml (4 hits)",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F046",
+      "fact": "S166 (rc.27 + authz fix, build-info 1.0.0-rc.27 commit acdb68a-dirty, installer 111,895,717 B) on the VM: APP_INSTALLED=True, app-update.yml inside the installed app = provider generic / url https://neuropause033.com/updates / channel beta / updaterCacheDirName '@neuropausedesktop-updater'; boot markers Startup complete=1, Secure IPC handlers registered=1, Organization runtime ready=1; S62 payment-reversal harness PASS lines; S47 O2C UI journey 'COMPLETED BY CLICKS ALONE', TIME_TO_FIRST_SUCCESSFUL_TRANSACTION_SECONDS=15; S48 'RESTART DURABILITY VERIFIED on the packaged artifact'",
+      "evidence": "/Users/saurabhpatel/vm-win11/uploads-s166-archive/a.txt, rev.txt, o2cui.txt, restart.txt; uploadserver.log 07/Sep/2026 14:53-14:58",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F047",
+      "fact": "S53 (rc.22) on the VM: install 46 s, APP_PATH C:\\Users\\accept\\AppData\\Local\\Programs\\NeuroPause\\NeuroPause.exe (perMachine:false → %LOCALAPPDATA%\\Programs), ASAR sha256 A265C467...3298 (byte-identical to the Mac rc.22 asar per S52), BARE_LAUNCH_STARTUP_SECONDS=6; profile dir %APPDATA%\\@neuropause\\desktop",
+      "evidence": "/Users/saurabhpatel/vm-win11/uploads-s53-archive/a.txt:17-30",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F048",
+      "fact": "Gate 20 rc.20 first attempt (run.ps1 from SSH) logged APPLOG_NOT_WRITTEN; the later schtasks-based runner succeeded (gate20b.out, app.first/repeat/final.log) — documented in RESULTS.md as 7 real launches, 722 IPC handlers registered, no-handler=0",
+      "evidence": "/Users/saurabhpatel/vm-win11/uploads-gate20/gate20.out, gate20b.out, app.*.log; certification/windows-runtime-evidence-rc20/RESULTS.md:19-31",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F049",
+      "fact": "CHANGELOG rc.28 declares the published rc.27 Windows build 'enterprise-dead on arrival' (authz gate composition-time throw aborted initRuntimeCore; 'Runtime core failed to initialize' in app.log, S165) and that rc.27 'remains the previously published broken release; it is not retro-fixed'. The rc.27 GitHub Release is still public with NeuroPause-Setup.exe downloadable (2 downloads)",
+      "evidence": "CHANGELOG.md:69-88; gh api releases/tags/v1.0.0-rc.27",
+      "classification": "DECLARED+MEASURED"
+    },
+    {
+      "id": "F050",
+      "fact": "S165 raw VM evidence (the rc.27 failure run) is not archived: vm-win11/uploads/ is empty, vm-s165.log is 0 bytes, and no certification/*.md mentions S165/S166 (rg finds nothing); the rc.27-broken claim rests on CHANGELOG narrative plus the s166 fixed-build evidence",
+      "evidence": "ls vm-win11/uploads; rg -l 'S166|S165' certification (empty)",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "F051",
+      "fact": "DNS: neuropause033.com apex returns NOERROR with NO A, AAAA or CNAME records from the system resolver, 1.1.1.1 and 8.8.8.8; www.neuropause033.com likewise empty; SOA is at Cloudflare (max.ns.cloudflare.com); api.neuropause033.com resolves to 104.21.22.28 / 172.67.202.47",
+      "evidence": "dig +short neuropause033.com A/AAAA/CNAME; dig @1.1.1.1 / @8.8.8.8; dig SOA",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F052",
+      "fact": "HTTPS probes: curl https://neuropause033.com/downloads/NeuroPause-Setup.exe, /updates/beta.yml, /updates/latest.yml, /download.html → 'Could not resolve host'; forcing the Cloudflare edge (--resolve to 104.21.22.28) returns HTTP/2 530 for /updates/beta.yml and /downloads/NeuroPause-Setup.exe; GET https://api.neuropause033.com/health → HTTP 530 'error code: 1033' (Cloudflare tunnel/origin unreachable). Control: https://github.com → HTTP/2 200",
+      "evidence": "curl -sSI / -sS commands run 2026-09-12 ~17:08 UTC",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F053",
+      "fact": "whois neuropause033.com: status ACTIVE, Registry Expiry Date 2026-09-15T08:07:40Z — 3 days after today (2026-09-12); clientRenewProhibited/clientTransferProhibited/clientUpdateProhibited/clientDeleteProhibited statuses set",
+      "evidence": "whois neuropause033.com",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F054",
+      "fact": "website/download.html (repo copy): BASE https://neuropause033.com/downloads/, WIN_EXE NeuroPause-Setup.exe, MAC_DMG NeuroPause.dmg; UA sniff isWin → primary button = WIN_EXE, headline 'Download NeuroPause for Windows'; Windows steps: 1 download, 2 'Windows protected your PC' → More info → Run anyway, 3 'no admin password needed. NeuroPause opens automatically'; safe-box: 'The app isn't code-signed yet ... that prompt disappears in a future signed release'",
+      "evidence": "website/download.html:237-268,279-285",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F055",
+      "fact": "website/index.html download card: 'Windows 10/11 · x64 · Setup.exe', 'First launch: SmartScreen → More info → Run anyway (one time, until the installer is code-signed). Installs per-user, no admin needed.'; requirements row 'Windows 10 (1809+) or 11 · x64'; version row shows 1.0.0-rc.1 (stale vs rc.30); SHA-256 'published on each GitHub Release'",
+      "evidence": "website/index.html:1005-1030",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F056",
+      "fact": "NeuroPause-Windows-Install-Guide.md (repo root) is for 1.0.0-rc.17 (SHA-256 c48e63bf...206e, 111 MB, 'Windows 10 or 11, 64-bit, ~400 MB'), links https://github.com/dishantdobariya91-debug/neuropause-desktop/releases/tag/v1.0.0-rc.17 (301 → neuropauselab/...), says the installer 'installs for your user account only — it does not need administrator rights', documents SmartScreen More info → Run anyway, log at %APPDATA%\\@neuropause\\desktop\\logs\\app.log, and known issues 'pages may go blank', 'needs the server', 'updater may report an error on startup'",
+      "evidence": "NeuroPause-Windows-Install-Guide.md:1-8,16,53-63,125-129,145-155; curl -sI old URL → 301",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F057",
+      "fact": "release/windows/FOUNDER-INSTALL-WINDOWS.md and FOUNDER-ACCEPTANCE-WINDOWS.md describe the rc.15 founder handoff (file NeuroPause-Founder-Test-Setup.exe + .sha256, SmartScreen More info → Run anyway, Start Menu + desktop shortcut, uninstall via Settings → Apps, data in %APPDATA%\\@neuropause\\desktop, 40-minute checklist A–K)",
+      "evidence": "release/windows/FOUNDER-INSTALL-WINDOWS.md:12-62,123-142; FOUNDER-ACCEPTANCE-WINDOWS.md:28-40,189-197",
+      "classification": "DECLARED"
+    },
+    {
+      "id": "F058",
+      "fact": "docs/windows/* (11 files, Phase 1–8 era) contain multiple statements contradicted by measurement: 'No .exe has been built yet' (WINDOWS-RELEASE.md:51, WINDOWS-RUNTIME.md:75-77), 'resources/icon.ico does not exist yet' (WINDOWS-BUILD.md:55), 'electron-builder cannot produce a Windows installer from macOS or Linux' (WINDOWS-BUILD.md:9-13, WINDOWS-CI.md:10) vs macOS-host package:win runs recorded in certification/WINDOWS-ACCEPTANCE-ROUND32.md:19 and SESSION52-WINDOWS-PACKAGED-ACCEPTANCE.md, publish 'provider: github' (WINDOWS-AUTO-UPDATES.md:26-32, UPDATE-CHANNELS.md:51-56) vs actual generic, artifact 'NeuroPause Setup 1.0.0-rc.1.exe' (WINDOWS-BUILD.md:48, WINDOWS-RELEASES.md:24) vs actual NeuroPause-Setup.exe, feed 'latest.yml' vs actual beta.yml, 'Electron 30.5.1' (WINDOWS-AUDIT.md:13) vs 42.8.1, and a GH_TOKEN/private-repo prerequisite (UPDATE-VERIFICATION.md:7-21) that no longer applies",
+      "evidence": "docs/windows/*.md line refs as listed",
+      "classification": "DECLARED (stale)"
+    },
+    {
+      "id": "F059",
+      "fact": "docs/windows/WINDOWS-INSTALLER.md correctly derives from config: per-user install into %LOCALAPPDATA%\\Programs, no admin prompt, uninstaller registered in Settings → Apps, silent install with /S [/D=dir], portable runs without installation",
+      "evidence": "docs/windows/WINDOWS-INSTALLER.md:6-45,63-67; corroborated by vm-win11 APP_PATH (F047)",
+      "classification": "DECLARED, corroborated"
+    },
+    {
+      "id": "F060",
+      "fact": "MSIX / AppX / Microsoft Store / winget / chocolatey / scoop / squirrel: no reference in the repo except the transitive dependency name electron-builder-squirrel-windows in audit.json",
+      "evidence": "rg -i 'msix|appx|microsoft store|winget|chocolatey|scoop|squirrel' (excluding node_modules/lockfiles)",
+      "classification": "ABSENT"
+    },
+    {
+      "id": "F061",
+      "fact": "appUpdater: start() is inert when !app.isPackaged; when packaged it wires electron-updater with autoDownload=false, autoInstallOnAppQuit=false, allowDowngrade=false, allowPrerelease/channel from the persisted channel pref, and schedules a first checkForUpdates 10 s after launch; any error transitions to state 'error' with the message stored",
+      "evidence": "apps/desktop/src/main/services/appUpdater.ts:66-80,84-123,125-135",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F062",
+      "fact": "Because no publisherName is configured (unsigned build), electron-updater's NsisUpdater.verifySignature returns early when configOnDisk.publisherName == null — a downloaded update is NOT Authenticode-verified; integrity rests solely on the feed's sha512 over HTTPS. A signed feed host + signed installer with publisherName is required for update-authenticity verification",
+      "evidence": "node_modules/electron-updater/out/NsisUpdater.js:84-99; F003; F046 app-update.yml (no publisherName line)",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "F063",
+      "fact": "With the apex domain unresolvable (F051), every packaged Windows build's first update check (10 s after launch) fails and the updater enters 'error'; the Install Guide's 'The updater may report an error on startup' (F056) is currently the expected behaviour",
+      "evidence": "F051 + F061",
+      "classification": "DERIVED"
+    },
+    {
+      "id": "F064",
+      "fact": "verify-release-artifacts.cjs --platform win requires: any *.exe, a *.zip not ending -mac.zip, a *.yml not ending -mac.yml; parses the feed; enforces feed version == apps/desktop/package.json version (Gate 27); checks every files[] entry and top-level path exist with matching sha512/size",
+      "evidence": "apps/desktop/scripts/verify-release-artifacts.cjs:72-83,105-181",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F065",
+      "fact": "Windows-specific main-process behaviour: standard OS window frame on non-darwin (macOsChromeOptions returns {} — W-2 fix for the earlier frameless Windows window), app.quit() on window-all-closed off macOS, non-mac menu shape, signing-status diagnostics return state 'unknown' with detail 'signing status probe is implemented for macOS only', palette shortcut Control+k",
+      "evidence": "apps/desktop/src/main/windowChrome.ts:1-50; window.ts:25; index.ts:312; menu.ts:12; diagnostics/signingStatus.ts:31-38; sandbox/desktop/actions.ts:69",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F066",
+      "fact": "Renderer IPC invoke wrapper retries once on a boot-window 'No handler registered' after awaitRuntimeReady(); unrelated to the macosJourney race (the failing channel is routed, not missing)",
+      "evidence": "apps/desktop/src/renderer/src/lib/ipc.ts:260-296",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F067",
+      "fact": "HANDOFF-2026-09-12.md lists WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD among 'Blocked on credentials only you hold' and PUBLISH_TO_SITE as unset; it lists APPLE_CSC_LINK etc. as blocked too, yet gh secret list shows the five APPLE_* secrets PRESENT (dates 2026-08-07/13) — outside this subsystem, flagged for the macOS mapper",
+      "evidence": "/Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md:84-90; gh secret list",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F068",
+      "fact": "NP-B-016..023 evidence dirs mention 'windows' only inside JSON registers (NP-B-016 provenance, NP-B-017 custody, NP-B-018 predicate/custody, NP-B-020/021/022 registers, NP-B-023 raw); no Windows install/signing evidence lives there",
+      "evidence": "grep -ril windows /Users/saurabhpatel/neuropause-desktop/NP-B-*",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F069",
+      "fact": "build-info.json at HEAD (local, generated by the running revalidation): backendUrl https://api.neuropause033.com, version 1.0.0-rc.30, channel beta, commit cec399f, branch pilot/public-launch, dirty false, buildTime 2026-09-12T17:00:45Z; channel derives from the prerelease tag (-rc → beta)",
+      "evidence": "apps/desktop/resources/build-info.json; apps/desktop/scripts/generate-build-info.cjs:30-33,70",
+      "classification": "MEASURED"
+    },
+    {
+      "id": "F070",
+      "fact": "windows-release 'Test' step on windows-latest takes ~8 minutes (13:16:48 → 13:25:06 in rc.29) and the whole successful rc.27 job 16m52s; artifact bundle sizes per workflow comment: two .exe ~111 MB each, zip ~154 MB, total ~377 MB",
+      "evidence": "rc29-failed.log timestamps; gh run list; .github/workflows/windows-release.yml:130-132",
+      "classification": "MEASURED/DECLARED"
+    }
+  ],
+  "windows_user_experience_today": {
+    "classification": "DERIVED",
+    "steps": [
+      "1. Visiting https://neuropause033.com/download.html fails at DNS (apex has no address records; F051) — the site-hosted installer link and the update feed are unreachable; the domain itself expires 2026-09-15 (F053).",
+      "2. The only public Windows download is the GitHub prerelease v1.0.0-rc.27 (repo is public; F005, F015) — a build CHANGELOG declares enterprise-dead on arrival (runtime core fails to initialize; F049). No rc.28/29/30 Windows artifact exists (F018, F031).",
+      "3. Running NeuroPause-Setup.exe: unsigned → SmartScreen 'Windows protected your PC' → More info → Run anyway (F033, F054); NSIS wizard (oneClick:false) with directory choice; per-user install to %LOCALAPPDATA%\\Programs\\NeuroPause, desktop + Start Menu shortcuts, no admin elevation (F002, F047, F059).",
+      "4. First launch: standard Windows frame (F065); backend https://api.neuropause033.com returns 530 (F052) so sign-in/cloud paths fail; local-first mode exists since rc.21 (certification/windows-runtime-evidence-rc21/RESULTS.md:11-18, DECLARED); updater check errors ~10 s after launch (F063).",
+      "5. Data and logs under %APPDATA%\\@neuropause\\desktop (F047, F056); uninstall via Settings → Apps leaves data in place (F057, DECLARED)."
+    ]
+  },
+  "gate_assessments": [
+    {
+      "gate": "WINDOWS-DISTRIBUTION",
+      "status": "FAIL",
+      "reason": "No Windows artifact exists for rc.30 (nor rc.28/rc.29); the last successful windows-release is rc.27, publicly downloadable and documented as broken (F018, F049). The self-hosted path (download.html → neuropause033.com/downloads) is unreachable: apex DNS has no records, Cloudflare edge returns 530, PUBLISH_TO_SITE is unset so CI never publishes, and the domain registry expiry is 2026-09-15 (F012, F051-F053). The update feed at neuropause033.com/updates is equally unreachable (F052, F063). Repo docs (electron-builder.yml, DOWNLOADS.md, docs/windows/*) describe a private repo, a github provider, and 'no .exe built yet' — all stale (F005, F058). Becomes MEASURABLE once (a) the CI test race is fixed and a v1.0.0-rc.30 tag runs green, (b) DNS/hosting/domain are restored and PUBLISH_TO_SITE is decided."
+    },
+    {
+      "gate": "WINDOWS-SIGNING",
+      "status": "WAITING_FOR_OPERATOR_SECRET",
+      "reason": "WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD are absent from gh secret list (F011); the workflow therefore ships unsigned (F010) and every existing installer has an empty PE certificate table / Get-AuthenticodeSignature NotSigned (F033, F034). Consequences: SmartScreen 'Windows protected your PC' on every install (F054), and electron-updater performs no signature verification of updates because no publisherName is baked (F062). An Authenticode certificate (OV .pfx via WIN_CSC_LINK, or an EV/HSM signer integration that the workflow does not yet have — docs/windows/WINDOWS-GITHUB-ACTIONS.md:57-62) must be purchased and supplied by the operator; the mechanism to consume it is already in place (F010, F035)."
+    },
+    {
+      "gate": "WINDOWS-INSTALLATION",
+      "status": "NOT_MEASURED",
+      "reason": "No install of an rc.30 artifact has occurred (none exists, F031). Installation of earlier builds (rc.20, rc.21, rc.22, rc.24, rc.27, rc.27+fix) was measured on a Windows 11 Pro ARM64 26100 QEMU/HVF guest running the x64 installer under x64 emulation, via silent /S installs (F039-F048); never on native x64 hardware and never through the GUI/SmartScreen path (F043). The rig is present and re-runnable from this Mac (F044) once a Windows artifact exists. Prior evidence proves per-user install location, boot markers, governed journeys and restart durability for the s166 build (F046, F047)."
+    }
+  ],
+  "gaps": [
+    "No Windows artifact for rc.30 exists anywhere (CI never got past Test at rc.28/rc.29; no local dist output) — every rc.30 Windows claim is unmeasurable until the macosJourney race is fixed and a tag run goes green.",
+    "Contents of the droplet paths /opt/neuropause-site/website/downloads and /updates could not be observed (no SSH permitted; apex DNS dead; Cloudflare edge 530) — unknown which installer version, if any, was last uploaded there manually (website/DOWNLOAD-SETUP.md describes a manual scp of an rc.1-named file).",
+    "S165 (rc.27 broken on the VM) raw evidence is not archived (vm-win11/uploads empty, vm-s165.log 0 bytes, nothing under certification/) — the 'rc.27 enterprise-dead' claim is CHANGELOG narrative corroborated only indirectly by the s166 fixed-build run.",
+    "No native-x64 Windows run and no GUI/SmartScreen click-through were ever measured; all Windows evidence is ARM64 x64-emulation + silent installs.",
+    "Windows updater end-to-end (install rc.N → feed → download → quitAndInstall → rc.N+1) has never been exercised (SESSION53 §11 GRAY; docs/windows/UPDATE-VERIFICATION.md checklist unrun); today it cannot be, because the feed host does not resolve.",
+    "rc.28 failure name extracted from the log (dataImportShellJourneyGate26) but the ubuntu-vs-windows timing evidence for the macosJourney race is inferential (F028): no instrumented run was performed (read-only mandate; single-file vitest run on macOS would not reproduce a Windows-speed race).",
+    "gh secret list shows the APPLE_* signing secrets present while HANDOFF §4 lists them as blocked — outside this subsystem; the macOS mapper should reconcile.",
+    "The tracked run-windows-vm skill embeds a guest admin credential in SKILL.md and autounattend.xml (VM-local, but committed to a PUBLIC repo)."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Fix the macosJourney race deterministically: gate on the EnterpriseModulesList handler having been invoked (resolve a `modulesRequested` promise inside the route handler, `await` it before calling resolveModules; or `await waitFor(() => expect(resolveModules).toBeTypeOf('function'))` before line 149). Apply the identical guard to appNavigationE2E.test.tsx before line 175. Test-only; no sleeps; no production change.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/ui-tests/macosJourney.test.tsx",
+        "apps/desktop/ui-tests/appNavigationE2E.test.tsx"
+      ],
+      "risk": "None to product; the assertion remains loading → success because the promise is still pending when the skeleton is asserted."
+    },
+    {
+      "action": "Stop attaching builder-debug.yml to GitHub Releases and artifacts: narrow `apps/desktop/dist/*.yml` to `beta*.yml`/`latest*.yml` (or add `!apps/desktop/dist/builder-debug.yml`) in both upload steps and the release step.",
+      "effort": "S",
+      "files": [
+        ".github/workflows/windows-release.yml"
+      ],
+      "risk": "Must keep beta.yml matched (the comment at lines 268-270 explains why latest*.yml alone would attach nothing)."
+    },
+    {
+      "action": "Give the portable and zip stable, version-free names (e.g. portable.artifactName NeuroPause-Portable.${ext}) or document the default names; today only the NSIS installer has a stable name.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/electron-builder.yml",
+        "website/download.html"
+      ],
+      "risk": "verify-release-artifacts win rules match any .exe/.zip so no verifier change is needed; feed path is unaffected (NSIS only)."
+    },
+    {
+      "action": "Correct stale Windows documentation to measured reality: repo is public; provider is generic (not github); artifact names NeuroPause-Setup.exe / NeuroPause-<ver>-win.zip / portable; feed is beta.yml; icon.ico exists; .exe HAS been built and installed on Windows (ARM64 emulation, silent) since Aug 15; electron 42.8.1; remove GH_TOKEN prerequisite; update website/index.html version row (rc.1) and NeuroPause-Windows-Install-Guide.md (rc.17, old-owner URL, stale hash); refresh release/windows/* or mark them historical (rc.15).",
+      "effort": "M",
+      "files": [
+        "apps/desktop/electron-builder.yml:36",
+        "docs/windows/*.md",
+        "website/DOWNLOADS.md",
+        "website/index.html:1023",
+        "NeuroPause-Windows-Install-Guide.md",
+        "release/windows/KNOWN-LIMITATIONS.md",
+        "release/windows/ENGINEERING-STATUS.md"
+      ],
+      "risk": "Documentation only."
+    },
+    {
+      "action": "Once a Windows artifact exists: re-run the existing VM acceptance (run-vm.sh + uploadserver.py + s166-style stage A/C runners) against the rc.30 installer, archiving uploads under a session-named folder and a certification/ record; add one GUI (non-/S) install pass with a screendump of the SmartScreen dialog to measure the real first-run gate.",
+      "effort": "M",
+      "files": [
+        "/Users/saurabhpatel/vm-win11/run-vm.sh",
+        "/Users/saurabhpatel/vm-win11/s166a.ps1",
+        "/Users/saurabhpatel/vm-win11/s166c.ps1",
+        "apps/desktop/.claude/skills/run-windows-vm/SKILL.md"
+      ],
+      "risk": "ARM64-emulation caveat persists; native-x64 still needs real hardware or an x64 runner with a desktop session."
+    },
+    {
+      "action": "Add a CI-time PE certificate-table assertion after 'Package Windows' that prints SIGNED/UNSIGNED using the same logic as scripts/make-release-manifest.cjs:48-57, so the signing state is measured in every run rather than inferred from the presence of a secret.",
+      "effort": "S",
+      "files": [
+        ".github/workflows/windows-release.yml",
+        "scripts/make-release-manifest.cjs"
+      ],
+      "risk": "Report-only unless a policy decides unsigned must fail."
+    },
+    {
+      "action": "Remove the guest admin credential from the tracked run-windows-vm skill (read it from an untracked file or env) — the repo is public.",
+      "effort": "S",
+      "files": [
+        "apps/desktop/.claude/skills/run-windows-vm/SKILL.md",
+        "apps/desktop/.claude/skills/run-windows-vm/guest/autounattend.xml"
+      ],
+      "risk": "VM-local credential; low blast radius but public exposure."
+    }
+  ],
+  "human_decisions_required": [
+    "Purchase and supply an Authenticode code-signing certificate (OV .pfx → WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD, or EV/cloud-HSM which needs a signer integration the workflow lacks). Until then every Windows install shows SmartScreen and updates are not signature-verified.",
+    "Renew the neuropause033.com registration before 2026-09-15 and restore the apex A/AAAA (or CNAME) record and the Cloudflare tunnel/origin for api.neuropause033.com (HTTP 530 today); decide whether the download page and update feed keep living on this domain.",
+    "Decide whether to enable site publishing (repo variable PUBLISH_TO_SITE=true) or to distribute Windows builds solely via GitHub Releases now that the repo is public; the generic-provider feed URL baked into every build assumes the droplet.",
+    "Decide what to do with the public v1.0.0-rc.27 Windows release that CHANGELOG declares broken (delete assets, mark in release notes, or leave) — it is currently the only downloadable Windows build.",
+    "Decide whether Windows 11 ARM64 x64-emulation VM evidence is acceptable for the WINDOWS-INSTALLATION gate or whether a native x64 Windows 10/11 run is required (the site advertises 'Windows 10 (1809+) or 11 · x64').",
+    "Authorize the test-only fix to macosJourney/appNavigationE2E and a new v1.0.0-rc.31 tag (rc.30 is already spent at cec399f per the version-discipline rule) so that a Windows artifact can be produced by CI."
+  ],
+  "architecture_invariant_notes": [
+    "Distribution/signing is orthogonal to the authority chain: the Windows client remains a compute/observation surface; no Windows-specific code path grants authorization (F065 shows only cosmetic/platform branches).",
+    "Update path: an unsigned, unverified update (F062) would let a network host (the feed) become an implicit authority over what code runs on Computer-B — a 'network connection implies authorization' exposure in the supply chain rather than in the product's decision path. Signing + publisherName closes it.",
+    "The feed sha512 check (verify-release-artifacts + electron-updater) is an integrity control, not an authenticity control; stale-authorization rejection (allowDowngrade=false) is in place for versions but not for feed provenance."
+  ],
+  "artifacts_written": [
+    "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/windows.json",
+    "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/rc29-failed.log",
+    "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/rc28-failed.log",
+    "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/desktopci-rc29-job.log",
+    "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/rc27-assets/beta.yml",
+    "/private/tmp/claude-501/-Users-saurabhpatel-neuropause-desktop/8892fa89-eeb1-460a-8956-f6292a5c646e/scratchpad/discovery/rc27-assets/builder-debug.yml"
+  ]
+}

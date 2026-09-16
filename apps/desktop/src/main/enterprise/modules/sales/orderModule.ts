@@ -40,6 +40,7 @@ import {
   defineEnterpriseModule,
   type EnterpriseModule,
 } from '../../framework';
+import { parsePurchaseOrderLines, purchaseOrderSubtotal } from '../../../erp/procurementLines';
 import { CONVERT_TO_INVOICE_ACTION, convertOrderToInvoice } from './conversion';
 import {
   RESERVE_STOCK_ACTION,
@@ -72,6 +73,16 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
   fields: [
     { key: 'orderNumber', label: 'Order Number', type: 'text', required: true, placeholder: 'SO-0001' },
     { key: 'customer', label: 'Customer', type: 'text', required: true, placeholder: 'Acme Inc.' },
+    // ERP Session 21 — the CRM customer master record this order is for. The
+    // CreateSalesOrder command validates it against the tenant-scoped customer
+    // master (a foreign-tenant customer is invisible). The free-text `customer`
+    // above stays a display label.
+    { key: 'customerRef', label: 'Customer (ref)', type: 'text', column: false, placeholder: 'Customer master id' },
+    // ERP Session 21 — multi-line sales order (the Session 16 line convention).
+    // When present, this JSON array of {sku, quantity, unitPrice} is the order
+    // content and the total is derived from it (Σ qty × unit price — arithmetic,
+    // not a pricing policy). Absent → the single-product header (backward compatible).
+    { key: 'lines', label: 'Lines (JSON)', type: 'textarea', column: false, placeholder: '[{"sku":"SKU-A","quantity":10,"unitPrice":5}]' },
     { key: 'contact', label: 'Contact', type: 'text', column: false },
     {
       key: 'status',
@@ -81,6 +92,10 @@ export const ORDER_DESCRIPTOR: EnterpriseModuleDescriptor = {
       default: 'pending',
       badge: true,
       filterable: true,
+      // ERP Session 45 — machine-owned: born `pending` (default fills on create), transitions
+      // only through the lifecycle actions. The form never offers a hand-set status again
+      // (a hand-set `shipped` moved no stock); the validate hook enforces the same on edit.
+      readOnly: true,
       options: [
         { value: 'pending', label: 'Pending', tone: 'orange' },
         { value: 'shipped', label: 'Shipped', tone: 'blue' },
@@ -190,6 +205,53 @@ export function createOrderModule(storePath: string, aiRunner?: OrderAiRunner): 
       validate: (input: EnterpriseRecordInput) => {
         const result = validateEnterpriseRecordInput(ORDER_DESCRIPTOR, input);
         if (result.ok) {
+          // ERP Session 45 — the order status machine OWNS lifecycle transitions. An EDIT
+          // (recordId present ⇒ the EnterpriseModuleUpdate door) must never hand-set `status`:
+          // a hand-flipped `shipped` moves NO stock and silently becomes invoiceable — the
+          // corruption S45's zero-bypass audit found. Transitions happen ONLY through the
+          // lifecycle actions (Ship / Fulfill / Close / Cancel), which apply the guarded
+          // deterministic patches. Creates (no recordId) are unaffected, the conversion path
+          // validates create-shaped input (no recordId), and the lifecycle actions themselves
+          // never re-enter this hook — so this guard hits exactly the edit door.
+          if (input.recordId) {
+            const prior = store.get(input.recordId);
+            // A STATUS-LESS stored record (importer-minted rows bypass this hook and may carry
+            // no status) has no machine state to protect — the default fill backfills `pending`
+            // and the edit must not be refused, or the record is permanently un-editable.
+            const priorStatus = String(prior?.fields.status ?? '');
+            const nextStatus = result.values.status;
+            if (prior && priorStatus !== '' && typeof nextStatus === 'string' && nextStatus !== priorStatus) {
+              return {
+                ok: false,
+                values: result.values,
+                errors: { status: 'Order status changes only through the lifecycle actions (Ship, Fulfill, Close, Cancel).' },
+              };
+            }
+          }
+          // S55 — conversion/fulfilment idempotency TOKENS are edit-immutable (the S50
+          // convertedReceipt shape): clearing order.convertedInvoice re-armed Generate
+          // Invoice into a DUPLICATE invoice (the guard reads only the token,
+          // conversion.ts 'Already invoiced'), and clearing pickList re-armed Fulfil from
+          // Warehouse into a duplicate pick document. The conversions stamp via the raw
+          // store and never re-enter this hook.
+          if (input.recordId) {
+            const prior = store.get(input.recordId);
+            if (prior) {
+              for (const token of ['convertedInvoice', 'pickList'] as const) {
+                if (String(result.values[token] ?? '') !== String(prior.fields[token] ?? '')) {
+                  return {
+                    ok: false,
+                    values: result.values,
+                    errors: { [token]: 'This link is stamped by its lifecycle action and cannot be edited.' },
+                  };
+                }
+              }
+            }
+          }
+          // ERP Session 21 — a multi-line order derives its total from its lines
+          // (Σ qty × unit price). Single-product orders (no lines) are unchanged.
+          const soLines = parsePurchaseOrderLines(result.values.lines);
+          if (soLines.length > 0) result.values.total = purchaseOrderSubtotal(soLines);
           Object.assign(result.values, orderComputedFields(projectValues(result.values)));
         }
         return result;

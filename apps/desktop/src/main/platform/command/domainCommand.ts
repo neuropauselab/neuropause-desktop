@@ -1,0 +1,260 @@
+/**
+ * NeuroPause Platform — Domain Command contract (ERP Session 17, Track B).
+ *
+ * The canonical envelope every client (Electron today; Web / Mobile / API / AI
+ * agent tomorrow) uses to request a governed state change. It is deliberately
+ * transport-agnostic and Electron-free: the command carries no database handle,
+ * no privileged capability, and no authority of its own. Authority is resolved
+ * at the domain boundary from the caller's PRINCIPAL (see `commandBus`), never
+ * from fields on this envelope — a `tenantId` here is a CLAIM to be validated,
+ * not a grant.
+ *
+ * Modular-monolith-first: this contract lives in-process and routes to the
+ * existing enterprise module framework. No microservice, no message broker.
+ */
+import type { EnterprisePermission } from '@neuropause/shared';
+
+/** The governed commands this platform implements end-to-end. */
+export type DomainCommandType =
+  | 'CreatePurchaseRequest'
+  | 'SubmitPurchaseRequest'
+  | 'ApprovePurchaseRequest'
+  | 'RejectPurchaseRequest'
+  | 'ConvertPurchaseRequestToPO'
+  // ERP Session 21 — Sales domain becomes another consumer of the same platform.
+  | 'CreateSalesOrder'
+  // ERP Session 23 — the next procurement step: post a goods receipt against a PO
+  // (governed at the command layer; reuses the existing receipt→movement→GRNI engine).
+  | 'PostGoodsReceipt'
+  // ERP Session 25 — approve a supplier invoice (vendor bill): the fail-closed three-way
+  // match (PO↔GR↔Bill) → GRNI relief / AP, reusing the existing match engine + tolerance.
+  | 'ApproveSupplierInvoice'
+  // ERP Session 26 — pay an approved supplier invoice: record a cleared vendor payment
+  // (partials accumulate; overpayment refused) → Dr AP / Cr Cash + settle, reusing the engine.
+  | 'PaySupplierInvoice'
+  // ERP Session 27 — Order-to-Cash: ship a sales order (issue on-hand + release reservation),
+  // guarded by the order status machine, reusing the existing sales/inventory engine.
+  | 'ShipSalesOrder'
+  // ERP Session 28 — Order-to-Cash: raise a customer invoice from a shipped order (draft, amount =
+  // order total, tax not re-applied), reusing the sales `convertToInvoice` conversion. No AR yet.
+  | 'InvoiceSalesOrder'
+  // ERP Session 28 — issue a draft customer invoice → the DEFINED Dr AR / Cr Sales Revenue journal,
+  // reusing the finance-invoice `issue` action + its GL bridge (no new AR/GL engine).
+  | 'IssueCustomerInvoice'
+  // ERP Session 29 — record a customer receipt against an invoice: a cleared customer payment →
+  // Dr Cash / Cr AR + settle the invoice, reusing the existing customer-payment engine (no new
+  // receipt/AR/cash engine, no invented settlement policy).
+  | 'ReceiveCustomerPayment'
+  // ERP Session 45 — convert an accepted quote into a Sales Order through the governed spine,
+  // closing the S45 bypass where conversion created orders via direct store.create around the
+  // governed create door. Reuses the existing quote `convertToOrder` action verbatim (accepted-only
+  // guard, cross-linking, validate hook) — exact precedent: ConvertPurchaseRequestToPO.
+  | 'ConvertQuoteToSalesOrder'
+  // ERP Session 57 — the O2C reversal/settlement PROMOTION set. Each wraps an EXISTING module
+  // action or defined transition VERBATIM (semantics unchanged — every one is a compensating
+  // path: invoice/note cancel books GL reversal entries, never deletes history) and adds the
+  // spine (journal, idempotency, event, outbox, audit). The memo's still-open semantic
+  // questions (partial credit notes, reopening a paid invoice) stay POLICY-BLOCKED — these
+  // commands carry only the defined full-document behavior.
+  | 'CancelCustomerInvoice'
+  | 'IssueCreditNote'
+  | 'CancelCreditNote'
+  | 'IssueDebitNote'
+  | 'CancelDebitNote'
+  // Clearing an EXISTING pending payment books the same Dr Cash / Cr AR (customer) or
+  // Dr AP / Cr Cash (vendor) the S46/S49 fences reserved for governed paths — this command IS
+  // that governed path (a new `clear` module action carries the defined transition).
+  | 'ClearCustomerPayment'
+  | 'ClearVendorPayment'
+  // ERP Session 61 (D4) — reverse an already-cleared customer/vendor payment through a SEPARATE
+  // governed reversal record: the original payment stays immutable, a compensating `${base}-REV`
+  // entry unwinds the settlement, and the invoice/bill re-opens. At most one reversal per payment.
+  | 'ReverseCustomerPayment'
+  | 'ReverseVendorPayment'
+  // Shipment-document ship: real stock issue + linked-order advance (existing action verbatim).
+  | 'ShipShipmentDocument'
+  // ERP Session 89 — operator-initiated governed reorder execution: from an S86 decision report row,
+  // re-read the LIVE state, apply the S88 execution policy (deriveReorderExecutionDecision — fail
+  // closed if stale / not triggered / quantity changed / already drafted), and create exactly ONE
+  // DRAFT purchase request through the EXISTING CreatePurchaseRequest create path. Never automatic,
+  // never a PO, never inventory/GL. The deterministic PR number (S88) is the identity + idempotency.
+  | 'CreatePurchaseRequestFromReorderRecommendation';
+
+/** Where a command originated. Descriptive only — it grants nothing. */
+export type CommandSource = 'electron' | 'web' | 'mobile' | 'api' | 'agent' | 'test';
+
+export interface DomainCommand {
+  /** Unique id for THIS command instance (one attempt). */
+  commandId: string;
+  type: DomainCommandType;
+  /**
+   * CLAIMED tenant / org / workspace. Validated against the resolved principal
+   * scope at the boundary and rejected on mismatch — never trusted as authority.
+   */
+  tenantId?: string;
+  organizationId?: string;
+  workspaceId?: string;
+  /** The requesting principal (attribution). Real authority is `ctx.authorize`. */
+  actor: string;
+  /** The entity a command acts on (absent for a create). */
+  target?: { moduleId?: string; id?: string };
+  /** Command-type-specific input. Treated as untrusted data. */
+  payload: Record<string, unknown>;
+  /** Ties this command to the business transaction it belongs to. */
+  correlationId: string;
+  /** Repeated delivery with the same key yields one economic effect. */
+  idempotencyKey: string;
+  /** ISO timestamp the command was minted. */
+  timestamp: string;
+  source: CommandSource;
+}
+
+/** The schema version stamped on every durable domain event (ERP Session 18). */
+export const EVENT_SCHEMA_VERSION = 1;
+
+/** A domain event produced by a successful command. Immutable + attributable. */
+export interface DomainEvent {
+  eventId: string;
+  type: DomainEventType;
+  tenantId: string;
+  /** The aggregate the event is about (e.g. the Purchase Request id). */
+  aggregateId: string;
+  /** The aggregate kind (ERP Session 18 — hardened envelope). */
+  aggregateType?: string;
+  correlationId: string;
+  /** The command/event that caused this one (ERP Session 18). */
+  causationId?: string;
+  /** Event envelope schema version (ERP Session 18). */
+  schemaVersion?: number;
+  actor: string;
+  at: string;
+  /** Small, event-specific detail (ids, status). No secrets, no payloads echoed. */
+  detail: Record<string, unknown>;
+}
+
+/** Outbox delivery lifecycle (ERP Session 18). */
+export type OutboxStatus = 'PENDING' | 'PROCESSING' | 'DELIVERED' | 'RETRYABLE';
+
+export type DomainEventType =
+  | 'PurchaseRequestCreated'
+  | 'PurchaseRequestSubmitted'
+  | 'PurchaseRequestApproved'
+  | 'PurchaseRequestRejected'
+  | 'PurchaseRequestConvertedToPO'
+  | 'SalesOrderCreated'
+  | 'GoodsReceiptPosted'
+  | 'SupplierInvoiceApproved'
+  | 'SupplierInvoicePaid'
+  | 'SalesOrderShipped'
+  | 'SalesOrderInvoiced'
+  | 'CustomerInvoiceIssued'
+  | 'CustomerPaymentReceived'
+  | 'QuoteConvertedToSalesOrder'
+  | 'CustomerInvoiceCancelled'
+  | 'CreditNoteIssued'
+  | 'CreditNoteCancelled'
+  | 'DebitNoteIssued'
+  | 'DebitNoteCancelled'
+  | 'CustomerPaymentCleared'
+  | 'VendorPaymentCleared'
+  | 'CustomerPaymentReversed'
+  | 'VendorPaymentReversed'
+  | 'ShipmentDocumentShipped';
+
+export interface CommandResult {
+  ok: boolean;
+  commandId: string;
+  type: DomainCommandType;
+  /** The domain event emitted on success. */
+  event?: DomainEvent;
+  /** Result data (created id, converted PO id, …). */
+  data?: Record<string, unknown>;
+  /** Failure reason (deny-by-default vocabulary). */
+  error?: string;
+  /** True when this was a replay of an already-processed idempotency key. */
+  replayed?: boolean;
+}
+
+/** The domain event a successful command of each type produces. */
+export const EVENT_FOR_COMMAND: Record<DomainCommandType, DomainEventType> = {
+  CreatePurchaseRequest: 'PurchaseRequestCreated',
+  SubmitPurchaseRequest: 'PurchaseRequestSubmitted',
+  ApprovePurchaseRequest: 'PurchaseRequestApproved',
+  RejectPurchaseRequest: 'PurchaseRequestRejected',
+  ConvertPurchaseRequestToPO: 'PurchaseRequestConvertedToPO',
+  CreateSalesOrder: 'SalesOrderCreated',
+  // S89 — a reorder-driven PR is still a PurchaseRequest creation; reuse the existing event (no new
+  // DomainEventType, so no frozen shared change). The deterministic PR number + correlation carry the
+  // reorder lineage in the event detail.
+  CreatePurchaseRequestFromReorderRecommendation: 'PurchaseRequestCreated',
+  PostGoodsReceipt: 'GoodsReceiptPosted',
+  ApproveSupplierInvoice: 'SupplierInvoiceApproved',
+  PaySupplierInvoice: 'SupplierInvoicePaid',
+  ShipSalesOrder: 'SalesOrderShipped',
+  InvoiceSalesOrder: 'SalesOrderInvoiced',
+  IssueCustomerInvoice: 'CustomerInvoiceIssued',
+  ReceiveCustomerPayment: 'CustomerPaymentReceived',
+  ConvertQuoteToSalesOrder: 'QuoteConvertedToSalesOrder',
+  CancelCustomerInvoice: 'CustomerInvoiceCancelled',
+  IssueCreditNote: 'CreditNoteIssued',
+  CancelCreditNote: 'CreditNoteCancelled',
+  IssueDebitNote: 'DebitNoteIssued',
+  CancelDebitNote: 'DebitNoteCancelled',
+  ClearCustomerPayment: 'CustomerPaymentCleared',
+  ClearVendorPayment: 'VendorPaymentCleared',
+  ReverseCustomerPayment: 'CustomerPaymentReversed',
+  ReverseVendorPayment: 'VendorPaymentReversed',
+  ShipShipmentDocument: 'ShipmentDocumentShipped',
+};
+
+/**
+ * The permission a command requires. All four procurement commands are governed
+ * by the Purchase Request module's WRITE permission — resolved through the same
+ * `ctx.authorize` engine every enterprise action uses (no second authz engine).
+ */
+export const PERMISSION_FOR_COMMAND: Record<DomainCommandType, EnterprisePermission> = {
+  CreatePurchaseRequest: 'procurement:manage',
+  SubmitPurchaseRequest: 'procurement:manage',
+  ApprovePurchaseRequest: 'procurement:manage',
+  RejectPurchaseRequest: 'procurement:manage',
+  ConvertPurchaseRequestToPO: 'procurement:manage',
+  CreateSalesOrder: 'sales:manage',
+  PostGoodsReceipt: 'procurement:manage',
+  // The vendor-bill module's declared write permission (operations:manage) governs approval.
+  ApproveSupplierInvoice: 'operations:manage',
+  // The vendor-payment module's declared write permission (operations:manage) governs payment.
+  PaySupplierInvoice: 'operations:manage',
+  // The sales-order module's declared write permission (sales:manage) governs shipment.
+  ShipSalesOrder: 'sales:manage',
+  // Raising/issuing a customer invoice mints a Finance record + books AR, governed by the
+  // invoice module's declared write permission (operations:manage) — a sales-only actor cannot
+  // mint invoices (convertOrderToInvoice also asserts the Finance write scope internally).
+  InvoiceSalesOrder: 'operations:manage',
+  IssueCustomerInvoice: 'operations:manage',
+  // The customer-payment module's declared write permission (operations:manage) governs receipts.
+  ReceiveCustomerPayment: 'operations:manage',
+  // The quote module's declared write permission (sales:manage) governs conversion — the same
+  // permission the legacy `convertToOrder` module action demanded, so nobody gains or loses access.
+  ConvertQuoteToSalesOrder: 'sales:manage',
+  // S57 — each promotion inherits its module's declared write permission verbatim
+  // (the same permission the legacy action door demanded; nobody gains or loses access).
+  CancelCustomerInvoice: 'operations:manage',
+  IssueCreditNote: 'operations:manage',
+  CancelCreditNote: 'operations:manage',
+  IssueDebitNote: 'operations:manage',
+  CancelDebitNote: 'operations:manage',
+  ClearCustomerPayment: 'operations:manage',
+  ClearVendorPayment: 'operations:manage',
+  // S61 — reversal reuses the finance write permission (`operations:manage`), the same the whole
+  // finance command family requires. Reversal is separated from EDIT structurally, not by a distinct
+  // permission: it is a distinct governed command that mints a SEPARATE immutable record and never
+  // mutates the original (the edit door cannot reverse). A finer reverse-only authority would be a
+  // frozen `EnterprisePermission` addition (FG gate) or the D8–D11 approval control-plane — both out
+  // of S61 scope; see DECISION-MEMO-S61-PAYMENT-REVERSAL-ACCOUNTING.md.
+  ReverseCustomerPayment: 'operations:manage',
+  ReverseVendorPayment: 'operations:manage',
+  ShipShipmentDocument: 'warehouse:manage',
+  // S89 — a reorder execution drafts a purchase request; it requires the SAME procurement authority
+  // as CreatePurchaseRequest. Nobody gains or loses access; a reorder is not a privileged shortcut.
+  CreatePurchaseRequestFromReorderRecommendation: 'procurement:manage',
+};

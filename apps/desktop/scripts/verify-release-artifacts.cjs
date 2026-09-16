@@ -121,6 +121,41 @@ function verifyReleaseArtifacts(distDir, platform, io = {}) {
     }
     if (feed) {
       pass(`feed parsed: ${feedName} (v${feed.version ?? '?'}, ${feed.files.length} file(s))`);
+
+      /**
+       * GATE 27 (round 61) — VERSION PARITY, the check this verifier lacked.
+       *
+       * Everything else here compares the feed against the binaries BESIDE IT in
+       * the same dist/, so a build made under a stale version stamp is perfectly
+       * self-consistent and passed 6/6 — which is precisely how the `da36851`
+       * class ("two binaries, one version") kept getting through. Comparing the
+       * feed to the version the MANIFESTS declare is the one question that
+       * catches it here; `releaseDiscipline.test.ts` catches the tag half.
+       *
+       * `expectedVersion` is injectable so the pure function stays testable; it
+       * defaults to the desktop manifest beside this script.
+       */
+      const expectedVersion =
+        io.expectedVersion ??
+        (() => {
+          try {
+            return JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version;
+          } catch {
+            return null;
+          }
+        })();
+      if (expectedVersion == null) {
+        // Cannot measure — say so rather than passing silently.
+        fail('feed version parity', 'could not read the declared version from package.json');
+      } else if (feed.version !== expectedVersion) {
+        fail(
+          'feed version parity',
+          `feed declares v${feed.version ?? '?'} but the manifests declare v${expectedVersion} — ` +
+            'this artifact set is stamped with a version it was not built under',
+        );
+      } else {
+        pass(`feed version parity: v${expectedVersion} matches the manifests`);
+      }
       // files[] entries and the top-level update `path` are checked
       // independently — electron-updater downloads the top-level path/sha512,
       // so a disagreement between it and files[] must not be masked.

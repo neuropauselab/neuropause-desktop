@@ -10,6 +10,12 @@ asarUnpack:
 files:
 - out/**/*
 - package.json
+# S55 (S54 hygiene observation): the asar packs workspace-package node_modules whose
+# trees carry 87 *.test.ts files (~0.31MB). Raw TypeScript cannot be require()d and the
+# measured bundles contain zero requires of any .ts path, so exclusion is runtime-safe.
+# Deliberately NOT excluding src/*.ts wholesale — workspace deps declare TS mains and
+# the vendored CST kernel's runtime files must stay (a broader exclusion is unproven).
+- '!**/*.test.ts'
 extraResources:
 - from: resources/build-info.json
   to: build-info.json
@@ -40,13 +46,23 @@ publish:
 mac:
   category: public.app-category.productivity
   icon: icon.icns
+  # Universal, not arm64-only. Intel Macs are still a large share of the installed
+  # base and an arm64-only build gives them nothing — the app simply will not launch.
+  # Universal is chosen over shipping separate arm64 + x64 artifacts because:
+  #   * the desktop has NO native modules (0 *.node in the tree; deps are pure JS),
+  #     so there is no per-arch rebuild to get wrong;
+  #   * one artifact means a user cannot download the wrong one, and download.html
+  #     needs no architecture detection;
+  #   * the update feed stays a single beta-mac.yml entry, leaving the existing
+  #     publish path in the release workflows untouched.
+  # The cost is size: a universal build carries both Electron slices.
   target:
   - target: dmg
     arch:
-    - arm64
+    - universal
   - target: zip
     arch:
-    - arm64
+    - universal
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: resources/entitlements.mac.plist

@@ -32,6 +32,7 @@ import type {
   ExecutionRequest,
   LicenseState,
   BillingPlanId,
+  CloudOrgRole,
   DeviceTrustStatus,
 } from '@neuropause/shared';
 import {
@@ -84,8 +85,16 @@ import { join } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { createLogger } from './logger';
 import { authService } from './auth/authService';
+import { resolveGovernedActor, hasActivePrincipal } from './auth/governedActor';
 import { catalogClient } from './catalog/catalogClient';
 import { orgClient } from './organization/orgClient';
+import {
+  authorizeCloudOrgRole,
+  CloudOrgAuthorizationError,
+  CLOUD_ORG_MANAGERS,
+  deviceRevokeRequiresManagerRole,
+  type CloudMembershipRow,
+} from './organization/cloudOrgAuthorize';
 import { registry } from './registry/registry';
 import { packageService } from './nps/packageService';
 import { supervisor } from './runtime/supervisor';
@@ -105,7 +114,7 @@ import {
   PUBLIC_CHANNELS,
   assertAllChannelsClassified,
 } from './ipc/runtimeAuthz';
-import { initPlatform, registerDiagnosticProbes } from './platform';
+import { initPlatform, platformDisposeRef, registerDiagnosticProbes } from './platform';
 import { build } from './platform/producers';
 import { initConnectors } from './connectors';
 import { initUnified } from './unified';
@@ -153,6 +162,9 @@ import { initFounderAI } from './founder';
 import { initEngineeringAI, initFounderAIv2 } from './ai';
 // Phase 6 Stage 4 — the Workspace Assistant (composition over existing engines).
 import { initAssistant } from './assistant';
+// FG-S128-ASSISTANT-EVIDENCE-CONTEXT — additive: the non-frozen S128 grounding bridge (resolves the
+// active tenant server-side; returns bounded, credential-free, provenance-tagged AiContextItem[]).
+import { resolveEvidenceContext } from './platform/evidenceContextProvider';
 import { routingUsageStore } from './ai/routingUsageInstance';
 // Phase 6 Stage 5 — the Notification Inbox + preference surface (D-8): the
 // EXISTING delivery engine's notification-center channel made real.
@@ -190,7 +202,7 @@ import { companionDeviceStore } from './companion/deviceRegistryInstance';
 import { tenantAiPreferenceStore } from './ai/tenantAiPreferenceInstance';
 import { assertAllStoreScopesBound } from './tenancy/storeScope';
 import type { Organization } from '@neuropause/shared';
-import { setLiveSyncActiveOrg } from './cloud/livesync/liveSyncInstance';
+import { setLiveSyncActiveOrg, getDeviceId } from './cloud/livesync/liveSyncInstance';
 import { initDataPlane } from './dataPlane';
 import { initDocuments } from './documents';
 import { initIdentity, type ServiceAuthorizer } from './identity';
@@ -209,6 +221,7 @@ import { outcomeRevisionStore } from './outcomes/instances';
 // executive decision workflow, and these are the governance RECORD/HOLD reads.
 import { initDecisions as initDecisionRecords } from './decisions';
 import { createHoldRaiser } from './decisions/raiseHold';
+import { buildM365UnknownHoldInput } from './decisions/m365UnknownHold';
 import { bindRelationshipEngine, bindRelationshipStore } from './crossDomain/instances';
 import {
   ambiguousIdentityHold,
@@ -311,6 +324,8 @@ import { globalGovStore } from './federation/governance/globalGovInstance';
 import { workerInstallStore } from './workforce/install/installInstance';
 import { governanceStore } from './enterprise/governance/governanceInstance';
 import { workspaceStore } from './enterprise/workspace/workspaceInstance';
+import { capabilityHandlers } from './capabilities/capabilityProposeIpc';
+import { buildPlatformCommandHandlers } from './ipc/handlers/platformCommandIpc';
 import { DEFAULT_PROMPTS } from './ai/promptManager';
 import { runEnterpriseSearch } from './search/enterpriseSearch';
 import { getFederationSearcher } from './federationPlatform/searcherInstance';
@@ -392,6 +407,37 @@ async function requireCloudOrgMembership(orgId: string): Promise<string> {
   return orgId;
 }
 
+/**
+ * Assert the caller holds one of `allowed` ROLES in the named cloud organization.
+ *
+ * P13C GATE 10 — MEMBERSHIP IS NOT AUTHORIZATION. `requireCloudOrgMembership`
+ * proves the caller belongs to the org; it does NOT prove they may MUTATE it.
+ * Every mutating cloud-org channel — `org.update`, `org.invite`,
+ * `org.changeRole`, `org.removeMember`, the workspace create/rename/delete trio,
+ * and billing — was guarded by membership alone, so a `viewer` or plain `member`
+ * could invite or remove other members and rename workspaces. The desktop
+ * "claimed server-side enforcement, unverified"; this makes the check real on
+ * the client too — defense in depth, fail-closed.
+ *
+ * It does NOT invent authority: the role it enforces is the one the BACKEND
+ * itself reports for this user in `orgClient.list()` (`CloudOrganizationSummary.role`),
+ * the same call `requireCloudOrgMembership` already trusts. The backend remains
+ * the ultimate authority; an unreachable backend refuses (never a bypass), and a
+ * role outside `allowed` refuses with the same opaque message so nothing about
+ * the org or the caller's standing leaks.
+ */
+async function requireCloudOrgRole(orgId: string, allowed: readonly CloudOrgRole[]): Promise<string> {
+  let mine: CloudMembershipRow[];
+  try {
+    mine = (await orgClient.list()) as unknown as CloudMembershipRow[];
+  } catch {
+    // FAIL CLOSED: an unreachable backend must never be a bypass. An empty list
+    // reaching the pure check matches no membership and refuses.
+    throw new CloudOrgAuthorizationError();
+  }
+  return authorizeCloudOrgRole(mine, orgId, allowed);
+}
+
 function activeOrgForReadModel(): Organization | null {
   const scope = activeTenantScope();
   if (scope === null) return null;
@@ -426,6 +472,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   await pluginManager.load();
   // Platform core: event bus + timeline + subscribers + diagnostics.
   const platform = await initPlatform({ broadcast: deps.broadcast });
+  // Round 37 — Gate 16: give the shutdown barrier the live timeline drain.
+  platformDisposeRef.current = platform.dispose;
   // Connector Framework (NCF): SDK + OAuth engine + registry + lifecycle runtime.
   const connectors = await initConnectors({
     broadcast: deps.broadcast,
@@ -471,6 +519,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       if (principal !== null) return principal.workspaceId ?? '';
       return workspaceStore.activeWorkspaceIdOrNull() ?? '';
     },
+    // P13C Phase H — the authoritative actor identity for the governed mail.send
+    // transition, from the SAME identity authority the data plane uses (the
+    // authenticated session user). `null` when unauthenticated ⇒ the CST boundary
+    // DENIES (no send). Distinct from `workspaceId()` — tenant ≠ actor.
+    // S17/FG-6: a device-local principal is disclosed as `local:<id>`; a forged
+    // `local:` cloud id is denied (pin 1). See governedActor.ts.
+    actor: () => resolveGovernedActor(authService.getStatus(), (u) => u.displayName ?? u.email),
   });
   // Unified knowledge layer (UDM): canonical store + query engine + local search.
   const unified = await initUnified({ broadcast: deps.broadcast });
@@ -752,6 +807,13 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
     broadcast: deps.broadcast,
     publish: platform.api.publish,
     appVersion: app.getVersion(),
+    // P13C Phase I-A.1 — the authoritative approver identity for governed approvals
+    // (Boundary A), from the SAME session identity authority the data plane and
+    // connectors use. Binds the stable `user.id` (not displayName/email/role, not
+    // tenant/workspace). `null` when unauthenticated ⇒ the approval seam fails closed.
+    // S17/FG-6: a device-local principal is disclosed as `local:<id>` in the minted
+    // admission (never cloud-authenticated); a forged `local:` cloud id is denied.
+    actor: () => resolveGovernedActor(authService.getStatus(), (u) => u.id),
   });
   // Enterprise Operating System: organization runtime + graph + governance +
   // multi-workspace isolation + the executive snapshot that rolls it all up.
@@ -1200,6 +1262,14 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
         workspaceId: workspaceStore.activeWorkspaceIdForDisplay(),
       }),
   });
+
+  // Wave-1 Increment-2A — HOLD producer: an AUTHORITATIVE M365 IPC OUTCOME_UNKNOWN (transmitted, response lost)
+  // raises a durable hold through the existing raiseHold seam (tenant-scoped holdStore, reason
+  // `verification_unavailable`, deterministic subject = CST transitionId ⇒ repeated identical UNKNOWN dedupes to
+  // one hold). Records EVIDENCE after the governed outcome; never retries, never alters the CST decision. The
+  // mapping is the pure, unit-tested `buildM365UnknownHoldInput`. Wired here because both `connectors` and
+  // `raiseHold` now exist.
+  connectors.setUnknownHoldRaiser((input) => raiseHold(buildM365UnknownHoldInput(input)));
 
   /**
    * HOLD producer #6: `external_unavailable`.
@@ -1715,7 +1785,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return requireCloudOrgMembership(r.orgId).then((id) => orgClient.update(id, r.name));
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) => orgClient.update(id, r.name));
       },
     },
     {
@@ -1735,7 +1805,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           email: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.invite(id, { email: r.email, role: r.role }),
         );
       },
@@ -1756,7 +1826,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           membershipId: string;
           role: 'owner' | 'admin' | 'member' | 'viewer';
         };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.changeRole(id, r.membershipId, r.role),
         );
       },
@@ -1767,7 +1837,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; membershipId: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.removeMember(id, r.membershipId),
         );
       },
@@ -1785,7 +1855,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; name: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.createWorkspace(id, r.name),
         );
       },
@@ -1796,7 +1866,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string; name: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.updateWorkspace(id, r.workspaceId, r.name),
         );
       },
@@ -1807,7 +1877,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       requireAuth: true,
       handler: (p) => {
         const r = p as { orgId: string; workspaceId: string };
-        return requireCloudOrgMembership(r.orgId).then((id) =>
+        return requireCloudOrgRole(r.orgId, CLOUD_ORG_MANAGERS).then((id) =>
           orgClient.deleteWorkspace(id, r.workspaceId),
         );
       },
@@ -2121,6 +2191,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push(...platform.handlers);
   // Connector Framework IPC (list/connect/disconnect/reconnect/refresh/sync/health/logs).
   defs.push(...connectors.handlers);
+  // FG-2 — capability:m365.propose (data-only proposal producer; validates an AI candidate, never executes).
+  defs.push(...capabilityHandlers);
+  // FG-ERP-LIVE-IPC — platform:command.dispatch (ERP Session 22): the LIVE entry to the governed platform
+  // command bus (Application Boundary → authorization → policy → workflow → durable transaction → event →
+  // outbox → audit). Reuses the enterprise registry + the one RBAC gate; per-command authz is inside the bus.
+  defs.push(...buildPlatformCommandHandlers({ registry: enterprise.modules, allows: enterprise.allows }));
   // Unified knowledge layer IPC (query/get/counts/search).
   defs.push(...unified.handlers);
   // Sync engine IPC (sync-state snapshot for the health dashboard).
@@ -2248,7 +2324,9 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       // Money. The membership check matters more here than anywhere else in
       // this family: without it a signed-in account could start a checkout
       // against another organization's billing account.
-      const orgId = await requireCloudOrgMembership(p.orgId);
+      // P13C GATE 10 — billing is a management action; require owner/admin, not
+      // mere membership. Money must not be movable by a viewer.
+      const orgId = await requireCloudOrgRole(p.orgId, CLOUD_ORG_MANAGERS);
       const result = await billingClient.checkout(orgId, p.plan, p.seats);
       if (result.checkoutUrl) void shell.openExternal(result.checkoutUrl);
       return result;
@@ -2274,9 +2352,16 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   defs.push({
     channel: IpcChannel.DevicesRevoke,
     schema: DevicesRevokeRequest,
-    handler: (payload: unknown) => {
+    // GATE 10 — membership is not authorization on the device surface either.
+    // Revoking THIS machine is self-service (any member); revoking any OTHER
+    // device in the org is administrative (managers only). Both guards fail
+    // closed; the backend remains the ultimate authority (defense in depth).
+    handler: async (payload: unknown) => {
       const p = payload as { orgId: string; deviceId: string };
-      return requireCloudOrgMembership(p.orgId).then((id) => deviceClient.revoke(id, p.deviceId));
+      const id = deviceRevokeRequiresManagerRole(p.deviceId, getDeviceId())
+        ? await requireCloudOrgRole(p.orgId, CLOUD_ORG_MANAGERS)
+        : await requireCloudOrgMembership(p.orgId);
+      return deviceClient.revoke(id, p.deviceId);
     },
   });
   // V6.5: renderer reports THIS device's trust status (it holds the active org)
@@ -2359,7 +2444,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const executionStore = new ExecutionStore(join(app.getPath('userData'), 'executions.json')).bindScope(activeTenantScope);
   const executeEngine = new ExecuteEngine({
     publish: publishPlatform,
-    persist: (session) => void executionStore.save(session),
+    // P13C I-A.3 Step 5 — RETURN the store's promise (do not discard it) so the engine
+    // can AWAIT durable completion before a governed consequential effect. Persistence
+    // is otherwise unchanged.
+    persist: (session) => executionStore.save(session),
     // P13C Round 2 — H5. Sessions carry their owner, so `activeSessions`,
     // `getHistory`, `stats` and `cancel` answer for the caller rather than the
     // install. Resolved through the one resolver, so a background execution
@@ -2472,6 +2560,7 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   const runBinding = async (
     binding: ExecutionBinding,
     confirmed: boolean,
+    decisionId?: string,
   ): Promise<{ ok: boolean; summary?: string; error?: string }> => {
     switch (binding.executor) {
       case 'infra': {
@@ -2492,6 +2581,37 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
           binding.params ?? {},
           confirmed,
         );
+        // Worker OUTCOME_UNKNOWN → durable hold. When the M365 executor reports UNKNOWN (transmitted, response
+        // lost), raise a tenant-scoped reconciliation hold through the EXISTING raiseHold seam, correlated by the
+        // governed decisionId (= the ExecutionSession's decisionId). Strictly POST-outcome: it runs after the
+        // effect attempt, never calls action.run, and never turns UNKNOWN into success. Fail-closed: a hold-raise
+        // failure is logged but the outcome stays a non-success. No blind retry — resolution needs a new decision.
+        if (r.data?.outcome === 'UNKNOWN') {
+          if (decisionId) {
+            try {
+              raiseHold(
+                buildM365UnknownHoldInput({
+                  // tenantId/actor are informational only — the hold's tenant comes from holdStore's active scope
+                  // and the actor from raiseHold's authoritative authService accessor (never renderer-supplied).
+                  tenantId: activeTenantScope()?.tenantId ?? '',
+                  actor: null,
+                  connectorId: binding.target,
+                  accountId: binding.accountId ?? 'default',
+                  actionId: binding.actionId ?? '',
+                  subject: `m365-worker:${decisionId}`,
+                  label: `Microsoft 365: ${binding.actionId ?? 'action'} (worker)`,
+                  decisionId,
+                }),
+              );
+            } catch (holdErr) {
+              log.warn('Failed to raise worker M365 UNKNOWN hold', { message: String(holdErr) });
+            }
+          }
+          return {
+            ok: false,
+            error: 'Outcome unknown — the action was transmitted but not confirmed; held for reconciliation.',
+          };
+        }
         return {
           ok: r.ok,
           summary: r.message ?? undefined,
@@ -2613,6 +2733,8 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   let twinRef: EtwinPlatformSubsystem | null = null;
   const assistant = initAssistant({
     broadcast: deps.broadcast,
+    // FG-S128-ASSISTANT-EVIDENCE-CONTEXT — additive: governed AI evidence grounding source (S128/S129).
+    evidenceContext: (opts) => resolveEvidenceContext(opts),
     publish: publishPlatform,
     execute: (req) => executeEngine.execute(req),
     // Deterministic-first: the assistant answers lookup/aggregate questions
@@ -2958,6 +3080,12 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
       const record = await getAutomationRunner().runRule(rule, event);
       return { ok: record.ok };
     },
+    // P13C Round 24 — O-8. The once-per-occurrence claim goes onto the PERSISTED
+    // rule, so a restart cannot re-fire an occurrence that already fired. The
+    // store scopes the write through its own `get(id)`, and the tick calls this
+    // inside the rule owner's principal — so the row it reaches is the owner's.
+    recordScheduledOccurrence: (ruleId, occurrenceKey) =>
+      automationStore.recordScheduledOccurrence(ruleId, occurrenceKey),
     schedule: {
       every: (id, ms, fn) => taskScheduler.every(id, ms, fn),
       cancel: (id) => taskScheduler.cancel(id),
@@ -3210,7 +3338,10 @@ export async function initRuntimeCore(deps: RuntimeCoreDeps): Promise<void> {
   // RBAC: channels annotated with `permission` (the enterprise family) are asserted
   // against the signed-in actor's org roles before dispatch.
   const secureBridgeDeps = {
-    isAuthenticated: () => authService.getStatus().state === 'authenticated',
+    // S17/FG-6: a device-local principal ALSO passes the RBAC dispatch gate — it
+    // resolves to the local owner member. Cloud calls stay token-gated (a local
+    // principal holds no access token), so this opens only local enterprise RBAC.
+    isAuthenticated: () => hasActivePrincipal(authService.getStatus()),
     authorize: enterprise.authorize,
   };
 

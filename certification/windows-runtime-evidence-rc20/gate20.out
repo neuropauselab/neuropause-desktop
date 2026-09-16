@@ -1,0 +1,10 @@
+== GATE 20 ACCEPTANCE (rc.20) ==
+host=LAPTOP- os=Microsoft Windows 11 Pro arch=ARM 64-bit Processor build=10.0.26100
+installer.sha256=E861228F2AF873A8D67036FBB0407A6E8ACAB07F3BB5B6F009815F824AC8BC90
+sha256.match=True
+installing...
+installed.exe=C:\Users\accept\AppData\Local\Programs\NeuroPause\NeuroPause.exe
+build-info: version=1.0.0-rc.20 commit=efe8196 dirty=False channel=beta
+
+-- FIRST LAUNCH (fresh profile) --
+APPLOG_NOT_WRITTEN

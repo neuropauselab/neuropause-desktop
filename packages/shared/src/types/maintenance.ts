@@ -106,6 +106,13 @@ export interface RestoreResult {
   /** A safety backup taken of the pre-restore state. */
   safetyBackupId: string | null;
   detail: string | null;
+  /**
+   * Round 37 — Gate 16: an install-wide restore writes files under stores
+   * that are ALREADY LOADED, and their next background persist would overwrite
+   * the restored bytes with stale memory. True means the app must relaunch to
+   * pick the restored state up — and the main process now enforces it.
+   */
+  requiresRestart: boolean;
 }
 
 /** The recovery operations the Recovery Center can invoke. */

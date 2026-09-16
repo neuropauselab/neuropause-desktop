@@ -38,5 +38,9 @@ module.exports = {
     'no-console': 'off',
     eqeqeq: ['error', 'smart'],
   },
-  ignorePatterns: ['dist', 'out', 'build', 'release', 'node_modules', 'coverage', '*.cjs'],
+  // S55 (F-S51-1): the certification sessions build into suffixed output dirs
+  // (out-seam-*, out-run, dist-seam-*) that the bare 'dist'/'out' names never
+  // matched, so `eslint .` drowned in minified bundle errors — a permanently red
+  // verifier. Same generated-output class, same exclusion.
+  ignorePatterns: ['dist', 'dist-*', 'out', 'out-*', 'build', 'release', 'node_modules', 'coverage', '*.cjs'],
 };

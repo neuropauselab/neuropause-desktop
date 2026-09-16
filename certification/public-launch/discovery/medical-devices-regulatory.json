@@ -1,0 +1,821 @@
+{
+  "key": "medical-devices-regulatory",
+  "generated_at": "2026-09-12",
+  "mode": "READ_ONLY_SUBSYSTEM_MAP",
+  "repo": {
+    "path": "/Users/saurabhpatel/Desktop/np-public-launch",
+    "branch": "pilot/public-launch",
+    "head": "cec399f",
+    "version": "1.0.0-rc.30",
+    "version_evidence": "package.json:3; apps/desktop/package.json:3 (MEASURED)"
+  },
+  "evidence_root": "/Users/saurabhpatel/neuropause-desktop",
+  "classification_legend": {
+    "MEASURED": "executed/observed by this mapper",
+    "DECLARED": "asserted by a doc/comment/config; not independently verified",
+    "DERIVED": "computed from measured facts",
+    "INFERRED": "mapper judgement",
+    "ABSENT": "looked for and does not exist"
+  },
+  "technical_observation_classification": {
+    "value": "NON-MEDICAL ADMINISTRATIVE FUNCTION (records management: device-manufacturer product catalogue, batch/lot lifecycle, forward/backward traceability) — which is also a shipped, reachable PRODUCT FUNCTION",
+    "basis": "As measured, the module stores and reconciles manufacturer catalogue and batch records and answers where-did-this-go / what-went-into-this questions from recorded edges. No diagnostic, therapeutic, monitoring, prognostic, clinical-decision-support, physiological-measurement or device-control function was found; no patient data model was found.",
+    "explicit_note": "THIS IS A TECHNICAL OBSERVATION ONLY. No regulatory qualification, classification, medical-purpose or pathway determination is made or implied. Form NP-GLOBAL-PILOT-003 §13 states 'Machine must not assign any class.' Form §9 and the briefing pack §4 forbid converting 'no clinical claim found' into a non-device basis. QUALIFIED HUMAN REGULATORY REVIEW IS REQUIRED. The briefing pack (REVIEWER-BRIEFING-PACK.md:70-75) separately raises — as a DECLARED question the repository cannot answer — whether software managing medical-device distribution/traceability attracts economic-operator, UDI or record-keeping obligations depending on who deploys it and in what role."
+  },
+  "module_inventory": {
+    "renderer_files": [
+      {
+        "path": "apps/desktop/src/renderer/src/medicalDevices/MedicalDevicesView.tsx",
+        "lines": 116,
+        "role": "section shell; tabs Products / Batch-Lot / Traceability; loads md:pack; renders manifest.notProvided verbatim (lines 106-113)",
+        "classification": "MEASURED"
+      },
+      {
+        "path": "apps/desktop/src/renderer/src/medicalDevices/medicalDevicesModel.ts",
+        "lines": 358,
+        "role": "pure view model: status tones, quantity breakdown, lot flags, draft checks, split preview, trace rows, empty/error messages",
+        "classification": "MEASURED"
+      },
+      {
+        "path": "apps/desktop/src/renderer/src/medicalDevices/medicalDevicesModel.test.ts",
+        "lines": 305,
+        "role": "vitest: 9 describe / 29 it (grep-counted, NOT executed)",
+        "classification": "MEASURED"
+      },
+      {
+        "path": "apps/desktop/src/renderer/src/medicalDevices/ProductsPanel.tsx",
+        "lines": 590,
+        "role": "product list/detail/create/edit/history; writes via generic ipc.enterpriseModules.create/update (lines 446-448)",
+        "classification": "MEASURED"
+      },
+      {
+        "path": "apps/desktop/src/renderer/src/medicalDevices/LotCenterPanel.tsx",
+        "lines": 839,
+        "role": "lot list/detail/create; transition, split, consume, move, ship drawers; all writes via ipc.medicalDevice.lots.*",
+        "classification": "MEASURED"
+      },
+      {
+        "path": "apps/desktop/src/renderer/src/medicalDevices/TraceabilityPanel.tsx",
+        "lines": 258,
+        "role": "forward/backward trace UI over md:trace.forward / md:trace.backward",
+        "classification": "MEASURED"
+      }
+    ],
+    "renderer_total_lines": 2466,
+    "main_files": [
+      {
+        "path": "apps/desktop/src/main/medicalDevice/index.ts",
+        "lines": 348,
+        "role": "14 secure-bridge handler defs (lines 140-346); LOT_NOT_CONFIGURED (89-100); registerMedicalDevicePack (115-119); historyFor from auditEntries(2_000) (122-127)"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/instances.ts",
+        "lines": 114,
+        "role": "process singletons; deviceTenantId (57); store paths (62, 66-68, 80); import-normalization deps (79-113)"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/deviceProductModule.ts",
+        "lines": 262,
+        "role": "md-products Enterprise Module descriptor + validate/onChange/summarize hooks"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/deviceLotModule.ts",
+        "lines": 268,
+        "role": "md-lots Enterprise Module; validate hook REFUSES every generic write (199-203); import normalization via onChange (204-239)"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/lotService.ts",
+        "lines": 705,
+        "role": "only code path that changes a lot: createLot, transition, consume, split, merge (always refuses), moveToWarehouse, recordShipment"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/traceService.ts",
+        "lines": 151,
+        "role": "tenant-scoped BFS forward/backward trace + scopeNote"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/traceStore.ts",
+        "lines": 281,
+        "role": "append-only idempotent edge store; file persistence; per-tenant 500k cap with 10% eviction"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/medicalDeviceAuthz.test.ts",
+        "lines": 133,
+        "role": "2 describe / 7 it — asserts exact RBAC scope per md: channel"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/medicalDeviceE2E.test.ts",
+        "lines": 435,
+        "role": "1 describe / 6 it — real handler defs + Zod + real stores on tmpdir; header declares no DOM rendering ('DEVICE VISUAL VERIFICATION PENDING', lines 14-18)"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/medicalDeviceImport.test.ts",
+        "lines": 392,
+        "role": "4 describe / 14 it — Data Command Center wiring and synthetic dataset import"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/medicalDeviceModel.test.ts",
+        "lines": 542,
+        "role": "10 describe / 43 it — pack layer, product model, state machine, quantity, split, merge, expiry, trace"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/medicalDeviceService.test.ts",
+        "lines": 847,
+        "role": "12 describe / 39 it — service invariants, tenant isolation, authorization, inventory integration, E2E chain, 1,000-lot performance"
+      },
+      {
+        "path": "apps/desktop/src/main/medicalDevice/traceStorePersist.test.ts",
+        "lines": 159,
+        "role": "1 describe / 3 it — failed background write reporting"
+      }
+    ],
+    "main_total_lines": 4637,
+    "shared_types": [
+      "packages/shared/src/types/medicalDevice.ts (pack id/version, taxonomies, MedicalDeviceProduct, manifest lines 290-312)",
+      "packages/shared/src/types/medicalDeviceLot.ts (LotStatus, LOT_STATUS_TRANSITIONS 99-117, quantity algebra, LOT_MERGE_UNSUPPORTED_REASON 410-411)",
+      "packages/shared/src/types/medicalDeviceTrace.ts (TraceNodeType, TraceEdgeKind, pure BFS)",
+      "packages/shared/src/types/medicalDeviceApi.ts (wire shapes)",
+      "exported at packages/shared/src/index.ts:103-106"
+    ],
+    "ipc_channels": {
+      "definition": "packages/shared/src/ipc/channels.ts:1077-1105",
+      "runtime_invokable_list": "packages/shared/src/ipc/channels.ts:1963-1977",
+      "response_types": "packages/shared/src/ipc/responses.ts:1522-1535",
+      "renderer_facade": "apps/desktop/src/renderer/src/lib/ipc.ts:2691-2748",
+      "channels": [
+        {
+          "channel": "md:pack",
+          "permission": "medicalDevice:product.read",
+          "audit": false
+        },
+        {
+          "channel": "md:product.search",
+          "permission": "medicalDevice:product.read",
+          "audit": false
+        },
+        {
+          "channel": "md:product.get",
+          "permission": "medicalDevice:product.read",
+          "audit": false
+        },
+        {
+          "channel": "md:lot.list",
+          "permission": "medicalDevice:lot.read",
+          "audit": false
+        },
+        {
+          "channel": "md:lot.get",
+          "permission": "medicalDevice:lot.read",
+          "audit": false
+        },
+        {
+          "channel": "md:lot.create",
+          "permission": "medicalDevice:lot.write",
+          "audit": true
+        },
+        {
+          "channel": "md:lot.transition",
+          "permission": "medicalDevice:lot.write",
+          "audit": true
+        },
+        {
+          "channel": "md:lot.split",
+          "permission": "medicalDevice:lot.write",
+          "audit": true
+        },
+        {
+          "channel": "md:lot.merge",
+          "permission": "medicalDevice:lot.write",
+          "audit": true,
+          "note": "always refuses (lotService.ts:514-522)"
+        },
+        {
+          "channel": "md:lot.consume",
+          "permission": "medicalDevice:lot.write",
+          "audit": true
+        },
+        {
+          "channel": "md:lot.move",
+          "permission": "medicalDevice:lot.write",
+          "audit": true
+        },
+        {
+          "channel": "md:lot.ship",
+          "permission": "medicalDevice:lot.write",
+          "audit": true
+        },
+        {
+          "channel": "md:trace.forward",
+          "permission": "medicalDevice:traceability.read",
+          "audit": false
+        },
+        {
+          "channel": "md:trace.backward",
+          "permission": "medicalDevice:traceability.read",
+          "audit": false
+        }
+      ],
+      "all_require_auth": true,
+      "evidence": "apps/desktop/src/main/medicalDevice/index.ts:141-346 (MEASURED); medicalDeviceAuthz.test.ts:26-40 asserts the same table (DECLARED test intent, not executed)"
+    },
+    "product_crud_path": "Product create/update go through the GENERIC enterprise module channels (ipc.enterpriseModules.create/update with DEVICE_PRODUCTS_MODULE_ID) — ProductsPanel.tsx:446-448; declared rationale index.ts:4-9 (MEASURED)",
+    "git_history": {
+      "introducing_commit": "dafa735 2026-08-09 14:25:16 +0530 Saurabh Patel 'feat(medical-device): industry pack — product model + batch/lot traceability' (MEASURED: git log)",
+      "later_touches": [
+        "545eb1a fix(d-6): authorization denials carry a machine code (renderer)",
+        "8059822 2026-08-12 P13C Round 10 retention invariant (traceStore)",
+        "7284ce3 2026-08-13 Round 17l failed background write reporting",
+        "5a91872 2026-08-13 round21 traceStore rm race guard"
+      ]
+    }
+  },
+  "reachability_and_gating": {
+    "route": "apps/desktop/src/renderer/src/shell/AppShell.tsx:58-60 lazy import; :428-429 `case 'medical-devices': return <MedicalDevicesView />` — unconditional (no localMode gate, unlike 'organization'/'store' at :417-420) (MEASURED)",
+    "section_registry": "apps/desktop/src/renderer/src/shell/sections.ts:213 — id 'medical-devices', label 'Medical Devices', phase 28, placement primary, group business; NO hidden, NO preview, NO tier:'advanced' → rendered in the default (non-Advanced) sidebar group (MEASURED)",
+    "workspace_type_curation": "apps/desktop/src/renderer/src/firstRun/experienceModel.ts:38-84 — PERSONAL_SECTIONS omits 'medical-devices' (hidden in Personal sidebar); PROFESSIONAL_HIDDEN does not list it (visible in Professional); business or no profile → visible. Sidebar.tsx:146-150 declares this a render-only curation; command palette still exposes every section (DECLARED comment; sectionVisibleFor MEASURED)",
+    "home_tile": "apps/desktop/src/renderer/src/firstRun/AiHomeView.tsx:101-110 — 'Batches in quarantine' attention tile from md:lot.list view=quarantined; skipped when profile.workspaceType === 'personal' (line 79) (MEASURED)",
+    "first_run_placeholder": "apps/desktop/src/renderer/src/firstRun/FirstRunExperience.tsx:577 placeholder text 'For example: I run a medical-component manufacturing company.' (MEASURED)",
+    "feature_flag": "ABSENT — no feature flag, entitlement, license tier or pack-enable switch found gating the section or the md: channels (grep of renderer shell/lib and main for flags; industryPacks/registry.ts has register/taxonomiesFor only)",
+    "enterprise_module_registration": "apps/desktop/src/main/enterprise/index.ts:1379-1380 registerModule(deviceProductModule/deviceLotModule) through the same seam as core modules; pack composition :1503-1533 (MEASURED)",
+    "rbac_scopes": {
+      "definition": "packages/shared/src/types/enterprise.ts:258-269 (5 scopes) and ALL_ENTERPRISE_PERMISSIONS :347-352",
+      "role_seeding": "apps/desktop/src/main/enterprise/org/seed.ts — READ_ONLY(Viewer) :63-102 holds product.read, lot.read, traceability.read; MEMBER :104 = READ_ONLY + workforce:operate; MANAGER :106-125 adds product.write, lot.write; ADMIN :127-138 ⊇ MANAGER; OWNER = ALL_ENTERPRISE_PERMISSIONS minus PLATFORM_ONLY (:24); AI_WORKER :140 holds none of the medicalDevice scopes (MEASURED)",
+      "authorizer": "main-process createAuthorize at apps/desktop/src/main/enterprise/index.ts:784; permission refusal opens a HOLD and a decision record (:790-815) (MEASURED)",
+      "bridge_semantics": "apps/desktop/src/main/ipc/secureBridge.ts:6-8, 149-156 — auth gate then RBAC per call; a channel declaring permission fails closed if the authorize dep is absent (:91-94) (MEASURED)"
+    },
+    "packaged_artifact": {
+      "asar": "apps/desktop/dist/mac-universal/NeuroPause.app/Contents/Resources/app.asar 58,227,956 bytes, mtime 12 Sep 22:31 (MEASURED)",
+      "string_counts": {
+        "Medical Devices": 4,
+        "md:lot.create": 5,
+        "not validated software": 3,
+        "medical-device-traceability.json": 2,
+        "SYN-LOT-RM-0001": 0
+      },
+      "string_count_method": "LC_ALL=C /usr/bin/grep -a -c (MEASURED)",
+      "codesign_dv": "Identifier=com.neuropause.desktop; Mach-O universal (x86_64 arm64); flags=0x10000(runtime); Timestamp=12 Sep 2026 22:36:02 — signed; signing authority NOT inspected (codesign -dvv not run) (MEASURED)",
+      "notarization": "apps/desktop/dist/notarization-status.json: state 'skipped', notarized false, version 1.0.0-rc.30, reason 'one or more Apple credentials are absent' (MEASURED)",
+      "installers": "NeuroPause-1.0.0-rc.30-universal-mac.zip 231,626,730 B; NeuroPause-universal.dmg 232,540,739 B (MEASURED ls)",
+      "built_chunk": "apps/desktop/out/renderer/assets/MedicalDevicesView-fAxsUTXb.js 81,225 B (out/ is untracked) (MEASURED)"
+    }
+  },
+  "what_it_does": [
+    {
+      "fact": "Product master (md-products) fields: productCode*, productName*, productFamily, category, anatomicalCategory, material, size, dimensions, sterileStatus(default not_specified), packaging, batchLotTracked(default true), serialTracked(default false), udi, regulatoryMetadata(free-form JSON), status(active|inactive|discontinued)",
+      "evidence": "apps/desktop/src/main/medicalDevice/deviceProductModule.ts:58-153",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Product validation: product code unique per tenant on a normalized key; regulatoryMetadata must parse to a JSON object; serialTracked requires batchLotTracked",
+      "evidence": "deviceProductModule.ts:178-225",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Lot lifecycle: 9 statuses (created, quarantined, released, blocked, partially_consumed, consumed, exhausted, expired, recalled); explicit transition table; 'recalled' terminal; consumed/exhausted may still go to recalled; expired may not return to released",
+      "evidence": "packages/shared/src/types/medicalDeviceLot.ts:36-57, 99-123",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Quantity algebra: remaining = quantity − consumedQuantity − splitQuantity; no code path sets remaining; consume/split/ship refused when exceeding remaining",
+      "evidence": "medicalDeviceLot.ts:1-19; lotService.ts:332-341, 408-418, 586-598",
+      "classification": "MEASURED (header DECLARED; canDraw calls MEASURED)"
+    },
+    {
+      "fact": "Material may only be drawn (consume/ship/split) from released or partially_consumed lots; shipping from quarantined/blocked/recalled is refused",
+      "evidence": "medicalDeviceLot.ts:120 CONSUMABLE_LOT_STATUSES; lotService.ts:579-598; UI text LotCenterPanel.tsx:639",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Lot merge always refused with LOT_MERGE_UNSUPPORTED_REASON",
+      "evidence": "lotService.ts:514-522; medicalDeviceLot.ts:410-411",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Generic enterprise write path for lots is refused by the module validate hook (LOT_DIRECT_WRITE_REFUSAL); only LotService writes lots",
+      "evidence": "deviceLotModule.ts:54-55, 199-203",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Traceability graph: 9 edge kinds (lot_derived_from, mo_consumed_lot, mo_produced_lot, lot_stored_in, lot_shipped_in, shipment_to_customer, shipment_for_order, lot_supplied_by, lot_of_product); 8 node types; BFS with visited set and depth cap; scopeNote distinguishes 'nothing recorded' from 'no movement'",
+      "evidence": "packages/shared/src/types/medicalDeviceTrace.ts:22-80; traceService.ts:137-150",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Edge store is append-only and idempotent on (tenant, kind, from, to); only permitted mutation is attaching provenance",
+      "evidence": "traceStore.ts:4-17 (DECLARED header); record() at :175 (MEASURED presence)",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "Lot operations also post a stock movement to the inventory ledger, non-fatal and last",
+      "evidence": "lotService.ts:21-24, 53; enterprise/index.ts:1520-1524",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Data Command Center import path exists: canonical entities medical_device_product (risk 'medium') and medical_device_lot (risk 'high' — never auto-imports without a person); relationships mdLot.product / manufacturingOrder / warehouse / supplier",
+      "evidence": "apps/desktop/src/main/dataPlane/ontology.ts:378-420; relationshipModel.ts:300-331; medicalDeviceImport.test.ts:195-199",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Imported lot rows are normalized in onChange (status coerced to a real state, counters initialised, tenant stamped, product resolved by code, context edges recorded)",
+      "evidence": "deviceLotModule.ts:139-239; instances.ts:79-113",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Persistence: md-products and md-lots under enterpriseModuleStorePath(userData); trace edges at userData/medical-device-traceability.json",
+      "evidence": "instances.ts:61-68, 79-81",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Tenant scoping: deviceTenantId = activeTenantScope()?.tenantId ?? 'default'; every read filters on record.metadata.tenantId",
+      "evidence": "instances.ts:37-57; lotService.ts:103-118; traceStore.ts declareStoreScope :32-51",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Shipped example dataset examples/medical-device/ (README.md, synthetic-products.csv 94 rows, synthetic-lots.csv 302 rows, synthetic-shipments.csv); README declares every row invented, SYN- prefixed; dataset NOT bundled into app.asar (0 hits)",
+      "evidence": "examples/medical-device/README.md:1-32; wc -l; asar grep",
+      "classification": "MEASURED"
+    }
+  ],
+  "what_it_does_not_do": [
+    {
+      "fact": "No diagnostic, therapeutic, monitoring, prognostic or clinical-decision-support function: grep for diagnos|treatment|therap|patient|clinical|monitor across the renderer module, main module and 4 shared type files returns only test comments (medicalDevicesModel.test.ts:8; medicalDeviceService.test.ts:403), taxonomy value 'implant', and the disclaimer text at medicalDevice.ts:8-9, 310",
+      "evidence": "grep -rn -i ... (this session)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No patient data model: grep for patientId|patient_id|PatientRecord|patientName|medicalRecordNumber|MRN|PHI across apps/desktop/src and packages/shared/src hits only assistant/conversationMemory/industryModel files — none in the medical device module; product and lot field lists contain no person-identifying fields",
+      "evidence": "grep -rln (this session); deviceProductModule.ts:69-152; deviceLotModule.ts:68-101",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Does not control or communicate with any physical device: module imports are electron `app`, node fs/path/crypto/events, shared types and the inventory poster; no serial/USB/BLE/network client imports",
+      "evidence": "instances.ts:16-28; traceStore.ts:23-29; lotService.ts:26-53; traceService.ts:14-29",
+      "classification": "MEASURED (imports) / INFERRED (no device control)"
+    },
+    {
+      "fact": "No AI call inside the module; summarize hooks return grounded:false, model:'none'",
+      "evidence": "deviceProductModule.ts:256-257; deviceLotModule.ts:262-263",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Manifest notProvided: Quality Center (NCR, CAPA, inspection records); document control lifecycle; lot merge; electronic signatures and records validation (21 CFR Part 11) 'not implemented, not claimed'; 'Any regulatory certification. This software is not validated software.'",
+      "evidence": "packages/shared/src/types/medicalDevice.ts:306-312; rendered by MedicalDevicesView.tsx:106-113",
+      "classification": "MEASURED (text) / DECLARED (claims of absence)"
+    },
+    {
+      "fact": "LOT_NOT_CONFIGURED rendered on every lot detail: 'Quality status: Not yet configured…' and 'Documents: Not yet configured…'",
+      "evidence": "apps/desktop/src/main/medicalDevice/index.ts:89-100; LotCenterPanel.tsx:429-439",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "No shipment module exists; shipment links are created only by md:lot.ship",
+      "evidence": "examples/medical-device/README.md:27-32",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "No dual-control, hold, second approver or mandatory reason on a lot transition (including to 'recalled' or 'blocked'): transition(lotId, next, reason?) with reason optional; UI passes no reason; no raiseHold/holdStore usage in the module",
+      "evidence": "lotService.ts:296-330; LotCenterPanel.tsx:417; grep raiseHold|holdStore in main/medicalDevice → none",
+      "classification": "MEASURED / ABSENT"
+    },
+    {
+      "fact": "No electronic-signature binding on lot writes; actor recorded as session email (or 'owner' when unauthenticated per currentActorId)",
+      "evidence": "enterprise/index.ts:1509 actor: sessionEmail; :1880-1883 currentActorId",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Generic soft-delete/status archival of a lot record remains reachable through the generic module surface (declared by module header; not exercised)",
+      "evidence": "deviceLotModule.ts:23-26",
+      "classification": "DECLARED"
+    },
+    {
+      "fact": "No DOM/React rendering tests for the panels ('DEVICE VISUAL VERIFICATION PENDING')",
+      "evidence": "medicalDeviceE2E.test.ts:14-18",
+      "classification": "DECLARED"
+    }
+  ],
+  "record_retention_observations": [
+    {
+      "fact": "Product/lot 'History'/'Audit' panels are built by filtering the newest 2,000 tenant audit entries by target id — changes older than the 2,000-entry window are not shown",
+      "evidence": "apps/desktop/src/main/medicalDevice/index.ts:122-127; governanceStore.ts:478-480 auditEntries slice(-limit)",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Governance audit store DEFAULT_AUDIT_CAP = 2000 entries; described as a tamper-evident chain hashing each entry against its predecessor",
+      "evidence": "apps/desktop/src/main/enterprise/governance/governanceStore.ts:67, 224, 471-473",
+      "classification": "MEASURED (cap) / DECLARED (chain)"
+    },
+    {
+      "fact": "Secure-bridge call audit for the 7 audited md: write channels goes to userData/logs/audit.log, bounded to 5 MiB with 3 rotated generations",
+      "evidence": "apps/desktop/src/main/ipc/secureBridge.ts:97-110",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "Trace-edge store caps at 500,000 edges for the writing tenant and evicts 10% (50,000) of that tenant's oldest edges automatically; declareStoreScope names the rows 'regulated lot and shipment movement — the evidence for a recall' with retentionAuthority 'SYSTEM'",
+      "evidence": "traceStore.ts:32-51, 71, 245-280",
+      "classification": "MEASURED"
+    },
+    {
+      "fact": "PRIVACY.md (DRAFT) describes all business records as local and covered by local backups; it does not name medical-device product/lot/trace records specifically",
+      "evidence": "docs/legal/PRIVACY.md:8",
+      "classification": "MEASURED (text) / ABSENT (specific mention)"
+    }
+  ],
+  "ui_strings_regulatory_relevant": [
+    {
+      "file": "apps/desktop/src/renderer/src/shell/sections.ts:213",
+      "text": "Device catalogue and batch/lot traceability — forward and backward, from real records."
+    },
+    {
+      "file": "MedicalDevicesView.tsx:67-68",
+      "text": "Medical Devices — Your device catalogue and the batches made from it — with a forward and backward trace built from records of what actually happened."
+    },
+    {
+      "file": "MedicalDevicesView.tsx:109-110",
+      "text": "<manifest.title> v<version>. <manifest.description> Not provided in this build: <notProvided joined>"
+    },
+    {
+      "file": "packages/shared/src/types/medicalDevice.ts:292-294",
+      "text": "Medical Device Manufacturing — Product master and batch/lot traceability for device manufacturing. Records what a manufacturer knows about its articles and batches; makes no regulatory or certification claim."
+    },
+    {
+      "file": "medicalDevice.ts:307-311",
+      "text": "Quality Center (NCR, CAPA, inspection records) — not implemented in this stage. | Document control lifecycle — not implemented in this stage. | Lot merge — deliberately unsupported; see the traceability documentation for why. | Electronic signatures and records validation (21 CFR Part 11) — not implemented, not claimed. | Any regulatory certification. This software is not validated software."
+    },
+    {
+      "file": "ProductsPanel.tsx:117",
+      "text": "The device catalogue. Classification here is your own configuration — NeuroPause makes no regulatory or certification claim about any product."
+    },
+    {
+      "file": "ProductsPanel.tsx:317-318",
+      "text": "Nothing recorded. What is required differs by device, market and year, so NeuroPause imposes no schema and treats empty as a normal state."
+    },
+    {
+      "file": "ProductsPanel.tsx:505",
+      "text": "A product code and a name are all that is required. Everything else can be filled in later — guessed classification on a record a recall reads is worse than none."
+    },
+    {
+      "file": "ProductsPanel.tsx:585-586",
+      "text": "Recording a UDI or a risk class here stores the value. It does not make anything compliant, and NeuroPause is not validated software."
+    },
+    {
+      "file": "ProductsPanel.tsx:563",
+      "text": "placeholder: {\"riskClass\":\"IIb\",\"market\":\"EU\"}"
+    },
+    {
+      "file": "ProductsPanel.tsx:510-519",
+      "text": "placeholders: TR-1001 | 4.5mm Cortical Screw | 4.5 × 40 mm | Ø4.5 mm, L40 mm | Single sterile blister"
+    },
+    {
+      "file": "deviceProductModule.ts:65",
+      "text": "The device catalogue: identity, classification, material, sterility, packaging and traceability configuration. Records what the manufacturer knows; makes no regulatory claim."
+    },
+    {
+      "file": "deviceProductModule.ts:104",
+      "text": "The sterility state you record for this article. NeuroPause cannot verify it and does not claim to."
+    },
+    {
+      "file": "deviceProductModule.ts:120",
+      "text": "Serial tracking requires batch/lot tracking — a serial that cannot be attributed to a batch cannot be recalled by batch."
+    },
+    {
+      "file": "deviceProductModule.ts:128",
+      "text": "Holding a UDI here records the identifier. It does not make anything UDI-compliant."
+    },
+    {
+      "file": "deviceProductModule.ts:255",
+      "text": "Classification here is catalogue configuration. NeuroPause makes no regulatory or certification claim about any product."
+    },
+    {
+      "file": "deviceLotModule.ts:64",
+      "text": "Batches with an explicit lifecycle, conserved quantities and forward/backward traceability. Created and changed only in the Batch/Lot Center."
+    },
+    {
+      "file": "deviceLotModule.ts:93",
+      "text": "Many devices have no expiry. Empty means \"no expiry recorded\" — never \"unknown risk\"."
+    },
+    {
+      "file": "deviceLotModule.ts:256, 261",
+      "text": "This lot is recalled. Its forward trace lists everywhere the material went. | A lot is the unit a recall is executed in. Its quantity is derived from immutable counters, so it cannot be edited into disagreeing with what was consumed or shipped."
+    },
+    {
+      "file": "LotCenterPanel.tsx:130-131",
+      "text": "Batch / Lot Center — Batches, their lifecycle, and the quantities that must stay reconciled with what has been consumed, split and shipped."
+    },
+    {
+      "file": "LotCenterPanel.tsx:403",
+      "text": "Lifecycle — Only the transitions the state machine allows are offered."
+    },
+    {
+      "file": "LotCenterPanel.tsx:639-640",
+      "text": "Shipping draws material, so it is refused from a quarantined, blocked or recalled batch. Leave the quantity empty to ship everything remaining."
+    },
+    {
+      "file": "LotCenterPanel.tsx:772",
+      "text": "Only products with Batch / Lot Tracked turned on can carry a batch — a lot against an untracked product could never be recalled by batch."
+    },
+    {
+      "file": "LotCenterPanel.tsx:826-828",
+      "text": "Many devices have no expiry at all. Leaving Expires empty is normal and never means \"unknown risk\"."
+    },
+    {
+      "file": "medicalDevicesModel.ts:121,124,126,127",
+      "text": "Recalled — trace forward to see everywhere this went | The expiry date has passed, but the lot has not been marked expired | Blocked — material cannot be drawn | Quarantined — release before use"
+    },
+    {
+      "file": "medicalDevicesModel.ts:341",
+      "text": "Your role does not include the medical device scope this needs. An administrator can grant it."
+    },
+    {
+      "file": "medicalDeviceLot.ts:410-411",
+      "text": "Merging lots is not supported. A merged lot cannot say which inputs produced which unit, so a defect in one input would force the recall of material that was never at risk. To combine material, record a manufacturing order that consumes each lot and produces one output lot — the output lot then traces back to every input."
+    },
+    {
+      "file": "main/medicalDevice/index.ts:92-98",
+      "text": "Quality status: Not yet configured. The Quality Center (inspections, non-conformances, CAPA) is not part of this build, so no quality record exists for any lot. | Documents: Not yet configured. Document control is not part of this build; no batch record or certificate is attached to any lot."
+    },
+    {
+      "file": "TraceabilityPanel.tsx:101",
+      "text": "Follow real recorded movement between lots, manufacturing orders, warehouses, shipments and customers."
+    },
+    {
+      "file": "traceService.ts:141,144,149",
+      "text": "…nothing has been recorded yet… this is not a statement that the material went nowhere. | …no recorded movement… | Every step is a record of something that happened — nothing here is inferred from a name that looks similar."
+    },
+    {
+      "file": "medicalDevice.ts:53-138 taxonomies",
+      "text": "Families: Trauma, Spine, Arthroscopy, Maxillofacial, Hand & Foot, Hip Prosthesis, External Fixators, Pins & Wires, Orthopedic Instruments. Categories: Implant, Instrument, Kit / Set, Accessory, Raw Material, Component, Packaging. Anatomical: Upper Extremity, Lower Extremity, Spine, Pelvis, Craniomaxillofacial, Hand, Foot, Not specified. Materials: Stainless Steel 316L, Titanium Alloy, Commercially Pure Titanium, Cobalt Chrome, PEEK, UHMWPE, Ceramic, Polymer. Sterility: Supplied sterile, Supplied non-sterile, Non-sterile sterilizable by the user, Not specified."
+    },
+    {
+      "file": "AiHomeView.tsx:106",
+      "text": "Batches in quarantine"
+    },
+    {
+      "file": "FirstRunExperience.tsx:577",
+      "text": "For example: I run a medical-component manufacturing company."
+    }
+  ],
+  "affirmative_clinical_claims_in_ui": "ABSENT — no UI string asserts diagnosis, treatment, prevention, monitoring, prognosis, alleviation, rehabilitation, clinical decision support, physiological measurement, compliance, certification, validation, or approval. Every regulatory-adjacent string found is a disclaimer or a description of record-keeping. (MEASURED by grep and file read.) NOTE per form §9 / briefing pack §4: absence of a clinical claim is not a non-device basis and must not be converted into one.",
+  "packages_industry_catalog": {
+    "files": "packages/industry/src/healthcareIndustries.ts:29-48 defineMedicalDevice(); constants.ts:12 INDUSTRY_KEYS includes 'medical-device'; constants.ts:35 COMPLIANCE_PACKS includes 'iso-13485' and 'fda'; evidence.ts:32, 51-52",
+    "declared_content": "IndustrySolution key 'medical-device', name 'Medical Device Manufacturing'; objects DeviceMasterRecord{deviceId, udi}, CAPA{description,status}; workflow DeviceHistoryRecord steps [build, sterilize, inspect, release] requiresApproval:true; KPIs productionOrders, openCAPA (compute () => 0); compliancePacks iso-13485, fda; connectors SAP/erp; aiSkills RegulatoryDocAssistant 'draft regulatory documentation', ComplaintTriage 'triage complaints'; documentTemplates DeviceHistoryRecord pdf",
+    "declared_evidence_level": "evidence.ts:32 'ISO 9001/13485, HIPAA, GDPR, SOC 2, PCI-DSS, FDA, GMP, GLP — frameworks represented, never certified.'; :52 'Medical-device regulatory filing (UDI / CAPA) — regulated-external — Requires regulatory bodies. Represented, never filed.'",
+    "relationship_to_desktop_pack": "SEPARATE from apps/desktop/src/main/medicalDevice: the desktop pack does not import @neuropause/industry (grep: no import in medicalDevice dir); the industry catalog is bridged to the desktop via apps/desktop/src/main/industry/canonicalIndustryCatalog.ts (imports @neuropause/solution-packs industrySnapshot) into the 'industry-center' section which is preview:true, tier:'advanced' (sections.ts:183). docs/product/INDUSTRY-CATALOG.md:7 'Maturity: PREVIEW'; :19 'medical-device | Medical Device Manufacturing | Device manufacturing operations'. (MEASURED file contents; catalog-to-UI projection not executed)",
+    "classification": "MEASURED (files) / DECLARED (capabilities)"
+  },
+  "regulatory_intended_use_state": {
+    "intended_use_statement_in_repo": "ABSENT — grep -rli 'intended use' over docs, certification, website, apps/desktop/src, packages returns only certification/pilot-gate-closure/REVIEWER-BRIEFING-PACK.md and an unrelated code comment (apps/desktop/src/main/connectors/index.ts:314)",
+    "handoff_section_4": "HANDOFF-2026-09-12.md:100 — 'GATE-INTENDED-USE | NOT_ESTABLISHED — the first blocking gate. 23 blank fields; 16 yours, 4+ need a qualified regulatory reviewer' (DECLARED); :102-104 names the live form and quotes §13 'Machine must not assign any class.'",
+    "human_decision_form": {
+      "path": "/Users/saurabhpatel/Downloads/attachments-67/NP-GLOBAL-PILOT-003-HUMAN-DECISION-FORM-20260909T041455Z.md",
+      "sha256_16": "6ab090d46b76109e (MEASURED; matches HANDOFF-declared value)",
+      "lines": 85,
+      "awaiting_markers": "26 occurrences of 'AWAITING'; 2 of 'AWAITING QUALIFIED REGULATORY REVIEW' (§12, §13) (MEASURED; HANDOFF declares '23 blank fields' — count basis differs, not reconciled)",
+      "mode": "MODE = A (HUMAN DECISION ABSENT) · VERDICT = HUMAN_DECISION_REQUIRED (line 7, DECLARED)",
+      "section_3_observation": "'no intended-use statement exists in any custody' (line 22, DECLARED)",
+      "section_9_observation": "'repository evidence supports governance/computation-only as the current technical description; it neither supports nor refutes any clinical claim (none present). This is an observation, not a determination.' (line 44, DECLARED)",
+      "closure_rule": "line 85: closes only when §§1–17 complete, §18 genuine human approval, no critical claim conflict unresolved, record traceable to a human authority (DECLARED)"
+    },
+    "reviewer_briefing_pack": {
+      "path": "certification/pilot-gate-closure/REVIEWER-BRIEFING-PACK.md",
+      "section_3_finding": "lines 49-75 identify the lot-traceability surface as 'the finding that most affects your determination'; lists 5 renderer files and 2 shared type files; states what measurement does NOT show (no diagnostic/therapeutic/monitoring/prediction/prognosis/CDS, no patient data model, no physiological measurement, no clinical algorithm); raises economic-operator/UDI/record-keeping question as unanswerable from the repository (DECLARED)",
+      "inventory_gaps_vs_this_map": "DERIVED — the pack omits: apps/desktop/src/main/medicalDevice/ (13 files, 4,637 lines), packages/shared/src/types/medicalDevice.ts and medicalDeviceTrace.ts, the 14 md: IPC channels, the 5 RBAC scopes and their seeding into Viewer/Member/Manager roles, the Data Command Center import path (ontology.ts risk 'high' for lots), examples/medical-device synthetic dataset, the packages/industry 'medical-device' catalog entry (ISO 13485 / FDA compliance-pack declarations), the retention caps (audit 2000, audit.log 5 MiB×3, trace edges 500k), and that the section is in the default sidebar for business/professional workspace types. It cites commit f0ba0e8f / rc.29 while the current branch is cec399f / rc.30."
+    },
+    "gate_status_board": "certification/pilot-gate-closure/GATE-STATUS-BOARD.md:32 GATE-INTENDED-USE NOT_ESTABLISHED (operator + qualified regulatory reviewer); :47-54 PUBLIC_LAUNCH_STATUS = NOT_ESTABLISHED, PRODUCTION_STATUS = NOT_ESTABLISHED, COMMERCIAL_STATUS = NOT_ESTABLISHED, AUTHORIZATION_ISSUED = FALSE, global_pilot_gate = BLOCKED, first_blocking_gate = GATE-INTENDED-USE (DECLARED)",
+    "claim_register": "certification/pilot-gate-closure/*.json contain zero 'medical' matches — TR-GPR-02 carries no medical-device-related claim (MEASURED ABSENT)",
+    "legal_docs": {
+      "eula": "docs/legal/EULA.md — 'DRAFT for counsel review (Phase 8, 2026-08-07)'; license 'for your organization's internal business purposes during the pilot period'; no warranty; governing law 'To be completed by counsel'; no medical/clinical/device text (MEASURED)",
+      "privacy": "docs/legal/PRIVACY.md — DRAFT; local-first; lists 'invoices, employees, payroll, orders — every module'; no telemetry; no medical-device-specific mention (MEASURED)"
+    },
+    "other_docs_positioning": [
+      {
+        "doc": "docs/validation/verticals/HEALTHCARE.md:9-14, 354-358",
+        "text": "NeuroPause is an AI operating layer for knowledge and administrative work. It is NOT a medical device, NOT an EHR, and it is NOT cleared, certified, or validated for clinical decision-making.",
+        "dating": "line 16 'Product version: 1.0.0-rc.1' — predates rc.15 (2026-08-08, INDUSTRY-CATALOG.md:3) and therefore the pack commit dafa735 (2026-08-09) (DERIVED)"
+      },
+      {
+        "doc": "docs/adoption/BUSINESS-EXPANSION.md:159",
+        "text": "Healthcare — Not a medical device/EHR; not for clinical decisions; HIPAA/SOC 2 = self-assessment mapping only (MEASURED)"
+      },
+      {
+        "doc": "website/*",
+        "text": "zero matches for medical|clinical|patient|regulat|FDA; 'device' appears only as viewport meta and 'on-device AI' (MEASURED ABSENT)"
+      },
+      {
+        "doc": "docs/product/*.md",
+        "text": "'104 modules across 13 families' (CURRENT-RC-RELEASE-NOTES.md:20, ONE-PAGE-PRODUCT-SHEET.md:13, NEUROPAUSE-PRODUCT-BROCHURE.md:41,52) — family list does not name Medical Devices; enterprise/index.ts has 117 registerModule( calls (MEASURED count; whether md-products/md-lots are inside the '104' is not determined)"
+      }
+    ],
+    "evidence_root_intended_use_instruments": "NP-G0-H17-B-CONFLICT-MATRIX.json:57 (A-custody claim, DECLARED): '7 intended-use instruments exist, 0 are adopted, and 2 are irreconcilable (one frames NeuroPause non-medical, another clinical only)'; :69 the irreconcilability sub-claim was retracted by A itself; NP-B-023-RAW-MEASUREMENTS/npb023/a_inventory.json:1385,1861 list attachments-91/NP-FOUNDER-INTENDED-USE-DECISION-PACKAGE.md and attachments-93/NP-FOUNDER-INTENDED-USE-DECISION-004.md (paths only; NOT read by this mapper). None of these instruments is in the product repository."
+  },
+  "architecture_invariant_assessment": {
+    "invariant": "HUMAN -> CONTROL -> COMPUTE -> EVIDENCE -> VERIFICATION -> HUMAN DECISION; AI proposes; policy governs; Computer-B executes; Computer-A verifies; Human decides",
+    "ai_not_authorization_authority": {
+      "status": "MEASURED CONSISTENT",
+      "evidence": "No AI/LLM import in the module; summarize hooks grounded:false model:'none' (deviceProductModule.ts:256-257; deviceLotModule.ts:262-263); authorization is createAuthorize in main (enterprise/index.ts:784)"
+    },
+    "client_not_final_authority": {
+      "status": "MEASURED CONSISTENT",
+      "evidence": "Renderer checks declared convenience only (medicalDevicesModel.ts:164-171); every md: channel requireAuth + permission at the bridge (index.ts:141-346; secureBridge.ts:149-156); services re-assert authorize at the write (lotService.ts:150,297,336,413,515,531,590; traceService.ts:56); tenant never renderer-supplied (instances.ts:9-14)"
+    },
+    "network_does_not_imply_authorization": {
+      "status": "MEASURED CONSISTENT (module has no network I/O)",
+      "evidence": "imports listed above; local-first stores under userData"
+    },
+    "stale_authorization_rejected": {
+      "status": "PARTIALLY MEASURED",
+      "evidence": "authorize runs per call at invocation (secureBridge.ts:149-156); session/role revocation latency and staleness handling not examined in this subsystem"
+    },
+    "human_decision_on_consequential_actions": {
+      "status": "OBSERVATION FOR HUMAN REVIEW",
+      "evidence": "Recall/block/quarantine transitions and shipments are single-actor operations under medicalDevice:lot.write (Manager and above); no HOLD, dual control, e-signature or mandatory reason (lotService.ts:296-330; LotCenterPanel.tsx:417); permission REFUSALS do open a HOLD (enterprise/index.ts:790-815). Whether single-actor recall recording is acceptable is a policy decision, not a code fact."
+    },
+    "machine_did_not_decide": "This mapper made no regulatory, qualification, classification, medical-purpose or pathway determination; no file in the product repo or evidence root was modified."
+  },
+  "tests": {
+    "executed": false,
+    "reason": "Operating rule: do not run suites; background revalidation already running",
+    "grep_counts": {
+      "renderer medicalDevicesModel.test.ts": "9 describe / 29 it",
+      "main medicalDeviceAuthz.test.ts": "2 / 7",
+      "main medicalDeviceE2E.test.ts": "1 / 6",
+      "main medicalDeviceImport.test.ts": "4 / 14",
+      "main medicalDeviceModel.test.ts": "10 / 43",
+      "main medicalDeviceService.test.ts": "12 / 39",
+      "main traceStorePersist.test.ts": "1 / 3",
+      "total": "39 describe / 141 it (MEASURED by grep -c)"
+    },
+    "describe_titles": [
+      "Medical Device channel authorization",
+      "Honest absence",
+      "E2E — the journey the UI walks",
+      "The synthetic dataset that ships with the pack",
+      "Data Command Center wiring",
+      "Imported lot normalization",
+      "Importing the synthetic dataset end to end",
+      "Industry pack layer",
+      "Product model",
+      "Lot lifecycle state machine",
+      "Lot quantity integrity",
+      "Lot split",
+      "Lot merge",
+      "Expiry and the Lot Center views",
+      "Forward traceability",
+      "Backward traceability",
+      "Lot context",
+      "TraceEdgeStore — a failed background write",
+      "Product module",
+      "Lot write path",
+      "Lot creation",
+      "Tenant isolation",
+      "Lot lifecycle and quantity",
+      "Authorization",
+      "Inventory integration",
+      "Traceability edge store",
+      "End-to-end: raw material → order → finished goods → warehouse → shipment → customer",
+      "Performance on 1,000 lots / 10,000+ relationships",
+      "Lot status tone",
+      "Quantity breakdown",
+      "Lot flags and subtitles",
+      "Lot tabs",
+      "Create form check",
+      "Split preview",
+      "Trace rows",
+      "Empty and error messages",
+      "Product ordering"
+    ],
+    "other_test_touchpoints": [
+      "apps/desktop/src/main/dataPlane/relationshipBootCheck.test.ts:17-18 imports the two module factories",
+      "apps/desktop/src/renderer/src/firstRun/experienceModel.test.ts:313,340 reference 'medical-devices' section",
+      "medicalDeviceAuthz.test.ts:4-6 declares runtimeAuthz.test.ts exempts the md: namespace on the promise this file checks it (DECLARED)"
+    ]
+  },
+  "who_uses_it": {
+    "declared_personas": "enterprise.ts:258-264 comment: 'a quality reviewer who releases and blocks lots', 'the person who maintains the product catalogue', 'a regulatory or customer-service reader [who] needs the traceability answer'; seed.ts:67-70 'support, quality and regulatory staff'; instances.ts:33 'One workspace = one manufacturer in this stage' (DECLARED)",
+    "measured_role_access": "Viewer/Member: read + trace; Manager/Admin/Owner: read + write; AI Worker: none (seed.ts:63-140, MEASURED)"
+  },
+  "gate_assessments": [
+    {
+      "gate": "INTENDED-USE",
+      "status": "WAITING_FOR_HUMAN",
+      "reason": "No intended-use statement exists in the repo (ABSENT) or, per form §3, in any custody (DECLARED). Blank fields on NP-GLOBAL-PILOT-003 (26 'AWAITING' markers): §1 decision authority — name, role, organization, authority basis; §2 exact product/component scope (must state whether the Medical Devices pack is inside the decision); §3 intended-use statement; §4 intended users; §5 target population; §6 use environment; §7 medical purpose YES/NO/UNKNOWN-FURTHER-REVIEW; §8 indications; §9 claims; §10 prohibited claims; §11 jurisdictions; §15 rationale; §16 evidence relied upon; §18 signature/approval; §19 date; §20 decision version."
+    },
+    {
+      "gate": "REGULATORY-REVIEW",
+      "status": "WAITING_FOR_HUMAN",
+      "reason": "Requires a qualified regulatory reviewer: §12 qualification per jurisdiction (US/EU/India) '[ AWAITING QUALIFIED REGULATORY REVIEW ]'; §13 classification (US class · EU I/IIa/IIb/III · India A/B/C/D) '[ AWAITING QUALIFIED REGULATORY REVIEW ]'; §14 regulatory pathway or documented non-device basis; §17 professional review — qualified regulatory reviewer, clinical/medical authority (if any clinical role), data-protection/legal, review status. Additionally the briefing pack §3 economic-operator / UDI / record-keeping question (EU MDR Art. 13/14, FDA establishment/listing, India MDR 2017) is unanswerable from code and needs the same reviewer."
+    },
+    {
+      "gate": "MODULE-REACHABLE-IN-SHIPPED-BUILD",
+      "status": "PASS",
+      "reason": "MEASURED: routed unconditionally (AppShell.tsx:428-429), default sidebar section for business/professional/no-profile workspace types (sections.ts:213; experienceModel.ts:80-84), strings present in app.asar built 12 Sep 22:31 ('Medical Devices' ×4, 'md:lot.create' ×5). Hidden only from the Personal workspace sidebar."
+    },
+    {
+      "gate": "RBAC-GATING-PRESENT",
+      "status": "PASS",
+      "reason": "MEASURED: all 14 md: channels requireAuth + exact permission; write scopes seeded to Manager and above; read scopes to Viewer and above; main-process authorizer; services re-assert. Tests asserting this exist (authz 7 it) but were NOT executed here."
+    },
+    {
+      "gate": "FEATURE-FLAG-OR-ENTITLEMENT-GATE",
+      "status": "FAIL",
+      "reason": "ABSENT: no flag, license tier, entitlement or pack-enable switch gates the section or channels. If the launch decision requires the pack to be disabled or hidden, no mechanism currently exists beyond RBAC and the Personal-workspace curation."
+    },
+    {
+      "gate": "AFFIRMATIVE-CLINICAL-CLAIM-ABSENT",
+      "status": "PASS",
+      "reason": "MEASURED: no UI string asserts diagnosis/treatment/monitoring/CDS/compliance/certification/validation; all regulatory-adjacent strings are disclaimers. Per form §9 this absence is an observation only and NOT a non-device basis."
+    },
+    {
+      "gate": "PATIENT-DATA-ABSENT",
+      "status": "PASS",
+      "reason": "MEASURED: no patient/PHI fields in product or lot models; no patient data model in the module; grep hits elsewhere are unrelated files."
+    },
+    {
+      "gate": "RECORD-RETENTION-ADEQUACY",
+      "status": "MEASURABLE",
+      "reason": "Caps measured (audit 2000 entries; audit.log 5 MiB×3; trace edges 500k/tenant with 10% auto-eviction; UI history window = newest 2000 audit entries). Whether these satisfy any record-keeping obligation is a human/regulatory determination."
+    },
+    {
+      "gate": "DOCUMENT-CONSISTENCY",
+      "status": "MEASURABLE",
+      "reason": "HEALTHCARE.md (rc.1) and BUSINESS-EXPANSION.md state 'NOT a medical device'; the pack was added 2026-08-09; PRIVACY/EULA drafts and the website do not mention the pack; docs claim '104 modules / 13 families' without naming Medical Devices. Facts measured; whether wording must change is a claims decision (§9/§10)."
+    },
+    {
+      "gate": "MODULE-TESTS",
+      "status": "NOT_MEASURED",
+      "reason": "39 describe / 141 it exist across 7 files (grep-counted); not executed per operating rules; background revalidation running."
+    },
+    {
+      "gate": "CODE-SIGNING-NOTARIZATION",
+      "status": "NOT_APPLICABLE",
+      "reason": "Outside this subsystem; observed only that the built .app is signed (authority not inspected) and notarization-status.json reports 'skipped' for missing Apple credentials."
+    }
+  ],
+  "gaps": [
+    "Tests not executed (rule); counts are grep-derived.",
+    "A-custody intended-use instruments (attachments-78/85/91/93) were not read; only their paths/claims in NP-G0-H17-B and a_inventory.json are cited.",
+    "packages/solution-packs src grep for 'medical' returned nothing; the exact runtime projection of the 'medical-device' industry solution into the Industry Center UI was not traced.",
+    "codesign -dvv (signing authority) not run; Windows/Linux artifacts not examined.",
+    "The '23 blank fields' count in HANDOFF §4 vs 26 'AWAITING' markers measured on the form — counting basis not reconciled.",
+    "Whether md-products/md-lots are inside the documented '104 modules' figure not determined (117 registerModule calls counted).",
+    "Generic soft-delete reachability for lots is DECLARED by the module header only; not exercised.",
+    "LotCenterPanel UI strings were extracted by regex plus targeted reads; not every JSX text node was individually quoted.",
+    "Stale-session/role-revocation behaviour beyond per-call authorize was not examined.",
+    "Did not inspect the DMG/zip beyond the .app in dist/mac-universal."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Extend certification/pilot-gate-closure/REVIEWER-BRIEFING-PACK.md §3 with the full module inventory from this map (main-process dir, shared types, 14 md: channels, 5 scopes and role seeding, Data-plane import path with lot risk 'high', examples dataset, packages/industry catalog entry, retention caps, workspace-type visibility) and refresh its commit/version references to cec399f / rc.30",
+      "effort": "S",
+      "files": [
+        "certification/pilot-gate-closure/REVIEWER-BRIEFING-PACK.md"
+      ],
+      "risk": "Documentation only; must remain measurement/quotation — no determination"
+    },
+    {
+      "action": "Draft (for counsel) a PRIVACY.md/EULA.md addendum naming the medical-device product, lot and trace-edge stores (paths, local-only, backup coverage, retention caps) — as a DRAFT paragraph, not a legal instrument",
+      "effort": "S",
+      "files": [
+        "docs/legal/PRIVACY.md",
+        "docs/legal/EULA.md"
+      ],
+      "risk": "Legal text — human counsel review required before adoption"
+    },
+    {
+      "action": "Emit a machine-readable retention statement for the pack (audit cap 2000, audit.log 5 MiB×3, trace-edge 500k/tenant eviction 10%, history window 2000) into the certification pack so the reviewer sees it",
+      "effort": "S",
+      "files": [
+        "certification/pilot-gate-closure/"
+      ],
+      "risk": "Read-only derivation of measured constants"
+    },
+    {
+      "action": "Add a cross-reference note to docs/validation/verticals/HEALTHCARE.md and docs/adoption/BUSINESS-EXPANSION.md stating that a Medical Device Manufacturing record-keeping pack was added on 2026-08-09 and that the 'NOT a medical device' positioning predates it and is pending §9/§10 human decision",
+      "effort": "S",
+      "files": [
+        "docs/validation/verticals/HEALTHCARE.md",
+        "docs/adoption/BUSINESS-EXPANSION.md"
+      ],
+      "risk": "Must not alter the positioning claim itself — that is a human decision"
+    },
+    {
+      "action": "Reconcile the '23 blank fields' figure in HANDOFF §4 against the 26 'AWAITING' markers on the form and record the counting basis",
+      "effort": "S",
+      "files": [
+        "/Users/saurabhpatel/neuropause-desktop/HANDOFF-2026-09-12.md (evidence root — write only if the operator authorizes; this mapper did not)"
+      ],
+      "risk": "Evidence-root file; read-only rule applied"
+    }
+  ],
+  "human_decisions_required": [
+    "§2 product scope: does the intended-use decision cover the desktop product including the Medical Device Manufacturing pack, or only the CST governance kernel?",
+    "§3 intended-use statement (author in full) and §4-§6 users / population / environment — specifically whether device manufacturers, distributors, quality/regulatory staff are intended users of the pack.",
+    "§7 medical purpose (YES / NO / UNKNOWN-FURTHER-REVIEW; UNKNOWN must not become NO).",
+    "§12 qualification, §13 classification, §14 pathway — qualified regulatory reviewer only; plus the economic-operator / UDI / distribution record-keeping question raised by the briefing pack §3.",
+    "§9/§10 claims and prohibited claims: whether the existing 'NOT a medical device' wording (HEALTHCARE.md, BUSINESS-EXPANSION.md) and the pack's in-product disclaimers ('not validated software', 'makes no regulatory or certification claim') are the adopted claim set, and whether the website/legal drafts must mention the pack.",
+    "Launch scope: whether the Medical Devices section ships enabled and visible in the public-launch build (it currently does, with no flag to disable it) or must be hidden/disabled pending the regulatory review.",
+    "Whether single-actor recall/block/quarantine transitions without mandatory reason, dual control or e-signature are acceptable for the intended users (policy, not code).",
+    "Whether the measured retention caps (audit 2000 entries, audit.log 5 MiB×3, trace edges 500k/tenant with automatic 10% eviction, 2000-entry history window) are acceptable for any record-keeping obligation the reviewer identifies.",
+    "§17 named reviewers (regulatory; clinical if any clinical role; data-protection/legal) and §18 signature by the human authority; §1 decision authority fields.",
+    "Counsel review of docs/legal/EULA.md and PRIVACY.md (both DRAFT since 2026-08-07)."
+  ]
+}

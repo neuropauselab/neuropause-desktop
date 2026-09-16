@@ -1,0 +1,14 @@
+{
+  "_template": true,
+  "_instructions": "A repository ADMIN captures the protected environment from the GitHub API (GET /repos/{owner}/{repo}/environments/production-release) and commits the result as release-policy/environment-capture.json through a reviewed PR. The authority-admission job feeds it to the predicate as `actual.environment`; a capture whose fields are not all true is DENIED (ENVIRONMENT_ABSENT / ENVIRONMENT_UNPROTECTED / ENVIRONMENT_TAG_POLICY_MISMATCH). No script writes the real file. Re-capture after ANY change to the environment.",
+  "source": "admin_api_capture",
+  "captured_by_verifier": true,
+  "name": "production-release",
+  "exists": false,
+  "required_reviewers": false,
+  "prevent_self_review": false,
+  "deployment_tag_pattern": "v*",
+  "captured_at": null,
+  "captured_by_login": null,
+  "api_response_sha256": null
+}

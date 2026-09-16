@@ -7,6 +7,7 @@ import { logger } from './config/logger';
 import { requestId } from './middleware/requestId';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { createAuthRouter } from './auth/router';
+import { createPilotRouter } from './pilot/router';
 import { createStoreRouter } from './store/router';
 import { createOrganizationsRouter } from './organizations/router';
 import { createPgOrgRepository } from './organizations/repository';
@@ -28,6 +29,7 @@ import { createPgSubscriptionRepository } from './subscriptions/repository';
 import { createSyncRouter } from './sync/router';
 import { createPgSyncRepository } from './sync/repository';
 import { requireAuth } from './auth/requireAuth';
+import { createAiGatewayRouter } from './ai/router';
 import { createAccountRouter } from './auth/accountRouter';
 import { createPgAuthAccountRepo } from './auth/accountRepository';
 import { createLoggingMailer } from './auth/mailer';
@@ -108,6 +110,11 @@ export function createApp(): Express {
   });
 
   app.use('/auth', createAuthRouter());
+  app.use('/pilot', requireAuth, createPilotRouter());
+  // NP-GLOBAL-PUBLIC-LAUNCH-001 §6 — the AI gateway. Provider credentials live
+  // ONLY in this process's environment; clients hold a session bearer. Per-IP
+  // limiter here, per-user limiter inside the router. Proposals, never execution.
+  app.use('/ai', requireAuth, rateLimit({ bucket: 'ai_chat', windowSeconds: 60, max: 120 }), createAiGatewayRouter());
   // Account flows: protect verification-request, rate-limit reset-request.
   app.use('/auth/request-verification', requireAuth);
   app.use(

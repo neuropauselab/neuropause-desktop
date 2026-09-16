@@ -1,0 +1,49 @@
+{
+  "ARTIFACT": "14_ARTIFACT_IDENTITY",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "release_id": "NP-OS-1.0.0-rc.30-8331185ba41f",
+  "product": "NeuroPause",
+  "version": "1.0.0-rc.30",
+  "channel": "beta",
+  "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+  "build_time": "2026-09-13T03:49:54.958Z",
+  "bundle_identifier": "com.neuropause.desktop",
+  "artifacts": [
+    {
+      "artifact_type": "installer",
+      "filename": "NeuroPause-universal.dmg",
+      "size": 232533468,
+      "sha256": "54b49f19845340b2b75dd3cbf63c329c1895517f891e0d87545ea969b6467708",
+      "sha512_base64": "iMnGU5RpzyXY3ltTLbknwBENKQu1ztrn2Ha/9I3Pj3RfLQEe8V8b/umVLVEOxjUua5wemDXxAYPlRZV0KVstdQ==",
+      "architecture": "universal",
+      "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d"
+    },
+    {
+      "artifact_type": "update-payload",
+      "filename": "NeuroPause-1.0.0-rc.30-universal-mac.zip",
+      "size": 231627130,
+      "sha256": "22052c3861afc1517b2649fd92950954ff1a6b56231f2022ff5e5e3676d0e075",
+      "sha512_base64": "K5IBBvujSmLUkZDX0TN7+W+GbXa+lIreONMUkGtdvzwg7RnLLR0Jor4MbHA7jwC4gWuQexL/OL74Kvxl3MutOw==",
+      "architecture": "universal",
+      "source_commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d"
+    }
+  ],
+  "stable_alias": {
+    "NeuroPause.dmg": "NeuroPause-universal.dmg",
+    "note": "alias assigned by macos-release.yml publish step; immutable identity is the sha256 above"
+  },
+  "naming_consumers": [
+    ".github/workflows/macos-release.yml (cp NeuroPause-universal.dmg → NeuroPause.dmg)",
+    "website/download.html (BASE + NeuroPause.dmg)",
+    "beta-mac.yml (zip name)"
+  ]
+}

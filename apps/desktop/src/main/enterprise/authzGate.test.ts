@@ -166,6 +166,28 @@ describe('resolveActor', () => {
     const world = { session: 'someone@else.dev', users: [], roles: [ownerRole], owner: null };
     expect(resolveActor(depsOf(world))).toBeNull();
   });
+
+  /**
+   * GATE 24 — a corrupt member row must fail closed at the resolver, never crash
+   * and never grant. The email can reload as a non-string when a store row was
+   * hand-edited or truncated; the `typeof m.email === 'string'` guard skips it.
+   * This pins that behavior at the authz resolver itself (previously only tested
+   * one layer away, through the tenant resolver).
+   */
+  it('a corrupt row (non-string email) is skipped — no crash, no grant', () => {
+    const corrupt = { ...member('u-corrupt', null, ['role-owner']), email: undefined as unknown as string };
+    // The owner is CLAIMED, so first-claim-wins denies any unmatched session.
+    const world = { session: 'anything@np.dev', users: [owner, corrupt], roles: [ownerRole], owner };
+    expect(() => resolveActor(depsOf(world))).not.toThrow();
+    expect(resolveActor(depsOf(world))).toBeNull();
+  });
+
+  it('a corrupt row cannot be matched by coercion (numeric email)', () => {
+    const corrupt = { ...member('u-corrupt', null, ['role-owner']), email: 12 as unknown as string };
+    // A claimed owner exists; the numeric "12" must never coerce into a match.
+    const world = { session: '12', users: [owner, corrupt], roles: [ownerRole], owner };
+    expect(resolveActor(depsOf(world))).toBeNull();
+  });
 });
 
 describe('decideOwnerClaim (first-claim-wins)', () => {
@@ -359,19 +381,28 @@ describe('root-of-trust guards (lockout prevention)', () => {
     expect(canDeleteMember('someone-else', OWNER_ID)).toBe(true);
   });
 
-  it('strips roles/status from an owner patch but keeps profile fields', () => {
+  it('strips roles/status/email from an owner patch but keeps profile fields', () => {
+    // O-13: email joins the immutable set — membership is decided by it, so an
+    // in-tenant rewrite was an ownership transfer wearing a profile edit.
     const patch = guardOwnerUserPatch(OWNER_ID, OWNER_ID, {
       name: 'New Name',
+      email: 'usurper@evil.test',
       roleIds: [],
       status: 'suspended',
     });
     expect(patch).toEqual({ name: 'New Name' });
     expect('roleIds' in patch).toBe(false);
     expect('status' in patch).toBe(false);
+    expect('email' in patch).toBe(false);
   });
 
   it('passes non-owner patches through untouched', () => {
-    const patch = { name: 'X', roleIds: ['role-viewer'], status: 'suspended' as const };
+    const patch = {
+      name: 'X',
+      email: 'x@example.test',
+      roleIds: ['role-viewer'],
+      status: 'suspended' as const,
+    };
     expect(guardOwnerUserPatch('u-2', OWNER_ID, patch)).toEqual(patch);
   });
 

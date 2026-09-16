@@ -1,0 +1,888 @@
+{
+  "key": "website-docs-support-privacy",
+  "generated_at_utc": "2026-09-12T17:10:00Z",
+  "repo": "/Users/saurabhpatel/Desktop/np-public-launch",
+  "branch": "pilot/public-launch",
+  "commit": "cec399f",
+  "version": "1.0.0-rc.30",
+  "scope": "website/*, docs/legal/*, docs/support/*, docs/user/*, docs/guides/*, docs/launch/*, SUPPORT.md, SECURITY.md, CODE_OF_CONDUCT.md, LICENSE, README.md; electron-builder extraResources; public DNS/HTTPS probes",
+  "method_note": "Read-only. All DNS via dig (system, 1.1.1.1, 8.8.8.8, and authoritative max.ns.cloudflare.com). HTTP via curl HEAD/GET to public hosts only. Artifact measurements via PlistBuddy/lipo/codesign/spctl/stapler on the pre-existing dist/ build (not built by this agent). No secret values read or printed.",
+  "public_contact_surface": [
+    {
+      "value": "neuropause033.com",
+      "kind": "domain (site + downloads)",
+      "cites": [
+        "website/DOWNLOAD-SETUP.md:3",
+        "website/DOWNLOAD-SETUP.md:8",
+        "website/DOWNLOAD-SETUP.md:36",
+        "website/DOWNLOAD-SETUP.md:49",
+        "website/DOWNLOAD-SETUP.md:58",
+        "website/download.html:237",
+        "website/download.html:238",
+        "website/LANDING.md:34",
+        "apps/desktop/electron-builder.yml:44"
+      ],
+      "measurement": "dig A/AAAA apex: NOERROR, ANSWER 0 on system resolver, 1.1.1.1, 8.8.8.8 and authoritative max.ns.cloudflare.com (aa flag). www: NXDOMAIN (authoritative). NS: max/norah.ns.cloudflare.com. MX: 0 neuropause033-com.mail.protection.outlook.com. TXT: SPF include:secureserver.net include:spf.protection.outlook.com ~all; MS=ms50523528. _dmarc: v=DMARC1; p=reject. curl HEAD https://neuropause033.com/{,download.html,downloads/NeuroPause-Setup.exe,downloads/NeuroPause.dmg}: 'Could not resolve host'.",
+      "classification": "MEASURED",
+      "verdict": "domain is registered and has mail routing (M365) but NO web A/AAAA record; every public URL on the site is unresolvable"
+    },
+    {
+      "value": "https://neuropause033.com/downloads/NeuroPause-Setup.exe",
+      "kind": "download URL",
+      "cites": [
+        "website/download.html:247",
+        "website/DOWNLOAD-SETUP.md:36"
+      ],
+      "measurement": "curl: Could not resolve host",
+      "classification": "MEASURED"
+    },
+    {
+      "value": "https://neuropause033.com/downloads/NeuroPause.dmg",
+      "kind": "download URL",
+      "cites": [
+        "website/download.html:248",
+        "website/DOWNLOAD-SETUP.md:34"
+      ],
+      "measurement": "curl: Could not resolve host",
+      "classification": "MEASURED"
+    },
+    {
+      "value": "https://neuropause033.com/updates (beta channel)",
+      "kind": "auto-update feed baked into the app",
+      "cites": [
+        "apps/desktop/electron-builder.yml:42-45",
+        "docs/downloads/DOWNLOAD-CATALOG.md:40"
+      ],
+      "measurement": "unresolvable (same apex)",
+      "classification": "MEASURED"
+    },
+    {
+      "value": "neuropause.com",
+      "kind": "domain in visible link text 'Back to neuropause.com' (href is '/')",
+      "cites": [
+        "website/download.html:228"
+      ],
+      "measurement": "dig NS: ns1/ns2.afternic.com (domain-marketplace parking); A 76.223.54.146, 13.248.169.48; MX '0 .' (null MX); HTTPS HEAD timed out after 15s",
+      "classification": "MEASURED",
+      "verdict": "third-party parked domain, not the project's; wrong brand domain in customer-facing text"
+    },
+    {
+      "value": "api.neuropause033.com",
+      "kind": "backend URL baked into builds",
+      "cites": [
+        ".github/workflows/macos-release.yml:98",
+        ".github/workflows/windows-release.yml:80",
+        "apps/desktop/resources/build-info.json (backendUrl)",
+        "deploy/networking/certificate.yaml:9",
+        "deploy/PHASE4-EVIDENCE.md:40"
+      ],
+      "measurement": "authoritative A: 172.67.202.47, 104.21.22.28 (Cloudflare-proxied). HEAD /live and / : HTTP/2 530; GET /health body 'error code: 1033' (Cloudflare tunnel origin unreachable) at 2026-09-12T17:05:57Z. deploy/PHASE4-EVIDENCE.md:40 records a different topology (134.199.250.188 DNS-only).",
+      "classification": "MEASURED",
+      "verdict": "resolves but backend not reachable at probe time; website sign-up claim (index.html:985-986, website/GETTING-STARTED.md:12-13) cannot be honoured right now"
+    },
+    {
+      "value": "64.227.128.218 (root@ SSH target)",
+      "kind": "droplet IP + SSH user in a file inside website/",
+      "cites": [
+        "website/DOWNLOAD-SETUP.md:24",
+        "website/DOWNLOAD-SETUP.md:28",
+        "website/DOWNLOAD-SETUP.md:34",
+        "website/DOWNLOAD-SETUP.md:44",
+        "website/DOWNLOAD-SETUP.md:54",
+        ".github/workflows/macos-release.yml:208",
+        ".github/workflows/windows-release.yml:214"
+      ],
+      "measurement": "http://64.227.128.218/ -> HTTP/1.1 308 to https://64.227.128.218/ (Server: Caddy). https://64.227.128.218/ and https with --resolve neuropause033.com:443:64.227.128.218 for /, /download.html, /downloads/*, /updates/* -> TLS 'tlsv1 alert internal error' (Caddy holds no certificate for that SNI). Port-80 --resolve for /download.html -> 308 to https://neuropause033.com/download.html.",
+      "classification": "MEASURED",
+      "verdict": "droplet is up and running Caddy but cannot serve the site for the domain (no cert; no DNS). DOWNLOAD-SETUP.md:53-54 instructs scp of DOWNLOAD-SETUP.md itself into the web root, i.e. the IP+SSH runbook is deployed as public content"
+    },
+    {
+      "value": "https://fonts.googleapis.com/css2?...",
+      "kind": "third-party CSS/font load on every page view",
+      "cites": [
+        "website/index.html:26",
+        "website/download.html:12",
+        "website/LANDING.md:4"
+      ],
+      "measurement": "not probed",
+      "classification": "DECLARED",
+      "verdict": "visitor IP/UA sent to Google; no website privacy disclosure exists"
+    },
+    {
+      "value": "https://ollama.com",
+      "kind": "external product link",
+      "cites": [
+        "website/GETTING-STARTED.md:24"
+      ],
+      "classification": "DECLARED"
+    },
+    {
+      "value": "security@neuropause.example",
+      "kind": "security contact email (placeholder TLD)",
+      "cites": [
+        "docs/guides/SECURITY-GUIDE.md:244"
+      ],
+      "measurement": ".example is RFC 2606 reserved; cannot deliver. This file is bundled inside the customer .app (electron-builder.yml:26-27).",
+      "classification": "DERIVED",
+      "verdict": "non-functional placeholder shipped to customers"
+    },
+    {
+      "value": "your@appleid.com, YOURTEAMID, https://api.YOURDOMAIN.com, https://YOURDOMAIN.com",
+      "kind": "placeholders",
+      "cites": [
+        "docs/launch/LAUNCH-02-MAC-PACKAGING.md:52-55",
+        "docs/launch/LAUNCH-01-BACKEND-DEPLOY.md:3,76,124,125,132",
+        "docs/launch/LAUNCH-03-CONNECTOR-OAUTH.md:46"
+      ],
+      "classification": "DECLARED"
+    },
+    {
+      "value": "https://github.com/dishantdobariya91-debug/neuropause-desktop.git",
+      "kind": "private GitHub repo URL (exposes owner handle)",
+      "cites": [
+        "docs/launch/LAUNCH-01-BACKEND-DEPLOY.md:49",
+        "docs/launch/LAUNCH-01-BACKEND-DEPLOY.md:53"
+      ],
+      "measurement": "not fetched",
+      "classification": "DECLARED"
+    },
+    {
+      "value": "http://127.0.0.1/callback, http://127.0.0.1:42813/callback, http://localhost:11434",
+      "kind": "loopback OAuth/Ollama endpoints",
+      "cites": [
+        "docs/launch/LAUNCH-03-CONNECTOR-OAUTH.md:13,46,52,56",
+        "docs/guides/CONNECTOR-GITHUB.md:23,36,37,129",
+        "docs/user/AI-WORKFORCE-GUIDE.md:42",
+        "docs/guides/SPRINT-5-EARLY-ACCESS.md:41"
+      ],
+      "classification": "DECLARED"
+    },
+    {
+      "value": "contributor-covenant.org, github.com/mozilla/diversity",
+      "kind": "CoC attribution links",
+      "cites": [
+        "CODE_OF_CONDUCT.md:126-139"
+      ],
+      "classification": "DECLARED"
+    },
+    {
+      "value": "neuropause033@gmail.com",
+      "kind": "ACME/Let's Encrypt registration email (NOT in public-facing text; in deploy/)",
+      "cites": [
+        "deploy/networking/issuer.yaml:8"
+      ],
+      "classification": "DECLARED",
+      "note": "only mailbox-shaped address in the repo that is not a placeholder; not published anywhere customer-facing"
+    },
+    {
+      "value": "(no address) 'Contact the NeuroPause security team'",
+      "kind": "security contact",
+      "cites": [
+        "SECURITY.md:10-11"
+      ],
+      "classification": "ABSENT",
+      "verdict": "SECURITY.md defines a process but no channel"
+    },
+    {
+      "value": "(no address) 'For licensing inquiries, contact NeuroPause.'",
+      "kind": "licensing contact",
+      "cites": [
+        "LICENSE:26"
+      ],
+      "classification": "ABSENT"
+    },
+    {
+      "value": "[CONDUCT-CONTACT: replace with the official address before public launch]",
+      "kind": "conduct contact placeholder",
+      "cites": [
+        "CODE_OF_CONDUCT.md:65-70"
+      ],
+      "classification": "ABSENT"
+    },
+    {
+      "value": "index.html 'Contact sales' -> #contact; 'Support' -> #contact; 'Status' -> '#'; 'Privacy' -> '#'; 'Terms' -> '#'; 'Security' -> '#'",
+      "kind": "dead/anchor-only links",
+      "cites": [
+        "website/index.html:969",
+        "website/index.html:1131",
+        "website/index.html:1132",
+        "website/index.html:1136",
+        "website/index.html:1137",
+        "website/index.html:1138",
+        "website/index.html:1098-1107 (#contact is a CTA band with no contact info)"
+      ],
+      "classification": "MEASURED",
+      "verdict": "no email, tel:, form, input or textarea anywhere in index.html or download.html (grep)"
+    },
+    {
+      "value": "SUPPORT.md: 'no public support channel, forum, chat, or ticketing SLA yet'",
+      "kind": "support channel",
+      "cites": [
+        "SUPPORT.md:6-13",
+        "SUPPORT.md:64-73",
+        "docs/adoption/COMMUNITY-GOVERNANCE.md:239 '## 9. Public community path (proposed)'"
+      ],
+      "classification": "DECLARED"
+    }
+  ],
+  "document_existence": {
+    "privacy_policy": {
+      "status": "EXISTS_DRAFT",
+      "files": [
+        "docs/legal/PRIVACY.md"
+      ],
+      "cites": [
+        "docs/legal/PRIVACY.md:1-4 'DRAFT for counsel review (Phase 8, 2026-08-07)'",
+        "docs/legal/PRIVACY.md:10 'optional backend account/sync/licensing services if your build is configured with one'",
+        "docs/legal/PRIVACY.md:16 controls"
+      ],
+      "website_link": "website/index.html:1136 href='#' (ABSENT page website/privacy.html)",
+      "bundled_in_app": "apps/desktop/electron-builder.yml:30-31; packages/shared/src/types/helpDocs.ts:44; MEASURED present at Contents/Resources/docs/legal/PRIVACY.md",
+      "gaps": [
+        "no controller identity or contact address",
+        "no retention period",
+        "no server-side account deletion path (FAQ.md:21,24 says accounts/sessions/org/device/subscription records live server-side)",
+        "says backend is optional; shipped build bakes backendUrl=https://api.neuropause033.com (build-info.json) and sign-in is mandatory (docs/support/FAQ.md:32, docs/user/QUICK-START.md:35)",
+        "no website (visitor) privacy policy despite Google Fonts third-party load (index.html:26)",
+        "last changed 2026-08-07 (99b6902), predates rc.16-rc.30"
+      ]
+    },
+    "terms_of_service": {
+      "status": "EXISTS_DRAFT_EULA_ONLY",
+      "files": [
+        "docs/legal/EULA.md"
+      ],
+      "cites": [
+        "docs/legal/EULA.md:1-4 DRAFT",
+        "docs/legal/EULA.md:8 license scoped to 'pilot period'",
+        "docs/legal/EULA.md:22 'ends ... at the end of the pilot unless renewed'",
+        "docs/legal/EULA.md:24 'Governing law. To be completed by counsel.'"
+      ],
+      "website_link": "website/index.html:1137 href='#' (ABSENT website/terms.html)",
+      "gaps": [
+        "no terms for the hosted backend/account service",
+        "pilot-scoped language contradicts a public launch",
+        "no governing law"
+      ]
+    },
+    "system_requirements": {
+      "status": "EXISTS_ON_INDEX_ONLY",
+      "cites": [
+        "website/index.html:1021-1027 (Version 1.0.0-rc.1; macOS 12 Monterey or later, Intel or Apple Silicon (universal); Windows 10 (1809+) or 11 x64; ~400 MB installed; Ollama optional)",
+        "docs/guides/INSTALLATION.md:7 (macOS 12, universal, LSMinimumSystemVersion)"
+      ],
+      "download_page": "website/download.html: ABSENT (no version, no minimum OS, no architecture, no size, no checksum in user-visible text; arch only in JS comment lines 244-246)"
+    },
+    "release_notes": {
+      "status": "EXISTS_INTERNAL_ABSENT_PUBLIC",
+      "files": [
+        "CHANGELOG.md (rc.30 section at line 12, dated 2026-09-12)",
+        "docs/product/PILOT-RELEASE-NOTES.md (stamped 1.0.0-rc.15)",
+        "docs/release/KNOWN-LIMITATIONS.md (titled 1.0.0-rc.1)"
+      ],
+      "website": "website/index.html:1032-1035 'Release notes — View on GitHub →' href='/download.html'; website/index.html:1129 'Release notes' href='/download.html'; download.html contains no release notes; build-info.json carries a releaseNotes field (in-app Release Diagnostics 'what's new', docs/guides/QUICK-START.md:19)",
+      "classification": "MEASURED"
+    },
+    "security_contact": {
+      "status": "ABSENT",
+      "cites": [
+        "SECURITY.md:10-11 no address",
+        "docs/guides/SECURITY-GUIDE.md:244 security@neuropause.example placeholder",
+        "website/index.html:1138 Security href='#'",
+        "SUPPORT.md:39-43 says SECURITY.md is 'the one channel that is fully defined today' (it is not: no address)"
+      ]
+    },
+    "account_recovery": {
+      "status": "CODE_EXISTS_NOT_DELIVERABLE_NOT_DOCUMENTED",
+      "code": [
+        "apps/backend/src/auth/accountRouter.ts:8-11 (POST /auth/request-password-reset, POST /auth/reset-password)",
+        "apps/backend/src/app.ts:115-127 mounted with mailer: createLoggingMailer(logger)",
+        "apps/backend/src/auth/mailer.ts:4 'createLoggingMailer does NOT send email — it logs the link'",
+        "grep: no other Mailer implementation in apps/backend/src (ABSENT)",
+        "grep: no SMTP_/MAIL_/RESEND_/SENDGRID_ env names in apps/backend/src/config/env.ts or .env.example (ABSENT)",
+        "grep renderer for forgot/reset password UI: ABSENT"
+      ],
+      "docs": "ABSENT in website/*, docs/user/*, docs/support/*, docs/legal/*, docs/guides/INSTALLATION|QUICK-START|TROUBLESHOOTING (only docs/guides/SECURITY-GUIDE.md:206 mentions 'password reset' as a rate-limit bucket)",
+      "classification": "MEASURED"
+    },
+    "device_revocation": {
+      "status": "CODE_EXISTS_NOT_USER_DOCUMENTED",
+      "code": [
+        "apps/backend/src/devices/router.ts (POST /:deviceId/revoke, DELETE /:deviceId)"
+      ],
+      "docs": [
+        "docs/guides/ADMINISTRATOR-GUIDE.md:152 trusted|blocked|revoked (operator doc)",
+        "docs/guides/ADMINISTRATOR-GUIDE.md:164,267 'No admin list & revoke other users' sessions'",
+        "docs/user/QUICK-START.md:71 'Signing out revokes your session on this device' (only user-facing statement)"
+      ],
+      "user_instructions": "ABSENT in docs/user, docs/support, website"
+    },
+    "data_export": {
+      "status": "PARTIAL",
+      "cites": [
+        "docs/legal/PRIVACY.md:16 'Export or delete feedback; create/restore/delete backups'",
+        "docs/user/PILOT-ORIENTATION.md:11 feedback export",
+        "apps/desktop/src/renderer/src/views/WelcomeView.tsx:221,229 feedback export exists",
+        "docs/guides/TROUBLESHOOTING.md:62-70 backups",
+        "docs/guides/INSTALLATION.md:35 data folder path",
+        "website/GETTING-STARTED.md:34-35 'Export button hands you a JSON of everything for support'"
+      ],
+      "gaps": [
+        "no export of server-side account/org/device/subscription data",
+        "no data-portability or subject-access language (grep GDPR/erasure/data subject: none except FAQ.md:53 'not certified')",
+        "website claim 'JSON of everything' describes the feedback export only (INFERRED)"
+      ]
+    },
+    "account_deletion": {
+      "status": "ABSENT",
+      "cites": [
+        "grep apps/backend/src for router.delete /me|/account|/users: none",
+        "grep renderer 'delete account': none",
+        "docs/legal/PRIVACY.md:16 'delete the app and its data folder to remove everything' covers LOCAL data only; server-side records (docs/support/FAQ.md:21,24) have no deletion path or instruction"
+      ]
+    },
+    "conduct_contact": {
+      "status": "ABSENT_PLACEHOLDER",
+      "cites": [
+        "CODE_OF_CONDUCT.md:65-70"
+      ]
+    },
+    "support_channel": {
+      "status": "ABSENT_BY_DECLARATION",
+      "cites": [
+        "SUPPORT.md:6-13",
+        "SUPPORT.md:64-73",
+        "website/GETTING-STARTED.md:38-39 'support run through the in-app tools'"
+      ]
+    },
+    "status_page": {
+      "status": "ABSENT",
+      "cites": [
+        "website/index.html:1132 href='#'"
+      ]
+    },
+    "static_site_hygiene": {
+      "robots.txt": "ABSENT",
+      "sitemap.xml": "ABSENT",
+      "favicon": "ABSENT (no rel=icon in index.html or download.html)",
+      "404.html": "ABSENT",
+      "og:url / canonical / og:image": "ABSENT (grep)",
+      "og:title/og:description/og:type": "present index.html:11-16"
+    },
+    "docs_index_coverage": {
+      "cites": [
+        "docs/README.md: 0 occurrences of 'legal' or 'support' (grep -c)"
+      ],
+      "verdict": "the documentation index does not reference docs/legal or docs/support",
+      "classification": "MEASURED"
+    }
+  },
+  "download_page_claims_vs_reality": [
+    {
+      "claim": "Primary buttons link NeuroPause-Setup.exe and NeuroPause.dmg under https://neuropause033.com/downloads/",
+      "cites": [
+        "website/download.html:237",
+        "website/download.html:247-248"
+      ],
+      "reality": "DNS apex has no A record -> unresolvable (MEASURED). electron-builder emits NeuroPause-universal.dmg (electron-builder.yml:79 artifactName NeuroPause-${arch}.${ext}; MEASURED dist/NeuroPause-universal.dmg 232,540,739 bytes, 2026-09-12) and NeuroPause-Setup.exe (electron-builder.yml:99; MEASURED dist/NeuroPause-Setup.exe 111,895,104 bytes). CI renames universal->NeuroPause.dmg only inside the publish step (.github/workflows/macos-release.yml:205-208) which is gated on vars.PUBLISH_TO_SITE == 'true' && DEPLOY_SSH_KEY (macos-release.yml:192; windows-release.yml:204). HANDOFF-2026-09-12.md §4 states PUBLISH_TO_SITE is unset (DECLARED). Workflow comment: 'PUBLISHING TO neuropause033.com IS OFF. P13C ROUND 17m.' (macos-release.yml:158, windows-release.yml:170).",
+      "verdict": "filenames consistent with the CI rename; nothing is published; URLs dead"
+    },
+    {
+      "claim": "macOS: 'The app isn't notarized yet' — right-click -> Open",
+      "cites": [
+        "website/download.html:275"
+      ],
+      "reality": "MEASURED on dist/mac-universal/NeuroPause.app: spctl -a -t exec -> rejected, source=Unnotarized Developer ID; stapler: no ticket; dist/notarization-status.json state=skipped, notarized=false, reason 'one or more Apple credentials are absent' (2026-09-12T17:06:02Z). electron-builder.yml:70 notarize: false; afterSign hook scripts/notarize.cjs no-ops without APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID (notarize.cjs:21,34-37).",
+      "verdict": "accurate"
+    },
+    {
+      "claim": "Windows: 'The app isn't code-signed yet'",
+      "cites": [
+        "website/download.html:266",
+        "website/index.html:1016-1017"
+      ],
+      "reality": "DECLARED: windows-release.yml:81-102 signs only when WIN_CSC_LINK present; HANDOFF §4 lists WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD as absent. Not measured (Authenticode not checked).",
+      "verdict": "consistent with declared state"
+    },
+    {
+      "claim": "FAQ: 'The current release candidate isn't code-signed yet, so macOS and Windows ask you to confirm once'",
+      "cites": [
+        "website/index.html:1079-1084"
+      ],
+      "reality": "MEASURED: the locally built .app IS signed — codesign Authority=Developer ID Application: Dishant Dobariya (J3G89MY3QG), Developer ID Certification Authority, Apple Root CA; flags=0x10000(runtime); Timestamp 12 Sep 2026. CI builds are unsigned when APPLE_CSC_LINK is absent (macos-release.yml:116-121). Gatekeeper still rejects because it is unnotarized.",
+      "verdict": "true for CI artifacts, false for the local artifact; the Developer ID is issued to an individual's name, which every Gatekeeper dialog will display (human decision)"
+    },
+    {
+      "claim": "'The build is notarization-ready; until it's signed you'll confirm once'",
+      "cites": [
+        "website/index.html:1001-1002"
+      ],
+      "reality": "hook wired (electron-builder.yml:34) but notarize: false (electron-builder.yml:70) and credentials absent.",
+      "verdict": "DECLARED, unverifiable until secrets exist"
+    },
+    {
+      "claim": "macOS minimum: '12 Monterey or later · Intel or Apple Silicon (universal)'",
+      "cites": [
+        "website/index.html:1024",
+        "website/index.html:995",
+        "website/index.html:778",
+        "docs/guides/INSTALLATION.md:7"
+      ],
+      "reality": "MEASURED LSMinimumSystemVersion=12.0 and lipo -archs = x86_64 arm64 on dist/mac-universal/NeuroPause.app; CFBundleShortVersionString 1.0.0-rc.30.",
+      "verdict": "accurate on index.html; ABSENT on download.html"
+    },
+    {
+      "claim": "Architecture statement on download.html",
+      "cites": [
+        "website/download.html:244-246 (JS comment only)"
+      ],
+      "reality": "no user-visible architecture/min-OS text on download.html",
+      "verdict": "ABSENT"
+    },
+    {
+      "claim": "Version 1.0.0-rc.1",
+      "cites": [
+        "website/index.html:1023",
+        "website/index.html:765 'Release Candidate 1.0'"
+      ],
+      "reality": "apps/desktop/package.json version 1.0.0-rc.30; build-info.json version 1.0.0-rc.30; CFBundleShortVersionString 1.0.0-rc.30 (MEASURED). download.html shows no version at all.",
+      "verdict": "stale by 29 release candidates"
+    },
+    {
+      "claim": "SHA-256 'published on each GitHub Release'",
+      "cites": [
+        "website/index.html:1029-1031"
+      ],
+      "reality": "GitHub repo is private (electron-builder.yml:35-36; website/DOWNLOADS.md:24-25); GitHub links were removed from the site (commit 3c97d6f 'Remove all GitHub links from site'); no checksum anywhere on download.html; docs/downloads/DOWNLOAD-CATALOG.md:16 says 'no published checksums'.",
+      "verdict": "false/unreachable"
+    },
+    {
+      "claim": "'Release notes — View on GitHub →'",
+      "cites": [
+        "website/index.html:1032-1035",
+        "website/index.html:1129"
+      ],
+      "reality": "href='/download.html' which has no release notes",
+      "verdict": "dead"
+    },
+    {
+      "claim": "'← Back to neuropause.com'",
+      "cites": [
+        "website/download.html:228"
+      ],
+      "reality": "neuropause.com is parked at Afternic (MEASURED NS); project domain is neuropause033.com",
+      "verdict": "wrong domain in customer-facing text"
+    },
+    {
+      "claim": "'~400 MB installed'",
+      "cites": [
+        "website/index.html:1026"
+      ],
+      "reality": "MEASURED du -sm: mac-universal/NeuroPause.app = 539 MB; win-unpacked = 414 MB",
+      "verdict": "understated for macOS universal"
+    },
+    {
+      "claim": "'Windows 10 (1809+) or 11 · x64'",
+      "cites": [
+        "website/index.html:1010",
+        "website/index.html:1025"
+      ],
+      "reality": "no source in docs/windows/*.md states a build floor (grep 1809: only index.html); Electron 42.8.1 (apps/desktop/package.json) — not measured",
+      "verdict": "DECLARED, unverified"
+    },
+    {
+      "claim": "'Start free trial' CTAs on Professional and Business tiers",
+      "cites": [
+        "website/index.html:945",
+        "website/index.html:957"
+      ],
+      "reality": "website/PRICING.md:14 'No billing is implemented'; docs/support/FAQ.md:62 'no pricing, SLAs, or trial durations'; CTAs link to #download",
+      "verdict": "misleading CTA"
+    },
+    {
+      "claim": "'Works with 16 tools' / 'All 16 connectors' / 'Sixteen'",
+      "cites": [
+        "website/index.html:843",
+        "website/index.html:940",
+        "website/index.html:1073",
+        "website/LANDING.md:29",
+        "docs/launch/LAUNCH-04-GO-LIVE-RUNBOOK.md:21"
+      ],
+      "reality": "docs/support/FAQ.md:46 '22 connectors — 13 production-ready and 9 Preview'; docs/user/CONNECTORS-GUIDE.md:11,19 (13 production + 9 preview)",
+      "verdict": "inconsistent public numbers (16 vs 22 vs 13)"
+    },
+    {
+      "claim": "'Your data stays on your machine'",
+      "cites": [
+        "website/index.html:778"
+      ],
+      "reality": "docs/support/FAQ.md:21,24: accounts, sessions, org/device records, subscription state, connector-account records, sync/embedding state live server-side; sign-in requires the backend (FAQ.md:32)",
+      "verdict": "over-broad"
+    },
+    {
+      "claim": "GETTING-STARTED: 'Sign up with email (no OAuth provider required) — you're connecting to the live NeuroPause backend'",
+      "cites": [
+        "website/GETTING-STARTED.md:12-13"
+      ],
+      "reality": "POST /auth/email/register exists (apps/backend/src/auth/router.ts:170-181, MEASURED code); backend returns HTTP 530 / error 1033 at probe time (MEASURED)",
+      "verdict": "feature exists in code; service not reachable now"
+    },
+    {
+      "claim": "website/DOWNLOADS.md: buttons link GitHub Releases",
+      "cites": [
+        "website/DOWNLOADS.md:3-9"
+      ],
+      "reality": "superseded by website/DOWNLOAD-SETUP.md and download.html (self-hosted); stale internal doc kept in website/",
+      "verdict": "stale"
+    },
+    {
+      "claim": "download.html JS comment: 'Until then they 404 for logged-out visitors — see DOWNLOAD-SETUP.md'",
+      "cites": [
+        "website/download.html:232-234"
+      ],
+      "reality": "contradicted by the next comment (235-236); stale",
+      "verdict": "stale comment"
+    },
+    {
+      "claim": "HTML validity",
+      "cites": [
+        "website/download.html:222 '<span small id=\"primary-sub\">'"
+      ],
+      "reality": "'small' is not an attribute; CSS '.primary small' (download.html:119-126) never matches; the ' for macOS' suffix renders unstyled",
+      "verdict": "minor markup bug (MEASURED by inspection)"
+    },
+    {
+      "claim": "FAQ/DOWNLOAD-CATALOG: 'macOS (Apple Silicon) is the first target'",
+      "cites": [
+        "docs/support/FAQ.md:35",
+        "docs/downloads/DOWNLOAD-CATALOG.md:11-12"
+      ],
+      "reality": "build is universal (MEASURED lipo); cec399f corrected 9 files but not these two",
+      "verdict": "residual Apple-Silicon-only claims"
+    },
+    {
+      "claim": "FAQ: 'No signed/notarized packaged artifact is published yet. Pilots run from source.'",
+      "cites": [
+        "docs/support/FAQ.md:64-65",
+        "docs/downloads/DOWNLOAD-CATALOG.md:5,16"
+      ],
+      "reality": "contradicts website download page which offers installers; both are customer-facing",
+      "verdict": "contradiction between docs/support and website"
+    }
+  ],
+  "bundled_in_app_docs": {
+    "config": {
+      "file": "apps/desktop/electron-builder.yml",
+      "lines": "19-33",
+      "extraResources": [
+        "resources/build-info.json -> build-info.json",
+        "resources/THIRD-PARTY-NOTICES.md -> THIRD-PARTY-NOTICES.md",
+        "../../docs/guides -> docs/guides",
+        "../../docs/user -> docs/user",
+        "../../docs/legal -> docs/legal",
+        "resources/THIRD-PARTY-NOTICES.md -> docs/THIRD-PARTY-NOTICES.md"
+      ],
+      "classification": "DECLARED"
+    },
+    "measured_in_built_app": {
+      "path": "apps/desktop/dist/mac-universal/NeuroPause.app/Contents/Resources/docs/",
+      "contents": [
+        "guides/ (12 files)",
+        "user/ (14 files)",
+        "legal/EULA.md",
+        "legal/PRIVACY.md",
+        "THIRD-PARTY-NOTICES.md"
+      ],
+      "classification": "MEASURED"
+    },
+    "in_app_catalog": {
+      "file": "packages/shared/src/types/helpDocs.ts",
+      "lines": "35-45",
+      "exposed": [
+        "guides/QUICK-START.md",
+        "guides/INSTALLATION.md",
+        "user/FINANCE-GETTING-STARTED.md",
+        "user/HR-GETTING-STARTED.md",
+        "user/INVENTORY-PROCUREMENT-GETTING-STARTED.md",
+        "user/PILOT-ORIENTATION.md",
+        "guides/TROUBLESHOOTING.md",
+        "legal/EULA.md",
+        "legal/PRIVACY.md",
+        "THIRD-PARTY-NOTICES.md"
+      ],
+      "opener": "apps/desktop/src/main/help/index.ts:10,68 shell.openPath (OS default Markdown viewer); roots process.resourcesPath/docs (help/index.ts:22)",
+      "classification": "DECLARED (code read)"
+    },
+    "bundled_but_not_in_catalog": {
+      "guides": [
+        "ADMINISTRATOR-GUIDE.md",
+        "CONNECTOR-GITHUB.md",
+        "DISASTER-RECOVERY-GUIDE.md",
+        "FOUNDER-AI-V2.md",
+        "OPERATIONS-GUIDE.md",
+        "RELEASE-CHECKLIST.md",
+        "SECURITY-GUIDE.md",
+        "SPRINT-4-COMMERCIAL-READINESS.md",
+        "SPRINT-5-EARLY-ACCESS.md"
+      ],
+      "user": [
+        "AI-WORKFORCE-GUIDE.md",
+        "CONNECTORS-GUIDE.md",
+        "DIGITAL-TWIN-GUIDE.md",
+        "FIRST-30-MINUTES.md",
+        "GLOSSARY.md",
+        "KNOWLEDGE-GUIDE.md",
+        "NEUROPAUSE-USER-GUIDE.md",
+        "QUICK-START.md",
+        "UNIVERSAL-DATA-IMPORT.md",
+        "WHERE-DO-I-GO.md"
+      ],
+      "concern": "operator/internal documents ship inside every customer .app: SECURITY-GUIDE.md (hardening backlog with unmitigated items e.g. :206, placeholder contact :244, source file:line internals), RELEASE-CHECKLIST.md, SPRINT-4/5 docs, OPERATIONS-GUIDE.md, DISASTER-RECOVERY-GUIDE.md",
+      "classification": "DERIVED"
+    },
+    "broken_relative_links_inside_bundle": {
+      "cites": [
+        "docs/user/FIRST-30-MINUTES.md:55 -> ../support/FAQ.md",
+        "docs/user/QUICK-START.md:35,79 -> ../support/TROUBLESHOOTING.md, ../support/FAQ.md",
+        "docs/user/NEUROPAUSE-USER-GUIDE.md:108,116 -> ../enterprise/DATA-AND-SECURITY-GUIDE.md, ../support/TROUBLESHOOTING.md",
+        "docs/support/FAQ.md:27,51,65 -> ../enterprise/*, ../developer/*, ../downloads/*"
+      ],
+      "reality": "docs/support, docs/enterprise, docs/developer, docs/downloads are NOT in extraResources (electron-builder.yml:19-33) and not present in the built app (MEASURED)",
+      "classification": "DERIVED"
+    },
+    "first_run_legal": {
+      "cites": [
+        "packages/shared/src/types/onboarding.ts:48-55 step 'legal': 'Read the EULA and the privacy notice bundled with this build, then mark them reviewed'",
+        "docs/legal/EULA.md:3-4 'Presented at first run for acknowledgment during the pilot; not a final legal instrument until reviewed'",
+        "docs/user/PILOT-ORIENTATION.md:19 'review drafts unless your pilot contact says otherwise'"
+      ],
+      "verdict": "users acknowledge counsel-unreviewed DRAFT documents at first run",
+      "classification": "DECLARED"
+    }
+  },
+  "version_stamp_drift": {
+    "actual": "1.0.0-rc.30 (apps/desktop/package.json; resources/build-info.json; CFBundleShortVersionString MEASURED)",
+    "stale_stamps": [
+      "website/index.html:1023 1.0.0-rc.1",
+      "website/index.html:765 Release Candidate 1.0",
+      "website/DOWNLOADS.md:13 1.0.0-rc.1",
+      "website/DOWNLOAD-SETUP.md:27 'NeuroPause Setup 1.0.0-rc.1.exe'",
+      "SUPPORT.md:6 1.0.0-rc.1",
+      "SECURITY.md:5 1.0.0-rc.1",
+      "README.md:3 1.0.0-rc.14",
+      "README.md:56 'The mac artifact is arm64' (contradicts universal build)",
+      "docs/guides/RELEASE-CHECKLIST.md:16 1.0.0-rc.1",
+      "docs/guides/INSTALLATION.md:3 v1.0.0-rc.14",
+      "docs/guides/QUICK-START.md:3 v1.0.0-rc.14",
+      "docs/support/FAQ.md:3,13 1.0.0-rc.15 (0a040e2)",
+      "docs/support/TROUBLESHOOTING.md:3 1.0.0-rc.15",
+      "docs/user/* : ten files stamped 1.0.0-rc.15 (0a040e2), four stamped v1.0.0-rc.14",
+      "docs/release/KNOWN-LIMITATIONS.md:1 '(1.0.0-rc.1)'",
+      "docs/product/PILOT-RELEASE-NOTES.md:3 1.0.0-rc.15",
+      "docs/launch/LAUNCH-02-MAC-PACKAGING.md:27,34 1.0.0-rc.1 arm64 dmg example",
+      "docs/launch/LAUNCH-02-MAC-PACKAGING.md:64-71 says icon missing and publish.url placeholder — both since fixed (resources/icon.icns exists 556,544 bytes; electron-builder.yml:44 real URL)"
+    ],
+    "classification": "MEASURED (grep) / DERIVED (comparison)"
+  },
+  "last_change_dates": {
+    "website/index.html": "cec399f 2026-09-12",
+    "website/download.html": "e7bffd3 2026-09-12",
+    "website/DOWNLOAD-SETUP.md": "cec399f 2026-09-12",
+    "docs/legal/PRIVACY.md": "99b6902 2026-08-07",
+    "docs/legal/EULA.md": "99b6902 2026-08-07",
+    "SUPPORT.md": "49f43a2 2026-07-23",
+    "SECURITY.md": "a3d948e 2026-07-18",
+    "CODE_OF_CONDUCT.md": "49f43a2 2026-07-23",
+    "docs/support/FAQ.md": "d2cbf48 2026-08-08",
+    "classification": "MEASURED (git log)"
+  },
+  "architecture_invariant_observations": [
+    {
+      "observation": "The public surface asserts no authorization semantics; nothing on the website or in docs/legal claims that AI or the client authorizes anything. PRIVACY.md:10 and SECURITY-GUIDE describe server-side auth; consistent with 'client is never the final authorization authority'.",
+      "classification": "INFERRED"
+    },
+    {
+      "observation": "Password-reset link delivery is impossible in production (logging mailer, redacted in prod: mailer.ts:22-26, app.ts:123) — a stale/unrecoverable credential path with no human-facing recovery instruction; this is a support and authority-continuity gap rather than an invariant violation.",
+      "classification": "DERIVED"
+    },
+    {
+      "observation": "EULA/Privacy drafts are acknowledged in-product at first run while marked 'not a final legal instrument' — the human-decision authority (counsel review) has not been exercised, yet the product records acknowledgment (onboarding.ts:50-51).",
+      "classification": "DERIVED"
+    }
+  ],
+  "gates": {
+    "SUPPORT-READINESS": {
+      "status": "FAIL",
+      "reason": "No support address, form, or channel exists anywhere public (index.html contact anchors are empty; SUPPORT.md:6-13 declares none; CoC contact is a placeholder; LICENSE:26 and SECURITY.md:11 name no address; SECURITY-GUIDE.md:244 uses a .example address shipped inside the app). Password reset cannot deliver mail (createLoggingMailer wired, app.ts:123). Account deletion is absent in code and docs. MX for neuropause033.com exists (M365), so mailboxes can be provisioned — a human action."
+    },
+    "PRIVACY_DOC_SIDE": {
+      "status": "FAIL",
+      "reason": "docs/legal/PRIVACY.md is a counsel-unreviewed DRAFT (2026-08-07), pilot-scoped, states the backend is optional while the shipped build bakes api.neuropause033.com and requires sign-in; no controller identity/contact, retention, or server-side deletion path; not linked from the website (index.html:1136 '#'); no visitor privacy notice for the website despite Google Fonts loading; index.html:778 over-claims 'Your data stays on your machine'."
+    },
+    "RELEASE-DISTRIBUTION_PAGE": {
+      "status": "FAIL",
+      "reason": "Both download URLs are unresolvable (apex has no A/AAAA record on authoritative NS); droplet holds no TLS cert for the name; CI publish is OFF (PUBLISH_TO_SITE unset, workflows :158/:170); index.html shows version 1.0.0-rc.1 vs actual rc.30; SHA-256 and release-notes rows point at a private GitHub / at download.html itself; download.html shows no version, min-OS, architecture, size or checksum; back-link names a third-party parked domain. Honest items: unsigned/unnotarized warnings match measured Gatekeeper rejection; filenames match the CI rename; macOS 12 floor and universal arch match the built binary."
+    },
+    "PUBLIC-WEBSITE": {
+      "status": "FAIL",
+      "reason": "Site is not reachable at its own domain (DNS). Footer Privacy/Terms/Security/Status links are '#'. No favicon, robots.txt, sitemap, og:url/canonical. 'Start free trial' CTAs with no billing or trial. Connector count contradictions (16 vs 22 vs 13). DOWNLOAD-SETUP.md (droplet IP, root SSH user, key-generation runbook) is scp'd into the public web root by its own instructions (DOWNLOAD-SETUP.md:53-54). website/DOWNLOADS.md is stale (GitHub Releases model)."
+    }
+  },
+  "gaps": [
+    "Cannot verify whether any mailbox at neuropause033.com exists or is monitored (MX present; no address published; not tested by design).",
+    "Cannot verify droplet web-root contents (no DNS, no cert for SNI); whether NeuroPause.dmg / NeuroPause-Setup.exe were ever uploaded is unknown.",
+    "Windows Authenticode signing state of dist/NeuroPause-Setup.exe not measured (no osslsigncode); treated as DECLARED unsigned.",
+    "Windows 10 build 1809 floor not sourced anywhere except index.html.",
+    "Whether the Cloudflare tunnel for api.neuropause033.com is intentionally down (530/1033) is outside this subsystem; noted because the website's sign-up claim depends on it.",
+    "apps/desktop/index.js (161,690 lines) was added to the tree in cec399f alongside the website fixes; not analysed here (out of scope) but flagged for the packaging/hygiene mapper."
+  ],
+  "machine_closable_actions": [
+    {
+      "action": "Replace website/index.html:1023 '1.0.0-rc.1' and :765 with the real version (or template it from apps/desktop/package.json at deploy)",
+      "effort": "S",
+      "files": [
+        "website/index.html"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Fix website/download.html:228 'neuropause.com' -> 'neuropause033.com'; fix :222 '<span small' -> '<small'; delete stale comment :232-234",
+      "effort": "S",
+      "files": [
+        "website/download.html"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Add user-visible version, macOS 12+ universal, Windows 10/11 x64, size, and SHA-256 rows to download.html; generate checksums from dist/ at publish time",
+      "effort": "M",
+      "files": [
+        "website/download.html",
+        ".github/workflows/macos-release.yml",
+        ".github/workflows/windows-release.yml"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Replace index.html:1029-1035 and :1129 GitHub SHA-256/release-notes references with a self-hosted release-notes page rendered from CHANGELOG.md",
+      "effort": "M",
+      "files": [
+        "website/index.html",
+        "CHANGELOG.md"
+      ],
+      "risk": "low"
+    },
+    {
+      "action": "Render docs/legal/PRIVACY.md, docs/legal/EULA.md and SECURITY.md to website/privacy.html, terms.html, security.html and wire footer links :1136-1138 (content still needs counsel — see human decisions)",
+      "effort": "M",
+      "files": [
+        "website/index.html",
+        "docs/legal/*"
+      ],
+      "risk": "publishing DRAFT legal text publicly without counsel sign-off"
+    },
+    {
+      "action": "Remove or relabel 'Start free trial' CTAs (index.html:945,957) to 'Download free' until billing exists",
+      "effort": "S",
+      "files": [
+        "website/index.html"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Reconcile connector counts (index.html:843,940,1073; LANDING.md:29; FAQ.md:46; CONNECTORS-GUIDE.md:11,19) to one sourced number",
+      "effort": "S",
+      "files": [
+        "website/index.html",
+        "website/LANDING.md",
+        "docs/support/FAQ.md",
+        "docs/user/CONNECTORS-GUIDE.md"
+      ],
+      "risk": "needs the true count from the connector manifest"
+    },
+    {
+      "action": "Stop deploying website/DOWNLOAD-SETUP.md to the web root (DOWNLOAD-SETUP.md:53-54); move it and website/DOWNLOADS.md, LANDING.md, PRICING.md out of website/ into docs/ops so only index.html/download.html are published",
+      "effort": "S",
+      "files": [
+        "website/DOWNLOAD-SETUP.md",
+        "website/DOWNLOADS.md",
+        "website/LANDING.md",
+        "website/PRICING.md",
+        "website/GETTING-STARTED.md"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Correct residual Apple-Silicon-only text: docs/support/FAQ.md:35, docs/downloads/DOWNLOAD-CATALOG.md:11-12, README.md:56",
+      "effort": "S",
+      "files": [
+        "docs/support/FAQ.md",
+        "docs/downloads/DOWNLOAD-CATALOG.md",
+        "README.md"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Either add docs/support (and referenced docs/enterprise files) to electron-builder extraResources or rewrite ../support/ links in bundled user docs; add an explicit allowlist so operator guides (SECURITY-GUIDE, RELEASE-CHECKLIST, SPRINT-*, OPERATIONS, DISASTER-RECOVERY) are not shipped to customers",
+      "effort": "S",
+      "files": [
+        "apps/desktop/electron-builder.yml",
+        "docs/user/*.md"
+      ],
+      "risk": "changes packaged content; verify:packaged must be re-run"
+    },
+    {
+      "action": "Refresh stale version stamps: SUPPORT.md:6, SECURITY.md:5, README.md:3, docs/guides/RELEASE-CHECKLIST.md:16, docs/release/KNOWN-LIMITATIONS.md:1, docs/launch/LAUNCH-02-MAC-PACKAGING.md:27,34,64-71",
+      "effort": "S",
+      "files": [
+        "SUPPORT.md",
+        "SECURITY.md",
+        "README.md",
+        "docs/guides/RELEASE-CHECKLIST.md",
+        "docs/release/KNOWN-LIMITATIONS.md",
+        "docs/launch/LAUNCH-02-MAC-PACKAGING.md"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Add favicon link, robots.txt, sitemap.xml, og:url/canonical to website/",
+      "effort": "S",
+      "files": [
+        "website/index.html",
+        "website/download.html"
+      ],
+      "risk": "none"
+    },
+    {
+      "action": "Write user-facing instructions for: password reset (once a mailer exists), signing out / device revocation, exporting data (backups + feedback), and removing local data; place in docs/support and link from the site",
+      "effort": "M",
+      "files": [
+        "docs/support/FAQ.md",
+        "docs/user/QUICK-START.md",
+        "website/GETTING-STARTED.md"
+      ],
+      "risk": "must not describe a reset flow that cannot deliver mail"
+    },
+    {
+      "action": "Implement a real Mailer (SES/Postmark/SMTP) behind the existing Mailer interface (apps/backend/src/auth/mailer.ts:12-15) and wire it in app.ts:123 when provider env is present",
+      "effort": "M",
+      "files": [
+        "apps/backend/src/auth/mailer.ts",
+        "apps/backend/src/app.ts",
+        "apps/backend/src/config/env.ts"
+      ],
+      "risk": "needs operator-held provider credentials to activate (WAITING_FOR_OPERATOR_SECRET)"
+    }
+  ],
+  "human_decisions_required": [
+    "Create DNS A/AAAA (or Cloudflare-proxied) records for neuropause033.com apex and www pointing at the intended host (droplet 64.227.128.218 or a static host); only the domain owner can do this. Until then the site and every download link are dead.",
+    "Provision and publish real mailboxes (support@, security@, privacy@ or a single contact) on the existing M365 MX for neuropause033.com; replace the placeholders in CODE_OF_CONDUCT.md:65-70, docs/guides/SECURITY-GUIDE.md:244, SECURITY.md:11, LICENSE:26 and the empty #contact section.",
+    "Counsel review of docs/legal/EULA.md and PRIVACY.md (both DRAFT since 2026-08-07): governing law, controller identity, scope beyond 'pilot period', server-side data retention and deletion, and whether the website itself needs a visitor privacy notice.",
+    "Confirm that a Developer ID Application certificate issued in an individual's name (Team J3G89MY3QG) is the intended public signing identity shown in Gatekeeper dialogs; supply APPLE_CSC_LINK/APPLE_CSC_KEY_PASSWORD/APPLE_ID/APPLE_APP_SPECIFIC_PASSWORD/APPLE_TEAM_ID and WIN_CSC_* to CI (WAITING_FOR_OPERATOR_SECRET).",
+    "Set repo variable PUBLISH_TO_SITE=true and secret DEPLOY_SSH_KEY to let CI publish installers and the update feed (WAITING_FOR_OPERATOR_SECRET); decide whether the current unsigned/unnotarized rc.30 should be publicly downloadable at all.",
+    "Pricing and 'free trial' claims: keep placeholder tiers on a public site with no billing, or remove them (website/PRICING.md:14-16).",
+    "Whether operator/internal guides should ship inside the customer .app (currently they do via extraResources docs/guides).",
+    "Account deletion and server-side data retention policy: no endpoint, no UI, no instruction exists; decide the product requirement before public launch.",
+    "Version naming for public launch (rc.30 with 'beta' update channel vs 1.0.0) — HANDOFF-2026-09-12.md §7.3."
+  ]
+}

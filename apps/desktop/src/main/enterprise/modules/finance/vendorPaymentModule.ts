@@ -26,7 +26,6 @@ import type {
   EnterpriseRecordValidation,
 } from '@neuropause/shared';
 import {
-  VENDOR_BILLS_MODULE_ID,
   VENDOR_PAYMENTS_MODULE_ID,
   VENDOR_PAYMENT_KIND,
   isDuplicateVendorTransaction,
@@ -42,6 +41,7 @@ import {
   type EnterpriseModuleActionContext,
 } from '../../framework';
 import { handleVendorPaymentChangeForGl } from './glPosting';
+import { reconcileBillFromLedger } from './paymentReconcile';
 
 /** The declarative description of a vendor payment — drives store, CRUD, and the UI. */
 export const VENDOR_PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
@@ -54,6 +54,9 @@ export const VENDOR_PAYMENT_DESCRIPTOR: EnterpriseModuleDescriptor = {
   group: 'Finance',
   titleField: 'paymentNumber',
   permissions: { read: 'operations:read', write: 'operations:manage' },
+  // S57 — the governed clearing affordance (routes to ClearVendorPayment; the S49 fence
+  // made edit-door clearing impossible, which left pending payments with NO clearing path).
+  actions: [{ key: 'clear', label: 'Clear', icon: 'check' }],
   fields: [
     { key: 'paymentNumber', label: 'Payment #', type: 'text', required: true, placeholder: 'VPAY-0001' },
     { key: 'billRef', label: 'Vendor Bill', type: 'text', required: true, placeholder: 'Bill number or id' },
@@ -132,36 +135,16 @@ export function createVendorPaymentModule(
 ): EnterpriseModule {
   const store = new EnterpriseRecordStore(storePath, VENDOR_PAYMENTS_MODULE_ID, VENDOR_PAYMENT_KIND);
 
-  /** Re-derive the referenced bill's paid state from the cleared ledger + persist it. */
+  /**
+   * Re-derive the referenced bill's paid state from the cleared ledger + persist
+   * it. ERP Session 61 — delegates to the ONE shared reconciliation so the
+   * customer payment, vendor payment, and governed reversal paths all derive
+   * paid state identically (a reversed vendor payment is excluded, re-opening the
+   * bill without mutating the original). Byte-identical to the pre-S61 inline
+   * derivation when no reversal records exist.
+   */
   async function reconcileBill(ref: string, ctx: EnterpriseModuleActionContext): Promise<void> {
-    if (!ref) return;
-    const billModule = ctx.moduleFor(VENDOR_BILLS_MODULE_ID);
-    if (!billModule) return;
-    await billModule.store.load();
-    const billRecord = findBill(billModule.store, ref);
-    if (!billRecord) return;
-    const bill = vendorBillFromRecord(billRecord);
-    const ledger = store.list().map(vendorPaymentFromRecord);
-    const amountPaid = sumClearedVendorPayments([billRecord.id, bill.billNumber], ledger);
-    const fullyPaid = Math.round((amountPaid - bill.total) * 100) >= 0 && bill.total > 0;
-    const paidDate = fullyPaid ? (str(billRecord.fields.paidDate) || ctx.now().slice(0, 10)) : '';
-    const unchanged =
-      Math.round((bill.amountPaid - amountPaid) * 100) === 0 &&
-      str(billRecord.fields.paidDate) === paidDate;
-    if (unchanged) return;
-    const status = str(billRecord.fields.cancelledAt)
-      ? 'cancelled'
-      : paidDate
-        ? 'paid'
-        : str(billRecord.fields.approvedAt)
-          ? 'approved'
-          : 'draft';
-    const updated = billModule.store.update(billRecord.id, {
-      fields: { amountPaid, paidDate, status },
-      actor: ctx.actor(),
-      now: ctx.now(),
-    });
-    if (updated) ctx.emit(billModule, 'updated', updated);
+    await reconcileBillFromLedger(store, ref, ctx);
   }
 
   return defineEnterpriseModule({
@@ -172,6 +155,21 @@ export function createVendorPaymentModule(
         const result = validateEnterpriseRecordInput(VENDOR_PAYMENT_DESCRIPTOR, input);
         if (!result.ok) return result;
         const errors: Record<string, string> = {};
+        // ERP Session 49 — the buy-side twin of the S46 customer-payment fence: an EDIT-door
+        // transition INTO `cleared` books real Dr AP / Cr Cash via onChange, around the governed
+        // `PaySupplierInvoice` command. Clearing goes only through the governed command. Creates
+        // are untouched (no recordId) and a status-less importer row is not compared.
+        if (input.recordId) {
+          const prior = store.get(input.recordId);
+          const priorStatus = String(prior?.fields.status ?? '');
+          if (prior && priorStatus !== '' && priorStatus !== 'cleared' && result.values.status === 'cleared') {
+            return {
+              ok: false,
+              values: result.values,
+              errors: { status: 'Clearing a vendor payment books the ledger — record it as a governed cleared payment instead of editing this one.' },
+            };
+          }
+        }
         const payment = vendorPaymentFromRecord({
           id: '',
           moduleId: VENDOR_PAYMENTS_MODULE_ID,
@@ -217,6 +215,22 @@ export function createVendorPaymentModule(
 
         if (Object.keys(errors).length > 0) return { ok: false, errors, values: result.values };
         return result;
+      },
+      // S57 — the DEFINED pending→cleared transition, relocated from the fenced edit door to
+      // an explicit action (semantics unchanged; onChange below reconciles the bill and books
+      // Dr AP / Cr Cash exactly as it always did). Reached through the governed
+      // ClearVendorPayment command; void/cleared rows refuse.
+      runAction: async (action, record, actionCtx) => {
+        if (action !== 'clear') return { ok: false, error: `Unknown action "${action}".` };
+        const status = str(record.fields.status);
+        if (status !== 'pending') {
+          return { ok: false, message: `Only a pending payment can be cleared — this one is ${status || 'status-less'}.` };
+        }
+        const updated = store.update(record.id, { fields: { status: 'cleared' }, actor: actionCtx.actor(), now: actionCtx.now() });
+        if (!updated) return { ok: false, error: 'Payment not found.' };
+        const self = actionCtx.moduleFor(VENDOR_PAYMENTS_MODULE_ID);
+        if (self) actionCtx.emit(self, 'updated', updated);
+        return { ok: true, message: `Payment ${str(record.fields.paymentNumber)} cleared — the bill reconciled and cash booked.` };
       },
       // The source-of-truth inversion: reconcile the bill from the cleared
       // ledger, then flow the payment into the General Ledger.

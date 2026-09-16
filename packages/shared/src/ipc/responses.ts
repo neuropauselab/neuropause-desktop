@@ -118,6 +118,7 @@ import type {
   AutomationRunRecord,
   Backup,
   BackendReachability,
+  RuntimeStateDto,
   BackupInfo,
   BackupValidation,
   BillingSummary,
@@ -359,6 +360,7 @@ import type {
   ObjectivesReport,
   ObservabilityOverview,
   OllamaDetectDto,
+  OllamaPullResultDto,
   OnboardingStatus,
   OpenApiDocument,
   OperationalHealthView,
@@ -689,6 +691,8 @@ export interface IpcResponseMap {
 
   // ── runtime ──
   'runtime:getLoginAtStartup': { enabled: boolean };
+  // Round 36 — Gate 1: served by the base router before the window opens.
+  'system:runtimeState': RuntimeStateDto;
   'runtime:setLoginAtStartup': { enabled: boolean };
 
   // ── timeline ──
@@ -784,6 +788,19 @@ export interface IpcResponseMap {
   'memory:forget': { forgotten: number };
   'memory:counts': MemoryCounts;
   'memory:rebuild': MemoryCounts;
+  // FG-S148-MEMORY-BACKFILL — governed backfill summary (shape mirrors main's MemoryBackfillSummary;
+  // inline literal per this file's response-map convention, since the named type lives in main and the
+  // FG authorized exactly one additive entry here and no other frozen surface).
+  'memory:backfill': {
+    orgId: string | null;
+    total: number;
+    processed: number;
+    embedded: number;
+    skipped: number;
+    failed: number;
+    batches: number;
+    skippedReason?: 'no_active_org';
+  };
   'memory:exec-search': ExecutiveMemoryView[];
   'memory:exec-forget': { forgotten: boolean };
   'memory:exec-pin': ExecutiveMemoryView | null;
@@ -990,6 +1007,8 @@ export interface IpcResponseMap {
   'sandbox:execution.timeline': ExecutionTimelineEntry[];
   'sandbox:queue.state': ExecutionQueueState;
   'sandbox:artifact.list': Artifact[];
+  // FG-S149-SANDBOX-ARTIFACT-GET — fetch one artifact (metadata + inline content) by id.
+  'sandbox:artifact.get': Artifact | null;
   'sandbox:result.get': RunResult | null;
   'sandbox:report.get': SandboxReport | null;
   'sandbox:report.generate': SandboxReport | { error: string };
@@ -1340,6 +1359,7 @@ export interface IpcResponseMap {
   'aiConfig:get': AiConfigDto;
   'aiConfig:health': AiHealthDto;
   'aiConfig:detectOllama': OllamaDetectDto;
+  'aiConfig:pullModel': OllamaPullResultDto;
   'aiConfig:setProvider': AiConfigDto;
   'aiConfig:setModel': AiConfigDto;
   'aiConfig:setCredential': AiConfigDto;

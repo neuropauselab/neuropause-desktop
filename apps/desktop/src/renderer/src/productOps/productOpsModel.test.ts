@@ -8,6 +8,7 @@ import type { FeatureFlagState, ReleaseDiagnostics } from '@neuropause/shared';
 import {
   DEPLOYMENT_TARGETS,
   OPERATIONAL_GAPS,
+  describeLoadFailures,
   deriveReleaseReadiness,
   diagnosticTone,
   gapKindMeta,
@@ -118,5 +119,21 @@ describe('deriveReleaseReadiness (pure over real Release Diagnostics)', () => {
     const r = deriveReleaseReadiness(diag({ phase: 'error', error: 'feed 404' }), flags(2, 5));
     expect(r.releaseReady).toBe(false);
     expect(r.blockers.join(' ')).toMatch(/feed 404/);
+  });
+});
+
+// NP-008 census F-N8-3 — the derivation pin: refusals become a NAMED banner,
+// never silent fallbacks; a clean load renders no banner at all.
+describe('describeLoadFailures', () => {
+  it('renders nothing when every source loaded', () => {
+    expect(describeLoadFailures([])).toBeNull();
+  });
+
+  it('names the failed sources and labels the panels as fallback, not verified state', () => {
+    const text = describeLoadFailures(['Backups', 'Commercial overview']);
+    expect(text).toContain('2 of the operations panels could not load');
+    expect(text).toContain('Backups');
+    expect(text).toContain('Commercial overview');
+    expect(text).toContain('a fallback, not verified state');
   });
 });

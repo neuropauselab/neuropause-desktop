@@ -96,6 +96,9 @@ describe('Tax Reports module — generated from the posted books', () => {
     expect(report.fields.invoiceCount).toBe(2);
     expect(report.fields.discrepancy).toBe(0);
     expect(String(report.fields.note)).toContain('books and declared invoice tax agree');
+    // NP-011 C — the tile law: the snapshot names BOTH registers it derives from.
+    expect(String(report.fields.sourceLineage)).toMatch(/^Computed over \d+ journal entries — .+ Computed over \d+ invoices — /);
+    expect(String(report.fields.sourceLineage)).toContain('entered in app');
     const lines = JSON.parse(String(report.fields.lines)) as GlTaxReportLine[];
     expect(lines.map((l) => l.invoiceNumber)).toEqual(['INV-1', 'INV-2']);
     expect(lines[0].customerGstin).toBe('22AAAAA0000A1Z5');

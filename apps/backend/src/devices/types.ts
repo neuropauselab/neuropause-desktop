@@ -51,7 +51,7 @@ export interface DeviceRepository {
   remove(orgId: string, deviceId: string): Promise<void>;
 }
 
-export type DeviceErrorCode = 'forbidden' | 'not_found' | 'invalid';
+export type DeviceErrorCode = 'forbidden' | 'not_found' | 'invalid' | 'revoked';
 
 export class DeviceError extends Error {
   readonly code: DeviceErrorCode;

@@ -6,6 +6,7 @@ import { WorkerGlyph } from '@renderer/workforce/primitives';
 import { ipc } from '@renderer/lib/ipc';
 import { cn } from '@renderer/lib/cn';
 import { useEnterprise } from './EnterpriseProvider';
+import { WorkspaceDomainRollup } from './WorkspaceDomainRollup';
 import {
   formatPct,
   relativeTime,
@@ -85,6 +86,9 @@ export function ExecutiveWorkspacePanel({ onNavigate }: { onNavigate: (tab: Ente
         </button>
         <Stat icon="bolt" label="Risk" value={snapshot ? riskLevelMeta(snapshot.risk.level).label : '—'} tone={snapshot ? riskLevelMeta(snapshot.risk.level).tone : 'gray'} hint={snapshot ? `${snapshot.risk.openFindings} open` : undefined} />
       </div>
+
+      {/* FG-8 · L1 Workspace Foundation — the tenant-scoped domain rollup (present count / honest 'unavailable'). */}
+      <WorkspaceDomainRollup domain={snapshot?.workspaceDomain} />
 
       {banner && (
         <div className={cn('mb-5 flex items-center gap-2 rounded-xl border p-3 text-sm', banner.tone === 'green' ? 'border-sysgreen/30 bg-sysgreen/10 text-ink' : 'border-sysorange/30 bg-sysorange/10 text-ink')}>

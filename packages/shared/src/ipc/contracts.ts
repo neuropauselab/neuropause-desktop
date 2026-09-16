@@ -468,6 +468,26 @@ export const M365ActionExecuteRequest = z.object({
   actionId: z.string().trim().min(1).max(64),
   params: z.record(z.unknown()).default({}),
   confirmed: z.boolean().default(false),
+  /**
+   * FG-14 — the ORIGINATING CAUSAL EPISODE identity (F-P40). ADDITIVE AND OPTIONAL.
+   *
+   * EVIDENCE ONLY. It answers "which causal episode produced this evidence?" and NOTHING else.
+   * It MUST NOT authorize, govern, select a tenant/connector/account/capability, establish
+   * execution, or establish verification — CORRELATION IS FOR EVIDENCE, NEVER FOR AUTHORIZATION.
+   *
+   * It is DISTINCT from the two identities the kernel already mints and must never replace either:
+   *   `idem`      = sha256(tenant|connector|account|action|params) — DUPLICATE-EFFECT identity
+   *   `requestId` = `req:${idem}:${now}`                           — EXECUTION-REQUEST identity
+   * `correlationId` never enters `idem`, so two causally distinct episodes requesting the SAME
+   * effect keep the same idempotency key while remaining separable in evidence.
+   *
+   * ABSENT means CAUSAL IDENTITY UNAVAILABLE — never "no episode existed", and never a licence to
+   * fall back to requestId/transitionId/idem/actor/tenantId. Optional so every pre-FG-14 caller
+   * parses unchanged (this schema is deliberately non-strict; unknown keys are stripped, which is
+   * exactly why the field has to be declared here rather than smuggled through).
+   */
+  correlationId: z.string().trim().min(1).max(128).optional(),
+  confirmedAt: z.string().datetime({ offset: true }).optional().catch(undefined),
 });
 
 /** P2.4 — ask the existing AI engine to draft/summarize (never sends; returns text for the user to confirm). */
@@ -481,6 +501,92 @@ export const M365DraftRequest = z.object({
 
 export type M365ActionExecuteRequest = z.infer<typeof M365ActionExecuteRequest>;
 export type M365DraftRequest = z.infer<typeof M365DraftRequest>;
+
+/**
+ * FG-1 (Wave-2 Slice 10) — request a NeuroPause-validated M365 action proposal (READ-ONLY; NEVER executes).
+ * `capabilityId`/`params` are the UNTRUSTED AI candidate; the main handler re-resolves the capability and the
+ * authoritative human principal server-side and re-validates the params (Slice-8 producer). Actor/tenant are NEVER
+ * carried here — they are resolved at the later, separate `M365ActionExecute` call. `confirmed` is not a field here.
+ */
+export const CapabilityProposeM365ActionRequest = z.object({
+  capabilityId: z.string().trim().min(1).max(64),
+  accountId: AccountIdSchema.nullable().optional(),
+  purpose: z.string().max(2000).optional(),
+  params: z.record(z.unknown()).default({}),
+});
+export type CapabilityProposeM365ActionRequest = z.infer<typeof CapabilityProposeM365ActionRequest>;
+
+/** FG-1 — the handler's DATA-ONLY response: the reviewable proposal + provenance, or a typed fail-closed refusal. */
+export type CapabilityProposeM365ActionResponse =
+  | {
+      ok: true;
+      proposal: { to: string; subject: string; body: string };
+      provenance: { capabilityId: string; accountId: string };
+      /**
+       * FG-9 (S5.2) — ADDITIVE OPTIONAL. When a certified Live-Brain (L6) proposal drives this response, the
+       * main handler projects its EIGHT review fields here VERBATIM for the ASK/confirm surface (BrainReviewCard).
+       * DISPLAY-ONLY DATA: no callable, no `confirmed`, no authority material; the renderer renders verbatim and
+       * never re-derives. Absent ⇒ the propose/confirm panel behaves exactly as today (additive-only fallback).
+       */
+      brainReview?: {
+        purpose: string;
+        target: string;
+        action: string;
+        risk: string;
+        evidenceRefs: string[];
+        expectedEffect: string;
+        verificationPlan: string;
+        expiry: string;
+        /**
+         * FG-S119-BRAINREVIEW-METADATA (S120) — ADDITIVE OPTIONAL, strictly ADVISORY display metadata from the
+         * S117/S118 pre-execution layer (`buildProposalMetadata`). DISPLAY-ONLY: an estimate + argument-validity
+         * flag the confirm panel renders read-only. It carries NO authority/allow/permission/grant field, NO
+         * tenant/principal, NO recipient/body, NO credential; it NEVER influences authorization/approval/policy/
+         * execution. Absent ⇒ the panel behaves exactly as today. The renderer never recalculates it.
+         */
+        metadata?: {
+          estimatedTokens: number;
+          estimatedCostUsd: number;
+          pricingKnown: boolean;
+          estimateOnly: true;
+          argsValid: boolean;
+        };
+      };
+    }
+  | {
+      ok: false;
+      reason: 'PRINCIPAL_UNRESOLVED' | 'CAPABILITY_NOT_SELECTED' | 'UNSUPPORTED_ACTION' | 'INVALID_PARAMS';
+      detail: string;
+    };
+
+/**
+ * FG-ERP-LIVE-IPC (ERP Session 22) — the LIVE governed platform command envelope from a client.
+ *
+ * `operation` is an UNTRUSTED string, validated against the known command set by the command bus (deny-by-default →
+ * VALIDATION_ERROR for an unknown operation). `payload` is UNTRUSTED command input, never authority. `claimedTenantId`
+ * is a CLAIM validated against the server-resolved principal and rejected on mismatch — it is NEVER authoritative.
+ * Actor and tenant are resolved SERVER-SIDE (authenticated session + active scope), never from this envelope.
+ */
+export const PlatformCommandDispatchRequest = z.object({
+  operation: z.string().trim().min(1).max(64),
+  target: z.string().trim().max(200).optional(),
+  payload: z.record(z.unknown()).default({}),
+  idempotencyKey: z.string().trim().min(1).max(200),
+  correlationId: z.string().trim().max(200).optional(),
+  claimedTenantId: z.string().trim().max(200).optional(),
+});
+export type PlatformCommandDispatchRequest = z.infer<typeof PlatformCommandDispatchRequest>;
+
+/** FG-ERP-LIVE-IPC — the client-safe response: closed error contract only, no internal detail ever. */
+export type PlatformCommandDispatchResponse = {
+  ok: boolean;
+  data?: Record<string, unknown>;
+  replayed?: boolean;
+  error?: { code: string; message: string };
+  requestId: string;
+  correlationId: string;
+  operation: string;
+};
 
 /** P4.1 — an operator control command over a connector (or one of its accounts). */
 export const ConnectorControlRequest = z.object({
@@ -2361,21 +2467,36 @@ export const OnboardingCompleteStepRequest = z.object({
 });
 export type OnboardingCompleteStepRequest = z.infer<typeof OnboardingCompleteStepRequest>;
 
-// --- AI configuration (M6 writes) ---
-export const AiSetProviderRequest = z.object({ provider: z.enum(['claude', 'ollama']) }).strict();
+// --- AI configuration (M6 writes; 'openai' added in P13C round 34) ---
+export const AiSetProviderRequest = z
+  .object({ provider: z.enum(['claude', 'ollama', 'openai']) })
+  .strict();
 export type AiSetProviderRequest = z.infer<typeof AiSetProviderRequest>;
 export const AiSetModelRequest = z.object({ model: z.string() }).strict();
 export type AiSetModelRequest = z.infer<typeof AiSetModelRequest>;
+// Credentials exist only for the CLOUD providers — 'ollama' is unrepresentable
+// here on purpose (a local server has no key to store or clear).
 export const AiSetCredentialRequest = z
-  .object({ provider: z.literal('claude'), secret: z.string().min(1) })
+  .object({ provider: z.enum(['claude', 'openai']), secret: z.string().min(1) })
   .strict();
 export type AiSetCredentialRequest = z.infer<typeof AiSetCredentialRequest>;
-export const AiClearCredentialRequest = z.object({ provider: z.literal('claude') }).strict();
+export const AiClearCredentialRequest = z
+  .object({ provider: z.enum(['claude', 'openai']) })
+  .strict();
 export type AiClearCredentialRequest = z.infer<typeof AiClearCredentialRequest>;
 export const AiTestRequest = z
-  .object({ provider: z.enum(['claude', 'ollama']), secret: z.string().optional() })
+  .object({ provider: z.enum(['claude', 'ollama', 'openai']), secret: z.string().optional() })
   .strict();
 export type AiTestRequest = z.infer<typeof AiTestRequest>;
+/**
+ * Pull a local model through the Ollama service (round 34). The model tag is a
+ * short registry name — never a URL and never a shell string; the main process
+ * passes it only as a JSON field to Ollama's own /api/pull.
+ */
+export const AiPullModelRequest = z
+  .object({ model: z.string().min(1).max(128).regex(/^[a-zA-Z0-9._:/-]+$/) })
+  .strict();
+export type AiPullModelRequest = z.infer<typeof AiPullModelRequest>;
 
 // --- Feedback ---
 export const FeedbackSubmitRequest = z.object({

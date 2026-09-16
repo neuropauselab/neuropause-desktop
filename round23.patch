@@ -1,0 +1,1019 @@
+diff --git a/.github/workflows/certification-freeze.yml b/.github/workflows/certification-freeze.yml
+new file mode 100644
+index 0000000..b0138bc
+--- /dev/null
++++ b/.github/workflows/certification-freeze.yml
+@@ -0,0 +1,51 @@
++name: certification-freeze
++
++# P13C — O-7. A COMMIT MUST NOT ENTER A FROZEN CERTIFICATION BRANCH UNNOTICED.
++#
++# On 2026-08-13 one did. It bumped the product version rc.15 -> rc.16, was
++# tagged `v1.0.0-rc.16`, pushed, and triggered five workflows including two
++# release builds. Nothing objected. `record-gate.sh` would have refused — but
++# the merge to `main` never went through the recorder, so there was no moment at
++# which anything asked the question.
++#
++# This workflow is that moment, moved to a place nobody has to remember to
++# invoke. Same lesson as Round 17i: a gate each caller must think to run is the
++# same defect as no gate, one indirection later.
++#
++# It FAILS only when the certified SOURCE has moved without a re-freeze.
++# Evidence commits under certification/ are expected and pass — that is O-5, and
++# it is why the check compares the source diff rather than the commit id.
++#
++# `fetch-depth: 0` is required: the check compares HEAD against the baseline
++# commit, which a shallow clone does not contain.
++
++on:
++  push:
++    branches: ['**']
++  pull_request:
++  workflow_dispatch:
++
++permissions:
++  contents: read
++
++jobs:
++  freeze:
++    name: Is the certification freeze intact?
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++
++      - uses: actions/setup-node@v4
++        with:
++          node-version-file: '.nvmrc'
++
++      - name: Verify the freeze
++        run: bash certification/verify-freeze.sh
++
++      - name: Test the protection itself
++        # A check nobody tests is a check nobody can trust. This exercises the
++        # real scripts against throwaway repositories, including the exact shape
++        # of the commit that broke the freeze on 13 August.
++        run: bash certification/verify-freeze.test.sh
+diff --git a/apps/desktop/src/main/auth/authService.ts b/apps/desktop/src/main/auth/authService.ts
+index f48ddde..487f686 100644
+--- a/apps/desktop/src/main/auth/authService.ts
++++ b/apps/desktop/src/main/auth/authService.ts
+@@ -13,7 +13,7 @@
+ import { EventEmitter } from 'node:events';
+ import { createHash, randomBytes } from 'node:crypto';
+ import { shell } from 'electron';
+-import type { AuthStatus, AuthProviderId, TokenPair, User } from '@neuropause/shared';
++import type { AuthErrorCause, AuthStatus, AuthProviderId, TokenPair, User } from '@neuropause/shared';
+ import { config } from '../config';
+ import { createLogger } from '../logger';
+ import { secureStore } from '../security/secureStore';
+@@ -45,6 +45,25 @@ function messageFor(err: unknown): string {
+   return err instanceof Error ? err.message : 'Unexpected error';
+ }
+ 
++/**
++ * P13C — O-4. The failure CLASS, so the renderer never has to match on message
++ * text to decide whether the F-7 notice has already explained the situation.
++ *
++ * A string comparison here would be exactly the kind of fragility this program
++ * keeps finding: today's `not.toContain('http')` matched `http_error`.
++ */
++function causeFor(err: unknown): AuthErrorCause {
++  if (err instanceof BackendError) {
++    return err.code === 'network_error' ? 'unreachable' : 'rejected';
++  }
++  return 'unknown';
++}
++
++/** Every error status carries both, so no caller can set one without the other. */
++function errorStatus(err: unknown): AuthStatus {
++  return { state: 'error', message: messageFor(err), cause: causeFor(err) };
++}
++
+ class AuthService extends EventEmitter {
+   private status: AuthStatus = { state: 'unauthenticated' };
+   private accessToken: string | null = null;
+@@ -171,7 +190,7 @@ class AuthService extends EventEmitter {
+       return status;
+     } catch (err) {
+       log.error('OAuth sign-in failed', messageFor(err));
+-      return this.setStatus({ state: 'error', message: messageFor(err) });
++      return this.setStatus(errorStatus(err));
+     } finally {
+       loopback?.close();
+     }
+@@ -183,7 +202,7 @@ class AuthService extends EventEmitter {
+       const auth = await backendClient.loginEmail(email, password);
+       return await this.applyAuthResult(auth);
+     } catch (err) {
+-      return this.setStatus({ state: 'error', message: messageFor(err) });
++      return this.setStatus(errorStatus(err));
+     }
+   }
+ 
+@@ -193,7 +212,7 @@ class AuthService extends EventEmitter {
+       const auth = await backendClient.registerEmail(email, password);
+       return await this.applyAuthResult(auth);
+     } catch (err) {
+-      return this.setStatus({ state: 'error', message: messageFor(err) });
++      return this.setStatus(errorStatus(err));
+     }
+   }
+ 
+diff --git a/apps/desktop/src/main/index.ts b/apps/desktop/src/main/index.ts
+index 5828f2d..159467f 100644
+--- a/apps/desktop/src/main/index.ts
++++ b/apps/desktop/src/main/index.ts
+@@ -17,6 +17,7 @@ import { attachLogFileSink, createLogger } from './logger';
+ import { createBoundedLog } from './storage/boundedLog';
+ import { installContentSecurityPolicy } from './security/csp';
+ import { registerIpcHandlers, setAllowedSenderOrigins } from './ipc/router';
++import { registerEarlyReachabilityHandler } from './ipc/earlyReachability';
+ import { authService } from './auth/authService';
+ import { createMainWindow, rendererDevUrl } from './window';
+ import { buildAppMenu } from './menu';
+@@ -85,6 +86,9 @@ async function bootstrap(): Promise<void> {
+   setAllowedSenderOrigins(devUrl ? [new URL(devUrl).origin] : []);
+ 
+   registerIpcHandlers();
++  // P13C O-3 — the reachability channel must answer before the window can ask.
++  // Runtime core replaces this with the sampler-backed handler when it is up.
++  registerEarlyReachabilityHandler();
+   wireEventBridges();
+ 
+   mainWindow = createMainWindow();
+diff --git a/apps/desktop/src/main/ipc/earlyReachability.test.ts b/apps/desktop/src/main/ipc/earlyReachability.test.ts
+new file mode 100644
+index 0000000..6c3b1fb
+--- /dev/null
++++ b/apps/desktop/src/main/ipc/earlyReachability.test.ts
+@@ -0,0 +1,91 @@
++/**
++ * O-3 — the reachability channel answers before runtime core exists.
++ *
++ * NEGATIVE CONTROL: remove the `registerEarlyReachabilityHandler()` call from
++ * `index.ts` bootstrap and case 1 fails — the channel has no handler and the
++ * renderer's invoke rejects, which is exactly what the 13:09 cold start logged
++ * twice.
++ *
++ * STATED LIMIT: `ipcMain` is mocked here, including its real throw-on-duplicate
++ * behaviour, because the registration ORDER is what is under test and that is a
++ * property of the module graph rather than of Electron. The end-to-end ordering
++ * (early handler, then window, then runtime core taking it over) is asserted by
++ * the bootstrap sequence in `index.ts`, not by this file.
++ */
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++
++const state = vi.hoisted(() => ({
++  handlers: new Map<string, (event: unknown, payload?: unknown) => unknown>(),
++  trusted: true,
++}));
++
++vi.mock('electron', () => ({
++  ipcMain: {
++    // Mirrors Electron: a second handler for the same channel throws.
++    handle(channel: string, fn: (event: unknown, payload?: unknown) => unknown) {
++      if (state.handlers.has(channel)) {
++        throw new Error(`Attempted to register a second handler for '${channel}'`);
++      }
++      state.handlers.set(channel, fn);
++    },
++    removeHandler(channel: string) {
++      state.handlers.delete(channel);
++    },
++  },
++}));
++vi.mock('./router', () => ({ isTrustedSenderFrame: () => state.trusted }));
++
++import { IpcChannel } from '@neuropause/shared';
++import { NOT_YET_PROBED, registerEarlyReachabilityHandler } from './earlyReachability';
++
++beforeEach(() => {
++  state.handlers.clear();
++  state.trusted = true;
++});
++
++describe('O-3 — system:backendReachability is answerable at bootstrap', () => {
++  it('has no handler until it is registered — the failure this fixes', () => {
++    expect(state.handlers.has(IpcChannel.BackendReachability)).toBe(false);
++  });
++
++  it('answers "not asked yet" rather than throwing, once registered', async () => {
++    registerEarlyReachabilityHandler();
++    const handler = state.handlers.get(IpcChannel.BackendReachability);
++    expect(handler).toBeTypeOf('function');
++
++    const result = await handler!({});
++
++    // checkedAt === null is the signal BackendReachabilityNotice reads as
++    // "still checking". Rendering this as an outage was the F-7 defect; the
++    // early handler must produce the unknown shape, never a false negative.
++    expect(result).toEqual({ reachable: false, checkedAt: null, lastError: null });
++  });
++
++  it('carries exactly the three F-7 fields and never widens', async () => {
++    registerEarlyReachabilityHandler();
++    const result = (await state.handlers.get(IpcChannel.BackendReachability)!({})) as object;
++
++    // The payload crosses an UNAUTHENTICATED channel. A url, host, latency or
++    // failure count added here would be a disclosure, not a convenience.
++    expect(Object.keys(result).sort()).toEqual(['checkedAt', 'lastError', 'reachable']);
++  });
++
++  it('applies the same origin check as every other channel', () => {
++    registerEarlyReachabilityHandler();
++    state.trusted = false;
++    expect(() => state.handlers.get(IpcChannel.BackendReachability)!({})).toThrow('Untrusted sender');
++  });
++
++  it('registration is idempotent, so runtime core can take the channel over', () => {
++    registerEarlyReachabilityHandler();
++    // Electron throws on a duplicate handle(); this must not, because
++    // registerSecureHandlers now removes before it registers and relies on
++    // exactly this being safe.
++    expect(() => registerEarlyReachabilityHandler()).not.toThrow();
++    expect(state.handlers.size).toBe(1);
++  });
++
++  it('the exported constant is frozen — a caller cannot mutate the shared answer', () => {
++    expect(Object.isFrozen(NOT_YET_PROBED)).toBe(true);
++  });
++});
+diff --git a/apps/desktop/src/main/ipc/earlyReachability.ts b/apps/desktop/src/main/ipc/earlyReachability.ts
+new file mode 100644
+index 0000000..6218575
+--- /dev/null
++++ b/apps/desktop/src/main/ipc/earlyReachability.ts
+@@ -0,0 +1,68 @@
++/**
++ * P13C — O-3. The reachability channel exists BEFORE the window does.
++ *
++ * THE DEFECT
++ *
++ * `system:backendReachability` is registered by `registerSecureHandlers`, which
++ * runs inside `initRuntimeCore()` — the LAST step of bootstrap. `createMainWindow()`
++ * runs several steps earlier, and `authService.restoreSession()` between them
++ * retries five times when the backend is down. On a cold start where runtime
++ * core took 11.8s, the renderer invoked the channel at t+8s and Electron logged:
++ *
++ *   Error occurred in handler for 'system:backendReachability':
++ *   No handler registered for 'system:backendReachability'
++ *
++ * twice, on a healthy launch. It did not occur on an 8.2s start, which is what
++ * makes it a race rather than a bug you can see once and fix.
++ *
++ * WHY NOT JUST WAIT LONGER. An arbitrary delay converts a race into a slower
++ * race, and it would still be wrong on a cold Windows disk. The window is
++ * created early ON PURPOSE — a founder should see a sign-in form immediately,
++ * not eleven seconds of nothing. The ordering is a product decision and it is
++ * the right one.
++ *
++ * WHAT THIS DOES INSTEAD
++ *
++ * Registers the channel at bootstrap with the only answer that is TRUE before a
++ * probe has run: `checkedAt: null` — "we have not asked." `BackendReachabilityNotice`
++ * already treats that exact shape as *still checking* rather than as an outage
++ * (round21), so the contract this satisfies is one that already existed and was
++ * simply unreachable during the window where it mattered most.
++ *
++ * `registerSecureHandlers` replaces this with the real sampler-backed handler
++ * the moment runtime core is up. The replacement is what `ipcMain.removeHandler`
++ * in `secureBridge.ts` is for.
++ *
++ * WHAT THIS DELIBERATELY DOES NOT DO. It does not touch INVOKABLE_CHANNELS,
++ * `routes`, PUBLIC_CHANNELS, or the Round 10 channel classification. The
++ * authority surface is unchanged: this channel was already public by the F-7
++ * exception, and the payload here carries strictly less than the real handler's.
++ */
++import { ipcMain } from 'electron';
++import { IpcChannel } from '@neuropause/shared';
++import type { BackendReachability } from '@neuropause/shared';
++import { isTrustedSenderFrame } from './router';
++
++/**
++ * The honest answer before any probe has completed.
++ *
++ * `reachable: false` here does NOT mean the backend is down. It means no probe
++ * has run, which is why `checkedAt: null` accompanies it — that field is the
++ * one the notice reads to distinguish "unknown" from "unreachable".
++ */
++export const NOT_YET_PROBED: BackendReachability = Object.freeze({
++  reachable: false,
++  checkedAt: null,
++  lastError: null,
++});
++
++/** Register the pre-runtime-core answer. Called once, before the window opens. */
++export function registerEarlyReachabilityHandler(): void {
++  ipcMain.removeHandler(IpcChannel.BackendReachability);
++  ipcMain.handle(IpcChannel.BackendReachability, (event) => {
++    // Same origin check as every other channel; an early handler is not a
++    // relaxed one.
++    if (!isTrustedSenderFrame(event)) throw new Error('Untrusted sender');
++    return NOT_YET_PROBED;
++  });
++}
+diff --git a/apps/desktop/src/main/ipc/secureBridge.ts b/apps/desktop/src/main/ipc/secureBridge.ts
+index 19cfd85..5eb6fd4 100644
+--- a/apps/desktop/src/main/ipc/secureBridge.ts
++++ b/apps/desktop/src/main/ipc/secureBridge.ts
+@@ -168,6 +168,13 @@ export async function runSecureHandler(
+ 
+ export function registerSecureHandlers(defs: AnySecureHandlerDef[], deps: SecureBridgeDeps): void {
+   for (const def of defs) {
++    // P13C O-3. `ipcMain.handle` THROWS on a channel that already has a handler,
++    // which is why the real handler could not simply replace a bootstrap-time
++    // placeholder. Removing first makes registration idempotent: the authority
++    // surface is unchanged (the same def, the same gate, the same audit), and a
++    // channel answered early by `earlyReachability.ts` is taken over here rather
++    // than colliding with it.
++    ipcMain.removeHandler(def.channel);
+     ipcMain.handle(def.channel, async (event, rawPayload: unknown) => {
+       const started = Date.now();
+       try {
+diff --git a/apps/desktop/src/main/services/crashReporter.ts b/apps/desktop/src/main/services/crashReporter.ts
+index bf8d8ff..ed16a62 100644
+--- a/apps/desktop/src/main/services/crashReporter.ts
++++ b/apps/desktop/src/main/services/crashReporter.ts
+@@ -131,8 +131,27 @@ class CrashReporter {
+     return this.status();
+   }
+ 
+-  /** Parse the local crash archive into structured records (newest first). */
++  /**
++   * Parse the local crash archive into structured records (newest first).
++   *
++   * P13C — F-11c. `crashLog.append()` is fire-and-forget BY DESIGN: recording a
++   * fault must never block the fault path. That makes every read of the file a
++   * read-past-an-unflushed-write unless it awaits the barrier first, and
++   * `createBoundedLog().flush()` exists for exactly this. Without it the export
++   * can omit the crash that triggered it.
++   *
++   * This is not cosmetic. `status()` and `recommendations()` both derive from
++   * here, so a stale read UNDER-COUNTS the patterns that raise a Safe Mode
++   * recommendation — three renderer crashes can read as zero and the guidance
++   * never appears.
++   *
++   * Same class as F-11b (TimelineService.flush was not a barrier), found by the
++   * census that finding prompted. `boundedLog` already serializes appends on one
++   * promise chain and returns it from `flush()`, so the barrier is correct here;
++   * only the call was missing.
++   */
+   async export(limit = 200): Promise<CrashRecord[]> {
++    await this.crashLog.flush();
+     try {
+       const raw = await fs.readFile(this.logPath(), 'utf8');
+       const records = raw
+diff --git a/apps/desktop/src/main/services/crashReporterFlush.test.ts b/apps/desktop/src/main/services/crashReporterFlush.test.ts
+new file mode 100644
+index 0000000..1792db6
+--- /dev/null
++++ b/apps/desktop/src/main/services/crashReporterFlush.test.ts
+@@ -0,0 +1,76 @@
++/**
++ * `crashReporter.export()` MUST AWAIT THE WRITE BARRIER. P13C — F-11c.
++ *
++ * WHY THIS FILE EXISTS
++ *
++ * F-11b showed `TimelineService.flush()` was not a barrier. The census that
++ * finding prompted swept every store that reads back a file it also appends to,
++ * and found one more: `crashReporter.export()` called `fs.readFile` directly
++ * while `crashLog.append()` is documented fire-and-forget.
++ *
++ * THE CONSEQUENCE IS BEHAVIOURAL, NOT COSMETIC. `status()` and
++ * `recommendations()` both derive from `export()`. A stale read under-counts
++ * crash categories, so the "repeated window crashes — try Safe Mode" guidance
++ * can fail to appear for a user whose window is crashing repeatedly.
++ *
++ * THESE CASES DO NOT RACE. An append costs mkdir + stat + appendFile; the read
++ * costs one readFile. The read always wins, so an unbarriered export always
++ * misses the record. NEGATIVE CONTROL — delete `await this.crashLog.flush()`
++ * from export() and both cases fail on any machine.
++ */
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
++import { promises as fs } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join } from 'node:path';
++
++const mockState = vi.hoisted(() => ({ userDataDir: '' }));
++vi.mock('electron', () => ({
++  app: { getPath: () => mockState.userDataDir, on: () => undefined },
++  crashReporter: { start: () => undefined },
++}));
++
++import { crashReporter } from './crashReporter';
++
++beforeEach(async () => {
++  mockState.userDataDir = await fs.mkdtemp(join(tmpdir(), 'np-crash-flush-'));
++});
++afterEach(async () => {
++  await fs.rm(mockState.userDataDir, { recursive: true, force: true }).catch(() => undefined);
++});
++
++describe('F-11c — export() is a read behind the crash-log write barrier', () => {
++  it('includes a crash reported immediately before the call', async () => {
++    crashReporter.report('renderer', 'render-process-gone', 'the crash being exported');
++
++    const records = await crashReporter.export();
++
++    // Was []: readFile resolved before the queued append had reached the disk,
++    // so the export omitted the only crash there was.
++    expect(records.map((r) => r.kind)).toContain('render-process-gone');
++  });
++
++  it('recommendations see crashes reported in the same tick', async () => {
++    for (let i = 0; i < 3; i += 1) {
++      crashReporter.report('renderer', 'render-process-gone', `window crash ${i + 1}`);
++    }
++
++    const recs = await crashReporter.recommendations();
++
++    // Three renderer crashes is the threshold for the Safe Mode recommendation.
++    // Unbarriered, the same three read as zero and the user is told nothing.
++    expect(recs.map((r) => r.id)).toContain('renderer-instability');
++  });
++
++  it('the archive itself holds every reported crash once flushed', async () => {
++    crashReporter.report('worker', 'worker-fault', 'first');
++    crashReporter.report('plugin', 'child-process-gone', 'second');
++
++    const records = await crashReporter.export();
++    const kinds = records.map((r) => r.kind);
++
++    expect(kinds).toContain('worker-fault');
++    expect(kinds).toContain('child-process-gone');
++    // Newest first is the documented contract and must survive the barrier.
++    expect(kinds.indexOf('child-process-gone')).toBeLessThan(kinds.indexOf('worker-fault'));
++  });
++});
+diff --git a/apps/desktop/src/renderer/src/screens/LoginScreen.tsx b/apps/desktop/src/renderer/src/screens/LoginScreen.tsx
+index 7605c9e..d05fd10 100644
+--- a/apps/desktop/src/renderer/src/screens/LoginScreen.tsx
++++ b/apps/desktop/src/renderer/src/screens/LoginScreen.tsx
+@@ -66,9 +66,26 @@ export function LoginScreen(): JSX.Element {
+   const authenticating = status.state === 'authenticating';
+   const busy = authenticating || submitting || pendingProvider !== null;
+ 
++  /**
++   * P13C — O-4. ONE failure is stated ONCE.
++   *
++   * The login screen used to render two banners for a single outage: the F-7
++   * reachability notice ("The service address could not be found on this
++   * network") and, immediately below it, the auth error ("Could not reach the
++   * NeuroPause backend. Is it running?"). Both were true. Together they read as
++   * two problems, and the second asks the reader to check something a founder
++   * who ran an installer has no way to check — the exact copy rule the notice
++   * was written to enforce, violated by the component underneath it.
++   *
++   * `cause === 'unreachable'` is suppressed here because the notice above owns
++   * that story and tells it with the failure class (dns / timeout / refused /
++   * http_error) rather than a generic sentence. Everything else — wrong
++   * password, a refusal from the service, local validation — still shows,
++   * because the notice says nothing about those.
++   */
+   const banner = useMemo(() => {
+     if (formError) return formError;
+-    if (status.state === 'error') return status.message;
++    if (status.state === 'error' && status.cause !== 'unreachable') return status.message;
+     return null;
+   }, [formError, status]);
+ 
+diff --git a/apps/desktop/ui-tests/loginBanners.test.tsx b/apps/desktop/ui-tests/loginBanners.test.tsx
+new file mode 100644
+index 0000000..ce8496c
+--- /dev/null
++++ b/apps/desktop/ui-tests/loginBanners.test.tsx
+@@ -0,0 +1,122 @@
++/**
++ * P13C — O-4. ONE failure is stated ONCE.
++ *
++ * Observed on screen, not in a test: an unreachable backend produced two
++ * stacked banners. The F-7 notice said "The service address could not be found
++ * on this network." Immediately below it the auth banner said "Could not reach
++ * the NeuroPause backend. Is it running?" — a second box, for the same outage,
++ * asking the reader to check something a founder who ran an installer cannot
++ * check. That question is the exact copy rule BackendReachabilityNotice was
++ * written to enforce, violated by the component underneath it.
++ *
++ * The suppression is keyed on `status.cause`, NOT on message text. Matching
++ * strings is how `not.toContain('http')` matched `http_error` earlier in this
++ * programme.
++ *
++ * NEGATIVE CONTROL — change the guard in LoginScreen back to
++ * `if (status.state === 'error') return status.message;` and case 1 fails.
++ */
++import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
++import { render, screen, cleanup } from '@testing-library/react';
++import type { AuthStatus } from '@neuropause/shared';
++
++const mockState = vi.hoisted(() => ({
++  status: { state: 'unauthenticated' } as AuthStatus,
++  reachable: true,
++  lastError: null as string | null,
++}));
++
++vi.mock('@renderer/lib/ipc', () => ({
++  ipc: {
++    auth: { providers: () => Promise.resolve({ providers: [] }) },
++    system: {
++      backendReachability: () =>
++        Promise.resolve({
++          reachable: mockState.reachable,
++          checkedAt: '2026-08-13T08:00:00.000Z',
++          lastError: mockState.lastError,
++        }),
++    },
++  },
++}));
++
++vi.mock('@renderer/providers/AuthProvider', () => ({
++  useAuth: () => ({
++    status: mockState.status,
++    loginOAuth: vi.fn(),
++    loginEmail: vi.fn(),
++    registerEmail: vi.fn(),
++  }),
++}));
++
++import { LoginScreen } from '@renderer/screens/LoginScreen';
++
++beforeEach(() => {
++  mockState.status = { state: 'unauthenticated' };
++  mockState.reachable = true;
++  mockState.lastError = null;
++});
++afterEach(() => cleanup());
++
++describe('O-4 — a single outage produces a single banner', () => {
++  it('suppresses the auth banner when the service is unreachable', async () => {
++    mockState.reachable = false;
++    mockState.lastError = 'dns';
++    mockState.status = {
++      state: 'error',
++      message: 'Could not reach the NeuroPause backend. Is it running?',
++      cause: 'unreachable',
++    };
++
++    render(<LoginScreen />);
++
++    // The notice owns this story and tells it with the failure class.
++    expect(await screen.findByText(/could not be found on this network/i)).toBeTruthy();
++    // The duplicate — and the unanswerable question — must be gone.
++    expect(screen.queryByText(/Is it running\?/i)).toBeNull();
++  });
++
++  it('still shows a refusal from the service — the notice says nothing about it', async () => {
++    mockState.status = {
++      state: 'error',
++      message: 'Invalid email or password.',
++      cause: 'rejected',
++    };
++
++    render(<LoginScreen />);
++
++    expect(await screen.findByText('Invalid email or password.')).toBeTruthy();
++  });
++
++  it('still shows an error of unknown cause rather than swallowing it', async () => {
++    mockState.status = { state: 'error', message: 'Unexpected error', cause: 'unknown' };
++
++    render(<LoginScreen />);
++
++    expect(await screen.findByText('Unexpected error')).toBeTruthy();
++  });
++
++  it('shows an error with no cause at all — the field is additive, not required', async () => {
++    mockState.status = { state: 'error', message: 'Legacy message' };
++
++    render(<LoginScreen />);
++
++    expect(await screen.findByText('Legacy message')).toBeTruthy();
++  });
++
++  it('keeps the four failure classes distinguishable in the notice', async () => {
++    for (const [code, phrase] of [
++      ['dns', /could not be found on this network/i],
++      ['timeout', /did not respond in time/i],
++      ['refused', /refused the connection/i],
++      ['http_error', /reported a problem/i],
++    ] as const) {
++      cleanup();
++      mockState.reachable = false;
++      mockState.lastError = code;
++      mockState.status = { state: 'error', message: 'suppressed', cause: 'unreachable' };
++      render(<LoginScreen />);
++      expect(await screen.findByText(phrase)).toBeTruthy();
++    }
++  });
++});
+diff --git a/freeze-baseline.sh b/certification/freeze-baseline.sh
+similarity index 100%
+rename from freeze-baseline.sh
+rename to certification/freeze-baseline.sh
+diff --git a/record-gate.sh b/certification/record-gate.sh
+similarity index 78%
+rename from record-gate.sh
+rename to certification/record-gate.sh
+index e5d3b52..0515e78 100644
+--- a/record-gate.sh
++++ b/certification/record-gate.sh
+@@ -161,16 +161,51 @@ if [ -n "$NOW_DIRTY" ]; then
+   exit 3
+ fi
+ 
+-# ── Refusal 4 · HEAD moved ──────────────────────────────────────────────────
++# ── Refusal 4 · THE SOURCE MOVED — not merely HEAD ──────────────────────────
++#
++# O-5. This compared `git rev-parse HEAD` to the baseline commit, so COMMITTING
++# THE EVIDENCE closed the baseline: certification/ moves HEAD without changing a
++# line of source, and every later verdict was refused. Storing evidence and
++# recording evidence were mutually exclusive, which is not a policy anyone chose.
++#
++# The dirty-tree check above already excluded certification/ for exactly this
++# reason — the fix was applied to one of two adjacent checks and missed the
++# other. So: compare the SOURCE, on the same spec.
+ NOW_COMMIT=$(git rev-parse HEAD)
+-if [ "$NOW_COMMIT" != "$BASE_COMMIT" ]; then
+-  echo "REFUSING — HEAD has moved since the baseline was frozen."
++
++# O-7 · ANCESTRY. A source diff of zero is not enough on its own: HEAD could sit
++# on a branch that never contained the baseline and happen to match. The baseline
++# must be IN this history, or the verdict describes a tree that merely resembles
++# the certified one.
++if ! git merge-base --is-ancestor "$BASE_COMMIT" HEAD 2>/dev/null; then
++  echo "REFUSING — the baseline commit is not an ancestor of HEAD."
+   echo "  baseline: $BASE_COMMIT"
+   echo "  HEAD:     $NOW_COMMIT"
+-  echo "Re-freeze. This is the exact failure this programme repeated seven times."
++  echo "This branch does not contain the tree the evidence describes."
+   exit 3
+ fi
+ 
++if ! git diff --quiet "$BASE_COMMIT" HEAD "${SRC_DIRTY_SPEC[@]}"; then
++  echo "REFUSING — the SOURCE has changed since the baseline was frozen:"
++  git diff --stat "$BASE_COMMIT" HEAD "${SRC_DIRTY_SPEC[@]}" | tail -20
++  echo
++  echo "  baseline: $BASE_COMMIT"
++  echo "  HEAD:     $NOW_COMMIT"
++  echo "Re-freeze. Committing evidence is fine; committing source is not."
++  exit 3
++fi
++
++# O-7 · PROVENANCE. Name every commit that entered the branch after the freeze,
++# with its author. These are ALLOWED (the source is unchanged, checked above) but
++# they must not be invisible: c25052d entered a frozen branch, bumped the product
++# version, was tagged and pushed, and nothing in this programme noticed.
++SINCE_FREEZE="$(git log --format='%h %an <%ae> %s' "$BASE_COMMIT..HEAD" 2>/dev/null)"
++if [ -n "$SINCE_FREEZE" ]; then
++  echo "NOTE — commits added since the freeze (source unchanged):"
++  echo "$SINCE_FREEZE" | sed 's/^/  /'
++  echo
++fi
++
+ # ── Refusal 5 · a PASS needs a command and evidence ─────────────────────────
+ if [ "$STATUS" = "PASS" ] && { [ -z "$CMD" ] || [ -z "$EV" ]; }; then
+   echo "REFUSING — a PASS requires --command and --evidence."
+@@ -187,11 +222,17 @@ fi
+ NODE_RUNNING=$(node -v | tr -d 'v'); NODE_PIN=$(cat .nvmrc 2>/dev/null | tr -d '\n')
+ RUN_ID="RUN-$(date -u +%Y%m%dT%H%M%SZ)-$GATE"
+ 
++HEAD_AUTHOR=$(git log -1 --format='%an <%ae>' HEAD)
++RECORDED_BY="$(git config user.name 2>/dev/null) <$(git config user.email 2>/dev/null)>"
++BRANCH_NAME=$(git branch --show-current)
++
+ node - "$GATES" "$GATE" "$STATUS" "$CMD" "$EV" "$BLOCKER" "$OWNER" "$REQ_EVIDENCE" "$NEXT" \
+-       "$RUN_ID" "$BASE_SHA" "$BASE_COMMIT" "$NODE_RUNNING" "$NODE_PIN" <<'RECNODE'
++       "$RUN_ID" "$BASE_SHA" "$BASE_COMMIT" "$NODE_RUNNING" "$NODE_PIN" \
++       "$NOW_COMMIT" "$HEAD_AUTHOR" "$RECORDED_BY" "$BRANCH_NAME" <<'RECNODE'
+ const fs = require('fs');
+ const [file, gate, status, cmd, ev, blocker, owner, required, next,
+-       runId, baseSha, commit, nodeRunning, nodePin] = process.argv.slice(2);
++       runId, baseSha, commit, nodeRunning, nodePin,
++       headCommit, headAuthor, recordedBy, branchName] = process.argv.slice(2);
+ 
+ let doc = { program: '13C', baseline_sha256: baseSha, source_commit: commit, gates: [] };
+ if (fs.existsSync(file)) {
+@@ -210,6 +251,14 @@ if (fs.existsSync(file)) {
+ const row = {
+   gate, status, run_id: runId,
+   source_sha: commit, baseline_sha256: baseSha,
++  // O-7. WHO and WHERE, recorded rather than assumed. `recorded_by` is the git
++  // identity configured on the machine — which in this repository is the same
++  // for every author, and that is itself the finding. It is written as what it
++  // is, not dressed up as attribution it cannot provide.
++  head_commit: headCommit,
++  head_author: headAuthor,
++  recorded_by: recordedBy,
++  branch: branchName,
+   environment: 'node ' + nodeRunning + ' (pin ' + nodePin + ')',
+   toolchain_matches_pin: nodeRunning.split('.')[0] === String(nodePin).split('.')[0],
+   recorded_at: new Date().toISOString(),
+diff --git a/certification/verify-freeze.sh b/certification/verify-freeze.sh
+new file mode 100644
+index 0000000..3d635e7
+--- /dev/null
++++ b/certification/verify-freeze.sh
+@@ -0,0 +1,117 @@
++#!/usr/bin/env bash
++# ============================================================================
++# 13C — O-7. IS THE FREEZE STILL INTACT?
++#
++# WHY THIS EXISTS
++#
++# On 2026-08-13 a commit entered the frozen certification branch, bumped the
++# product version rc.15 -> rc.16, was tagged `v1.0.0-rc.16`, pushed, and
++# triggered five CI workflows including two release builds. Nothing in the
++# programme noticed. The recorder would have refused (HEAD had moved), but the
++# merge to `main` never went through the recorder, so there was no moment at
++# which anything asked the question.
++#
++# This script is that moment. It is cheap, it takes no arguments, and it is safe
++# to run anywhere — including in CI, where it is the only thing standing between
++# a frozen baseline and a silent overwrite.
++#
++# THREE ANSWERS:
++#   0  INTACT      — the source matches the baseline; evidence commits are fine
++#   1  BROKEN      — source changed since the freeze, or the baseline is not in
++#                    this history. The certification describes a tree nobody has.
++#   2  NO BASELINE — nothing is frozen; there is nothing to protect yet
++#
++# IT DOES NOT INVENT ATTRIBUTION. Every commit in this repository is authored by
++# the machine's configured git identity, so `%an` names a config, not a person.
++# That is printed as what it is. A repository that cannot say who made a change
++# should say so out loud rather than print a name and imply it means something.
++# ============================================================================
++set -uo pipefail
++
++cd "$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repository"; exit 1; }
++BASE=certification/baseline.json
++
++# Same spec as freeze-baseline.sh and record-gate.sh. certification/ is OUTPUT
++# ABOUT the tree, not part of the tree under test — see the note in either.
++SRC_SPEC=(-- . ':(exclude)certification')
++
++if [ ! -f "$BASE" ]; then
++  echo "NO BASELINE — $BASE does not exist. Nothing is frozen."
++  exit 2
++fi
++
++BASE_COMMIT=$(node -e "console.log(require('./$BASE').source.commit)" 2>/dev/null || echo "")
++BASE_BRANCH=$(node -e "console.log(require('./$BASE').source.branch)" 2>/dev/null || echo "")
++FROZEN_AT=$(node -e "console.log(require('./$BASE').frozen_at_utc)" 2>/dev/null || echo "")
++[ -n "$BASE_COMMIT" ] || { echo "BROKEN — $BASE has no source.commit"; exit 1; }
++
++HEAD_COMMIT=$(git rev-parse HEAD)
++NOW_BRANCH=$(git branch --show-current)
++
++echo "baseline commit : $BASE_COMMIT  (branch $BASE_BRANCH, frozen $FROZEN_AT)"
++echo "HEAD            : $HEAD_COMMIT  (branch ${NOW_BRANCH:-detached})"
++echo
++
++FAIL=0
++
++# ── 1 · the baseline must be IN this history ────────────────────────────────
++if git cat-file -e "${BASE_COMMIT}^{commit}" 2>/dev/null; then
++  if git merge-base --is-ancestor "$BASE_COMMIT" HEAD 2>/dev/null; then
++    echo "ANCESTRY   OK   — the baseline commit is an ancestor of HEAD"
++  else
++    echo "ANCESTRY   FAIL — the baseline commit is NOT an ancestor of HEAD."
++    echo "                  This branch does not contain the certified tree."
++    FAIL=1
++  fi
++else
++  echo "ANCESTRY   FAIL — the baseline commit does not exist in this repository."
++  FAIL=1
++fi
++
++# ── 2 · the SOURCE must be unchanged; evidence may move freely ──────────────
++if [ "$FAIL" -eq 0 ]; then
++  if git diff --quiet "$BASE_COMMIT" HEAD "${SRC_SPEC[@]}"; then
++    echo "SOURCE     OK   — identical to the baseline (certification/ excluded)"
++  else
++    echo "SOURCE     FAIL — changed since the freeze:"
++    git diff --stat "$BASE_COMMIT" HEAD "${SRC_SPEC[@]}" | sed 's/^/                  /' | tail -25
++    FAIL=1
++  fi
++fi
++
++# ── 3 · PROVENANCE — name every commit that entered after the freeze ────────
++if git cat-file -e "${BASE_COMMIT}^{commit}" 2>/dev/null; then
++  SINCE="$(git log --format='%h  %ad  %an <%ae>  %s' --date=iso-strict "$BASE_COMMIT..HEAD" 2>/dev/null)"
++  if [ -n "$SINCE" ]; then
++    echo
++    echo "COMMITS SINCE THE FREEZE:"
++    echo "$SINCE" | sed 's/^/  /'
++    echo
++    # Which of them touched SOURCE? Those are the ones that break a freeze.
++    SRC_COMMITS="$(git log --format='%h  %an <%ae>  %s' "$BASE_COMMIT..HEAD" "${SRC_SPEC[@]}" 2>/dev/null)"
++    if [ -n "$SRC_COMMITS" ]; then
++      echo "  ^ OF THOSE, THESE TOUCHED SOURCE — the freeze was broken by:"
++      echo "$SRC_COMMITS" | sed 's/^/    /'
++      FAIL=1
++    else
++      echo "  (none of them touched source — evidence commits only, which is correct)"
++    fi
++    echo
++    AUTHORS="$(git log --format='%an <%ae>' "$BASE_COMMIT..HEAD" | sort -u | wc -l | tr -d ' ')"
++    if [ "$AUTHORS" = "1" ]; then
++      echo "ATTRIBUTION: every commit above carries ONE identity —"
++      echo "             $(git log -1 --format='%an <%ae>' HEAD)"
++      echo "             That is the machine's git config, not a person. This"
++      echo "             repository CANNOT attribute a change to a human. Stated,"
++      echo "             not fixed: per-user identity or signed commits close it."
++    fi
++  fi
++fi
++
++echo
++if [ "$FAIL" -eq 0 ]; then
++  echo "FREEZE INTACT — evidence recorded against this baseline still describes HEAD's source."
++  exit 0
++fi
++echo "FREEZE BROKEN — re-freeze before recording anything further."
++exit 1
+diff --git a/certification/verify-freeze.test.sh b/certification/verify-freeze.test.sh
+new file mode 100644
+index 0000000..a060717
+--- /dev/null
++++ b/certification/verify-freeze.test.sh
+@@ -0,0 +1,147 @@
++#!/usr/bin/env bash
++# ============================================================================
++# Tests for the certification freeze protection — O-5 and O-7.
++#
++# Builds throwaway git repositories and drives the real scripts against them.
++# No mocks: freeze-baseline.sh, record-gate.sh and verify-freeze.sh are the
++# code under test, run exactly as a person runs them.
++#
++#   bash certification/verify-freeze.test.sh
++#
++# Exit 0 = every case behaved as required.
++# ============================================================================
++set -uo pipefail
++
++TOOLS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++PASS=0; FAIL=0
++ok()   { PASS=$((PASS+1)); printf '  ok   %s\n' "$1"; }
++bad()  { FAIL=$((FAIL+1)); printf '  FAIL %s\n     expected: %s\n     actual:   %s\n' "$1" "$2" "$3"; }
++
++newrepo() {
++  local d; d=$(mktemp -d)
++  ( cd "$d" || exit 1
++  git init -q
++  git config user.name "Test Author"; git config user.email "test@local"
++  git config commit.gpgsign false
++  mkdir -p src certification apps/desktop packages/shared
++  echo '{"version":"1.0.0-rc.1"}' > apps/desktop/package.json
++  echo 'export const x = 1;' > src/app.ts
++  cat > certification/required-gates.txt <<'GATES'
++G0    You   Clean worktree, pinned Node, freezer writes CERT-<sha>
++G1    You   Artifact hashes produced from the frozen baseline
++GATES
++  git add -A && git commit -qm "base" ) >/dev/null 2>&1
++  echo "$d"
++}
++
++# The scripts are invoked by ABSOLUTE path: each one cd's to the git toplevel
++# itself, so this tests the shipped code and survives an orphan checkout that
++# removes the repository's own copy.
++run() { bash "$TOOLS/$1" "${@:2}" 2>&1; }
++
++echo "== O-5 · the recorder must accept a verdict after evidence is committed =="
++
++D=$(newrepo); cd "$D" || exit 1
++# (a) verdict BEFORE any baseline exists -> refused, and says why
++out=$(run record-gate.sh G0 PASS --command c --evidence e); rc=$?
++[ $rc -ne 0 ] && echo "$out" | grep -q "baseline.json does not exist" \
++  && ok "(a) verdict before a baseline is refused" \
++  || bad "(a) verdict before a baseline is refused" "non-zero + 'does not exist'" "rc=$rc $out"
++
++# freeze
++out=$(run freeze-baseline.sh); rc=$?
++[ $rc -eq 0 ] && echo "$out" | grep -q "BASELINE-" \
++  && ok "freeze succeeds on a clean tree" \
++  || bad "freeze succeeds on a clean tree" "rc=0 + BASELINE-" "rc=$rc $out"
++
++# (c) valid verdict against the fresh baseline
++out=$(run record-gate.sh G0 PASS --command "freeze" --evidence "clean"); rc=$?
++[ $rc -eq 0 ] && ok "(c) a valid verdict records" || bad "(c) a valid verdict records" "rc=0" "rc=$rc $out"
++
++# (b) EVIDENCE COMMITTED -> HEAD moves, source does not. THE O-5 CASE.
++git add -A certification/ >/dev/null 2>&1
++git commit -qm "cert: record G0" >/dev/null 2>&1
++out=$(run record-gate.sh G1 PASS --command "hash" --evidence "sha256 abc"); rc=$?
++[ $rc -eq 0 ] && ok "(b) a verdict is accepted AFTER evidence was committed" \
++  || bad "(b) a verdict is accepted AFTER evidence was committed" "rc=0" "rc=$rc $out"
++
++# and the freeze is reported intact, because only evidence moved
++out=$(run verify-freeze.sh); rc=$?
++[ $rc -eq 0 ] && echo "$out" | grep -q "FREEZE INTACT" \
++  && ok "verify-freeze reports INTACT after an evidence-only commit" \
++  || bad "verify-freeze reports INTACT after an evidence-only commit" "rc=0 + FREEZE INTACT" "rc=$rc $out"
++
++# (d) invalid mutation: SOURCE changes -> every path must refuse
++echo 'export const x = 2;' > src/app.ts
++git add -A && git commit -qm "src: a change nobody certified" >/dev/null 2>&1
++out=$(run record-gate.sh G1 PASS --command "hash" --evidence "sha256 abc"); rc=$?
++[ $rc -ne 0 ] && echo "$out" | grep -q "SOURCE has changed" \
++  && ok "(d) a verdict against changed SOURCE is refused" \
++  || bad "(d) a verdict against changed SOURCE is refused" "non-zero + 'SOURCE has changed'" "rc=$rc $out"
++
++out=$(run verify-freeze.sh); rc=$?
++[ $rc -eq 1 ] && echo "$out" | grep -q "FREEZE BROKEN" \
++  && ok "verify-freeze reports BROKEN when source moved" \
++  || bad "verify-freeze reports BROKEN when source moved" "rc=1 + FREEZE BROKEN" "rc=$rc $out"
++
++# the breaking commit is NAMED, with its author — the O-7 requirement
++echo "$out" | grep -q "THESE TOUCHED SOURCE" && echo "$out" | grep -q "Test Author" \
++  && ok "the commit that broke the freeze is named, with its author" \
++  || bad "the commit that broke the freeze is named, with its author" "'THESE TOUCHED SOURCE' + author" "$out"
++
++# already-recorded evidence must NOT have been silently altered
++node -e "
++const d=require('$D/certification/gates.json');
++const g0=d.gates.find(r=>r.gate==='G0');
++if(!g0||g0.status!=='PASS') { console.log('MUTATED'); process.exit(1) }
++" >/dev/null 2>&1 \
++  && ok "historical evidence is unchanged by a later refusal" \
++  || bad "historical evidence is unchanged by a later refusal" "G0 still PASS" "altered or missing"
++cd / && rm -rf "$D"
++
++echo
++echo "== O-7 · a commit must not enter a frozen branch unnoticed =="
++
++D=$(newrepo); cd "$D" || exit 1
++run freeze-baseline.sh >/dev/null 2>&1
++
++# a commit that only touches certification/ is allowed and reported
++echo "note" > certification/NOTES.md
++git add -A && git commit -qm "cert: a note" >/dev/null 2>&1
++out=$(run verify-freeze.sh); rc=$?
++[ $rc -eq 0 ] && echo "$out" | grep -q "COMMITS SINCE THE FREEZE" \
++  && ok "evidence commits are ALLOWED and still listed" \
++  || bad "evidence commits are ALLOWED and still listed" "rc=0 + listed" "rc=$rc $out"
++
++# the attribution limit is stated rather than papered over
++echo "$out" | grep -q "CANNOT attribute a change to a human" \
++  && ok "single-identity attribution limit is stated, not implied" \
++  || bad "single-identity attribution limit is stated, not implied" "explicit statement" "$out"
++
++# a version bump — the exact shape of c25052d — breaks the freeze
++echo '{"version":"1.0.0-rc.2"}' > apps/desktop/package.json
++git add -A && git commit -qm "Founder Test Build: 1.0.0-rc.2" >/dev/null 2>&1
++out=$(run verify-freeze.sh); rc=$?
++[ $rc -eq 1 ] && echo "$out" | grep -q "Founder Test Build" \
++  && ok "a version-bump commit breaks the freeze and is named (the c25052d case)" \
++  || bad "a version-bump commit breaks the freeze and is named" "rc=1 + commit named" "rc=$rc $out"
++cd / && rm -rf "$D"
++
++# ancestry: a baseline that is not in this history must be refused
++D=$(newrepo); cd "$D" || exit 1
++run freeze-baseline.sh >/dev/null 2>&1
++git add -A certification/ >/dev/null 2>&1 && git commit -qm "cert" >/dev/null 2>&1
++git checkout -q --orphan elsewhere && git rm -rq --cached . 2>/dev/null
++echo 'export const x = 1;' > src/app.ts
++git add -A && git commit -qm "unrelated history" >/dev/null 2>&1
++out=$(run verify-freeze.sh); rc=$?
++[ $rc -eq 2 ] && ok "an orphan branch has no baseline to verify (correctly reported)" \
++  || { [ $rc -eq 1 ] && echo "$out" | grep -q "ANCESTRY   FAIL" \
++       && ok "a baseline outside this history is refused" \
++       || bad "a baseline outside this history is refused" "rc=1 + ANCESTRY FAIL, or rc=2" "rc=$rc $out"; }
++cd / && rm -rf "$D"
++
++echo
++echo "-------------------------------------------"
++printf 'PASS %d   FAIL %d\n' "$PASS" "$FAIL"
++[ "$FAIL" -eq 0 ] || exit 1
+diff --git a/packages/shared/src/types/auth.ts b/packages/shared/src/types/auth.ts
+index 20efe4b..63229e5 100644
+--- a/packages/shared/src/types/auth.ts
++++ b/packages/shared/src/types/auth.ts
+@@ -21,7 +21,26 @@ export type AuthStatus =
+   | { state: 'unauthenticated' }
+   | { state: 'authenticating'; provider: AuthProviderId }
+   | { state: 'authenticated'; session: Session }
+-  | { state: 'error'; message: string };
++  /**
++   * P13C — O-4. `cause` exists so the UI can tell "the service is unreachable"
++   * apart from "those credentials are wrong" WITHOUT matching on message text.
++   * The login screen suppresses its own banner for `unreachable`, because the
++   * F-7 reachability notice above it already states that cause — and states it
++   * better, since the auth message asks the reader "Is it running?", which is a
++   * question a founder who installed an installer cannot act on.
++   *
++   * Optional and additive: an omitted `cause` behaves exactly as before.
++   */
++  | { state: 'error'; message: string; cause?: AuthErrorCause };
++
++/**
++ * Why authentication failed, at the coarseness a UI may act on.
++ *
++ *   - `unreachable`  — the service could not be contacted at all
++ *   - `rejected`     — the service answered and refused
++ *   - `unknown`      — anything else; render the message as-is
++ */
++export type AuthErrorCause = 'unreachable' | 'rejected' | 'unknown';
+ 
+ export interface EmailCredentials {
+   email: string;

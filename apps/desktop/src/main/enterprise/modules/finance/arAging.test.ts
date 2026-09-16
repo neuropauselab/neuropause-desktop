@@ -129,6 +129,12 @@ describe('Receivables Aging module — snapshots over the real invoice store', (
     expect(report.fields.days1to30).toBe(100);
     expect(report.fields.days90plus).toBe(100);
     expect(String(report.fields.note)).toContain('payables aging arrives with the vendor-bill module');
+    // NP-010 §3 — the tile law: the snapshot names what it was computed over.
+    // These invoices were created through the module (no import stamp), so the
+    // lineage must say "entered in app" — absence is never guessed into a source.
+    expect(String(report.fields.sourceLineage)).toBe(
+      'Computed over 3 invoice(s) — 3 entered in app.',
+    );
     const rows = JSON.parse(String(report.fields.rows)) as ArAgingRow[];
     expect(rows[0].invoiceNumber).toBe('INV-2');
     expect(rows[0].bucket).toBe('days90plus');

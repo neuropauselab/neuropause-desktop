@@ -194,7 +194,29 @@ export function bandFor(score: number): CommercialBand {
   return score >= 75 ? 'healthy' : score >= 50 ? 'watch' : score >= 25 ? 'at-risk' : 'critical';
 }
 /** License lifecycle state → band. */
+/**
+ * P13C ROUND 36 — GATE 5. A THROWING VALIDATOR IS NOT A VALID LICENSE.
+ *
+ * `status === null` means the license validator THREW (the composition wraps
+ * it in `safe()`), and the old inline expression fell through to
+ * `sub ? 'valid' : 'invalid'` — a license subsystem that could not evaluate
+ * at all reported green whenever any subscription record existed. `'unknown'`
+ * claims neither health nor breach: `stateTone` renders it gray, and the
+ * legitimate no-license-record-with-subscription path (an evaluation that RAN
+ * and found nothing) keeps its documented `'valid'` meaning.
+ */
+export function resolveLicenseState(
+  status: { evaluation: { state: string } | null } | null,
+  hasSubscription: boolean,
+): string {
+  if (status === null) return 'unknown';
+  return status.evaluation?.state ?? (hasSubscription ? 'valid' : 'invalid');
+}
+
 export function licenseBand(state: string): CommercialBand {
+  // Round 36: 'unknown' = the validator itself could not evaluate. Attention,
+  // not asserted breach — 'critical' would claim knowledge nobody has.
+  if (state === 'unknown') return 'watch';
   return state === 'valid' ? 'healthy' : state === 'grace' ? 'watch' : 'critical';
 }
 /** License/subscription status → band. */

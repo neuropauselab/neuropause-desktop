@@ -68,3 +68,52 @@ describe('WorkspaceStore', () => {
     expect(s2.active().name).toBe('Second Renamed');
   });
 });
+
+// GATE 23 — workspace names are unique case-insensitively WITHIN a tenant.
+describe('WorkspaceStore — name uniqueness within a tenant (Gate 23)', () => {
+  it('rejects a duplicate workspace name in the SAME tenant — fail closed', async () => {
+    const s = await newStore(tempPath());
+    s.create('Operations', 'org-acme');
+    expect(() => s.create('Operations', 'org-acme')).toThrow(
+      /A workspace named "Operations" already exists in this organization\./,
+    );
+    // The second create did not land — the tenant still has exactly one.
+    expect(s.list().filter((w) => w.organizationId === 'org-acme')).toHaveLength(1);
+  });
+
+  it('ALLOWS the same workspace name in a DIFFERENT tenant', async () => {
+    const s = await newStore(tempPath());
+    const a = s.create('Operations', 'org-a');
+    const b = s.create('Operations', 'org-b');
+    expect(a.id).not.toBe(b.id);
+    expect(a.organizationId).toBe('org-a');
+    expect(b.organizationId).toBe('org-b');
+  });
+
+  it('rejects a case-insensitive / whitespace duplicate within the tenant', async () => {
+    const s = await newStore(tempPath());
+    s.create('Operations', 'org-acme');
+    expect(() => s.create('  operations ', 'org-acme')).toThrow(/already exists/);
+  });
+
+  it('rejects a RENAME that collides with a sibling in the same tenant (case-insensitive)', async () => {
+    const s = await newStore(tempPath());
+    s.create('Operations', 'org-acme');
+    const sales = s.create('Sales', 'org-acme');
+    expect(() => s.rename(sales.id, 'operations')).toThrow(/already exists/);
+    // The colliding rename did not apply — Sales keeps its name.
+    expect(s.list().find((w) => w.id === sales.id)?.name).toBe('Sales');
+  });
+
+  it('allows a unique create + unique rename, and renaming a workspace to its OWN name (no self-collision)', async () => {
+    const s = await newStore(tempPath());
+    const ws = s.create('Projects', 'org-acme');
+    const renamed = s.rename(ws.id, 'Projects 2026');
+    expect(renamed?.name).toBe('Projects 2026');
+    // A workspace may keep (or re-case) its own name — it is not its own sibling.
+    expect(() => s.rename(ws.id, 'projects 2026')).not.toThrow();
+    // And a name used only in ANOTHER tenant is free here.
+    s.create('Ops-B', 'org-b');
+    expect(() => s.rename(ws.id, 'Ops-B')).not.toThrow();
+  });
+});

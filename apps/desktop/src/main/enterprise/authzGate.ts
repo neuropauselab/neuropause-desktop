@@ -30,10 +30,47 @@
  * explicit admin action (an owner-email `updateUser` under `people:manage`),
  * never an implicit consequence of a different account signing in.
  */
-import type { EnterprisePermission, IpcChannelName, OrgRole, OrgUser } from '@neuropause/shared';
+import type {
+  EnterprisePermission,
+  IpcChannelName,
+  OrgRole,
+  OrgUser,
+  TenantRefusal,
+} from '@neuropause/shared';
 import { IpcChannel } from '@neuropause/shared';
 import { isPlatformOnlyPermission } from '@neuropause/shared';
 import { AuthorizationError, can, effectivePermissions, requirePermission } from './authz';
+
+/**
+ * P13C ROUND 26 — W-5. THE SYSTEM KNEW WHY AND SAID SOMETHING ELSE.
+ *
+ * `resolveFull()` distinguishes EIGHT reasons a tenant cannot be resolved —
+ * `not_signed_in`, `not_loaded`, `no_workspace`, `workspace_orphaned`,
+ * `not_a_member`, `not_in_workspace`, `member_inactive`, `tenant_not_operable`
+ * — each with a plain-words message already written for a person to read.
+ *
+ * `createAuthorize` discarded all eight and threw one sentence: "No
+ * organization member is bound to this account." That sentence is TRUE of every
+ * one of them and USEFUL for exactly one. An install that never signed in, an
+ * install with no workspace, and an install whose workspace points at a deleted
+ * organization are three different faults with three different remedies, and
+ * they were indistinguishable from the outside — which is why diagnosing the
+ * Windows build required reading files off the machine instead of reading the
+ * error it printed.
+ *
+ * Carries `reason` as a stable code. Not a new error framework: the codes are
+ * the existing `TenantRefusalReason` union, and the messages are the existing
+ * `TENANT_REFUSAL_MESSAGE` table. Inventing a second vocabulary here would give
+ * one condition two names.
+ */
+export class TenantContextError extends Error {
+  readonly reason: TenantRefusal['reason'];
+  constructor(refusal: TenantRefusal) {
+    super(refusal.message);
+    this.name = 'TenantContextError';
+    this.reason = refusal.reason;
+  }
+}
 
 /** The resolved identity a permission check runs against. */
 export interface EnterpriseActor {
@@ -56,6 +93,38 @@ export interface ActorResolverDeps {
     held: readonly EnterprisePermission[];
     actorLabel: string;
   }) => void;
+  /**
+   * P13C ROUND 25 — W-1. THE RECORDER FAILED; THE DECISION STILL STANDS.
+   *
+   * `onPermissionRefused` writes a durable HOLD, and a hold needs an owner, so
+   * on an install with no resolvable tenant scope that write THROWS. It was
+   * called BEFORE the authorization error was raised, so its exception escaped
+   * in place of the real one and the user was told
+   *
+   *   "Cannot record a hold: no organization and workspace are active"
+   *
+   * instead of "No organization member is bound to this account." The second
+   * sentence names the actual condition; the first is an artefact of trying to
+   * file the paperwork about it. A diagnostic that replaces its own subject is
+   * worse than no diagnostic — this one pointed a Windows investigation at the
+   * data layer when the fault was in tenancy.
+   *
+   * Optional, and the default swallows rather than rethrows, because rethrowing
+   * IS the bug: an audit side effect must never veto an authorization outcome.
+   * Supplied by the composition root so the swallow is LOGGED rather than
+   * silent — a recorder that is failing has to stay visible to whoever reads
+   * the log.
+   */
+  onRefusalRecordFailed?: (input: { permission: EnterprisePermission; error: unknown }) => void;
+  /**
+   * P13C ROUND 26 — W-5. WHY the tenant could not be resolved, when it could not.
+   *
+   * Returns the refusal `resolveFull()` produced, or null when a tenant IS
+   * resolvable and the missing actor is genuinely a membership problem. Optional
+   * so every existing test constructs the resolver unchanged; when absent the
+   * gate falls back to the original sentence, which is the pre-W-5 behaviour.
+   */
+  tenantRefusal?: () => TenantRefusal | null;
   /** The org the active workspace is bound to — the scope of every handler. */
   activeOrgId: () => string;
   usersFor: (orgId: string) => OrgUser[];
@@ -110,9 +179,15 @@ export function resolveActor(deps: ActorResolverDeps): EnterpriseActor | null {
    * on the one field that makes it a tenant decision.
    */
   if (orgId === UNRESOLVED_TENANT) return null;
+  // O-11 (round 32): fails closed on a corrupt row whose email key was erased
+  // on disk and reloads as undefined — `!== null` alone threw a TypeError out
+  // of every permission-gated channel. Same predicate as the tenant resolver.
   const matched = deps
     .usersFor(orgId)
-    .find((m) => m.kind === 'human' && m.email !== null && m.email.trim().toLowerCase() === wanted);
+    .find(
+      (m) =>
+        m.kind === 'human' && typeof m.email === 'string' && m.email.trim().toLowerCase() === wanted,
+    );
   if (matched) return { member: matched, roles: deps.rolesFor(matched.orgId) };
   const owner = deps.ownerMember();
   if (!owner) return null;
@@ -140,9 +215,10 @@ export interface OwnerClaim {
  * the FIRST account to sign in claims it and becomes the permanent local root of
  * trust. Thereafter the SAME account only refreshes a changed display name, and a
  * DIFFERENT account never rebinds the owner — so no one can silently seize a
- * workspace by signing in. Ownership handoff is a deliberate admin action (an
- * owner-email `updateUser` by someone holding `people:manage`), not a side effect
- * of authentication.
+ * workspace by signing in. Ownership handoff is not possible through a member
+ * edit either — Round 32 (O-13) made `email` immutable on the owner row via
+ * `guardOwnerUserPatch` — so this claim rule is the ONLY writer of the owner's
+ * binding until a dedicated handoff flow exists.
  *
  * Pure and total: returns the identity to bind the owner to, or `null` to leave
  * the owner untouched.
@@ -166,6 +242,29 @@ export function decideOwnerClaim(
 export function createAuthorize(
   deps: ActorResolverDeps,
 ): (permission: EnterprisePermission) => void {
+  /**
+   * P13C ROUND 25 — W-1. RECORDING A REFUSAL CANNOT CHANGE THE REFUSAL.
+   *
+   * Every `onPermissionRefused` call in this function is a side effect of a
+   * decision that has ALREADY been made. Letting it throw does not undo the
+   * decision — it only substitutes a different exception for the one the caller
+   * was about to receive, which is how the true message got lost.
+   *
+   * One helper rather than three try/catch blocks, so a fourth refusal site
+   * added later cannot reintroduce the defect by forgetting to wrap itself.
+   */
+  const recordRefusal = (
+    permission: EnterprisePermission,
+    input: { held: readonly EnterprisePermission[]; actorLabel: string },
+  ): void => {
+    if (deps.onPermissionRefused === undefined) return;
+    try {
+      deps.onPermissionRefused({ permission, held: input.held, actorLabel: input.actorLabel });
+    } catch (error) {
+      deps.onRefusalRecordFailed?.({ permission, error });
+    }
+  };
+
   return (permission) => {
     const email = deps.sessionEmail();
     if (email === null) throw new Error('Sign in to continue.');
@@ -186,21 +285,26 @@ export function createAuthorize(
      */
     if (isPlatformOnlyPermission(permission)) {
       if (deps.isPlatformOperator?.(email) === true) return;
-      deps.onPermissionRefused?.({
-        permission,
-        held: [],
-        actorLabel: email,
-      });
+      recordRefusal(permission, { held: [], actorLabel: email });
       throw new AuthorizationError(permission);
     }
 
     const actor = resolveActor(deps);
     if (!actor) {
-      deps.onPermissionRefused?.({
-        permission,
+      recordRefusal(permission, {
         held: [],
         actorLabel: deps.sessionEmail() ?? 'This account',
       });
+      /**
+       * P13C ROUND 26 — W-5. Say which of the eight it was.
+       *
+       * The membership sentence is kept as the fallback rather than deleted: it
+       * is the correct answer when a tenant DOES resolve and the account simply
+       * is not a member of it, and it is what a resolver with no `tenantRefusal`
+       * dep still produces.
+       */
+      const refusal = deps.tenantRefusal?.() ?? null;
+      if (refusal !== null) throw new TenantContextError(refusal);
       throw new Error('No organization member is bound to this account.');
     }
     if (!can(actor.member, actor.roles, permission)) {
@@ -216,8 +320,7 @@ export function createAuthorize(
        * The throw is UNCHANGED. Every existing caller, and the secure bridge's
        * own error path, behave exactly as before; this only adds a record.
        */
-      deps.onPermissionRefused?.({
-        permission,
+      recordRefusal(permission, {
         held: [...effectivePermissions(actor.member, actor.roles)],
         actorLabel: actor.member.name || actor.member.email || 'This account',
       });
@@ -441,16 +544,29 @@ export function canDeleteMember(userId: string, ownerUserId: string): boolean {
  * Strip the fields of a member update that would disarm the seeded owner
  * (roles and status are immutable on the root of trust). Non-owner patches
  * pass through untouched.
+ *
+ * P13C ROUND 32 — O-13. `email` JOINS THE IMMUTABLE SET.
+ *
+ * Membership is DECIDED by the address on this row (`tenantContext` matches the
+ * signed-in email against it), so rewriting it does not edit a profile field —
+ * it transfers the root of trust. Round 10 closed the cross-tenant door via
+ * store ownership and deliberately left the same-tenant one open as "handoff by
+ * `people:manage`". That made every `people:manage` holder silently equivalent
+ * to the Owner, because any of them could re-point this row at themselves.
+ *
+ * Decision (2026-08-14): the owner's binding changes ONLY through the
+ * first-claim rule (`decideOwnerClaim` / `orgStore.claimOwnerIdentity`).
+ * Ownership handoff, when it exists, will be a dedicated explicit flow — not a
+ * side effect of a member edit.
  */
-export function guardOwnerUserPatch<T extends { roleIds?: unknown; status?: unknown }>(
-  userId: string,
-  ownerUserId: string,
-  patch: T,
-): T {
+export function guardOwnerUserPatch<
+  T extends { roleIds?: unknown; status?: unknown; email?: unknown },
+>(userId: string, ownerUserId: string, patch: T): T {
   if (userId !== ownerUserId) return patch;
   const out = { ...patch };
   delete (out as Record<string, unknown>).roleIds;
   delete (out as Record<string, unknown>).status;
+  delete (out as Record<string, unknown>).email;
   return out;
 }
 

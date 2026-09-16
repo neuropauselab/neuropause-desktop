@@ -1,0 +1,33 @@
+{
+  "authority": "Machine projection of the CLAUDE.md §2/§6 gate registry + FG history (FG-1..FG-10). On any conflict, CLAUDE.md wins. Consumed by certification/gate-detector.sh — classification NEVER comes from memory.",
+  "recorded": "2026-08-19",
+  "frozen": [
+    "packages/shared/",
+    "apps/desktop/src/main/runtimeCore.ts",
+    "apps/desktop/src/main/connectors/index.ts",
+    "apps/desktop/src/main/cst/",
+    "apps/desktop/src/main/enterprise/index.ts",
+    "apps/desktop/src/main/tenancy/tenantContext.ts",
+    "apps/desktop/src/main/auth/auth.ts",
+    "apps/desktop/src/main/auth/authService.ts"
+  ],
+  "sensitive": [
+    "apps/desktop/src/main/connectors/firstRealSendGuard.ts",
+    "apps/desktop/src/main/e2e/",
+    "apps/desktop/src/main/liveBrain/executionGate.ts",
+    "apps/desktop/src/main/liveBrain/proposalStore.ts",
+    "apps/desktop/src/main/liveBrain/proposalExecutionBoundary.ts",
+    "apps/desktop/src/main/verification/",
+    "apps/desktop/scripts/verify-e2e-strip.sh",
+    "certification/freeze-baseline.sh",
+    "certification/verify-freeze.sh",
+    "certification/record-gate.sh",
+    "certification/gate-detector.sh",
+    "certification/honesty-scanner.sh",
+    "certification/frozen-surfaces.json"
+  ],
+  "effectBearing": [
+    "apps/desktop/src/main/connectors/m365/"
+  ],
+  "notes": "frozen → STOP (FG gate + token + choreography). sensitive → GATE (present to the operator before editing). effectBearing → GATE when the change adds/alters an external effect; the task author must declare effect-freedom for everything else (a path scan cannot prove it)."
+}

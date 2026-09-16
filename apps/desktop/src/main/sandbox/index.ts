@@ -73,6 +73,7 @@ import { SandboxDatasetStore } from './datasetStore';
 import { SandboxExecutionEngine } from './executionEngine';
 import { generateReport } from './reportGenerator';
 import { buildDashboard } from './dashboard';
+import { registerShutdownFlush } from '../shutdownFlush';
 
 const log = createLogger('sandbox');
 
@@ -106,6 +107,17 @@ export async function initSandbox(deps: SandboxDeps): Promise<SandboxSubsystem> 
   const executions = new SandboxExecutionStore(join(deps.baseDir, 'executions.json'), now);
   const artifacts = new SandboxArtifactStore(join(deps.baseDir, 'artifacts.json'), now);
   const datasets = new SandboxDatasetStore(join(deps.baseDir, 'datasets.json'), now);
+  // GATE 16 (round 46) — these stores coalesce writes in memory; drain them on the
+  // shutdown/suspend barrier so a quit or lid close never loses the last mutation.
+  registerShutdownFlush('sandbox-stores', async () => {
+    await Promise.allSettled([
+      workspaces.flush(),
+      scenarios.flush(),
+      executions.flush(),
+      artifacts.flush(),
+      datasets.flush(),
+    ]);
+  });
 
   // Bind BEFORE load: an unbound store denies, and denying during hydration is
   // the correct order — the alternative is a window where reads are open.

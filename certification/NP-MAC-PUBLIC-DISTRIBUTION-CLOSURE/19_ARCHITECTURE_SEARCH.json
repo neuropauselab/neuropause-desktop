@@ -1,0 +1,42 @@
+{
+  "ARTIFACT": "19_ARCHITECTURE_SEARCH",
+  "DIRECTIVE": "NP-MAC-PUBLIC-DISTRIBUTION-CLOSURE-001",
+  "MACHINE": "COMPUTER_B",
+  "CUSTODY": "COMPUTER_B",
+  "AUTHORED_BY": "MACHINE",
+  "RECORDED_AT": "2026-09-13T04:01:05.907Z",
+  "source": {
+    "commit": "8331185ba41f9eb1b44eeb3656f005491df8f24d",
+    "tree": "22e24f23af6f36aefb0cf9f5e08efc6b97cc36be",
+    "branch": "pilot/public-launch"
+  },
+  "census": {
+    "process.arch": {
+      "Contents/Resources/app.asar": 12
+    },
+    "os.arch": {
+      "Contents/Resources/app.asar": 1
+    },
+    "Rosetta": {
+      "Contents/Resources/app.asar": 26
+    },
+    "/usr/local": {
+      "Contents/Resources/app.asar": 1
+    },
+    "sysctl": {
+      "Contents/Resources/app.asar": 12
+    },
+    "uname": {
+      "Contents/Resources/app.asar": 13
+    }
+  },
+  "classification": {
+    "process.arch": "LEGITIMATE (diagnostics/routing)",
+    "os.arch": "LEGITIMATE",
+    "Rosetta": "RUNTIME_RELEVANT (translation detection diagnostics) — non-blocking",
+    "sysctl": "LEGITIMATE",
+    "uname": "LEGITIMATE",
+    "/usr/local": "LEGITIMATE (path constant)"
+  },
+  "blocking": []
+}
