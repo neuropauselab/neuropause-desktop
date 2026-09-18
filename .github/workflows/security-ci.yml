@@ -38,7 +38,15 @@ jobs:
         with:
           category: sast
 
-  # ── Secret scanning: gitleaks over full history + working tree ────────────
+  # ── Secret scanning: gitleaks CLI over full history + working tree ────────
+  # NP-RELEASE-045 §2 (DECISION_SECRET_SCAN) — the gitleaks-action requires a
+  # GITLEAKS_LICENSE for organization repositories, so the scan never executed
+  # (NP-044 run 35341111155). The license-free official gitleaks CLI performs
+  # the identical scan with the same .gitleaks.toml. Scope is UNCHANGED: full
+  # git history (`gitleaks git`) AND the checked-out tree (`gitleaks dir`).
+  # Both scans fail the job on any finding (exit code 1). Binary is pinned by
+  # version AND sha256 (immutable reference; release asset checksum verified
+  # before execution).
   # Complementary control to (not a substitute for) GitHub Secret Protection /
   # push protection, which is a repository-level setting the operator enables.
   secret-scan:
@@ -49,10 +57,18 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      - name: Install gitleaks 8.24.3 (checksum-pinned)
+        run: |
+          set -euo pipefail
+          curl -sSfL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz
+          echo "9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+      - name: Secret scan — full git history (fails on any finding)
+        run: ./gitleaks git . --config .gitleaks.toml --no-banner --redact --exit-code 1
+      - name: Secret scan — checked-out tree (fails on any finding)
+        run: ./gitleaks dir . --config .gitleaks.toml --no-banner --redact --exit-code 1
 
   # ── DAST: ZAP baseline scan against a locally started backend ─────────────
   # Baseline mode is passive/non-destructive; the target is the ephemeral CI
@@ -119,7 +135,13 @@ jobs:
         with:
           target: 'http://localhost:4000'
           rules_file_name: '.zap/rules.tsv'
-          cmd_options: '-a -j'
+          # NP-RELEASE-045 §3 (DECISION_DAST) — `-I`: WARN findings are reported
+          # (output + retained report artifact) but do not fail the run; FAIL
+          # rules in .zap/rules.tsv REMAIN FATAL (zap-baseline exits 1 on FAIL
+          # regardless of -I, and fail_action=true fails the job on that).
+          # NP-044 measured result: 0 FAIL / 2 WARN / 68 PASS — the job failure
+          # was WARN exit-code semantics, not a vulnerability.
+          cmd_options: '-a -j -I'
           fail_action: true
           # No issue creation — the job result + uploaded report are the record,
           # and the job then needs no `issues: write` permission.
