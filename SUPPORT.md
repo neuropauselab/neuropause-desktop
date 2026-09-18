@@ -61,10 +61,24 @@ Please search existing issues first to avoid duplicates.
 
 ---
 
+## Contact support
+
+For product support enquiries, email **support@neuropause033.com**.
+
+For security vulnerabilities, follow the private disclosure process in
+[`SECURITY.md`](SECURITY.md) or email **security@neuropause033.com**.
+
+For privacy and data protection requests, email **privacy@neuropause033.com**.
+
+The backend also exposes `GET /support/contact` which returns the configured
+support addresses at runtime.
+
+---
+
 ## What is _not_ available yet (honest gaps)
 
-- **No public support channel** — no community forum, chat/Discord/Slack, or
-  public help desk. Proposed, not live.
+- **No community forum or public chat** — no Discord/Slack/forum yet. Proposed,
+  not live.
 - **No support SLA or tiered enterprise support desk** — an enterprise support
   model (tiers, response targets, escalation) exists only as a _framework_ in the
   adoption docs, with **no numbers presented as committed**.
@@ -73,4 +87,5 @@ Please search existing issues first to avoid duplicates.
   contract.
 
 If you have a written agreement with NeuroPause, use the contact and escalation
-path defined there. Otherwise, the documentation above is the supported route.
+path defined there. Otherwise, the documentation and email addresses above are
+the supported routes.

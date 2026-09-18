@@ -18,10 +18,11 @@ interface DeviceRow {
   trust_status: DeviceTrustStatus;
   last_seen: Date;
   registered_at: Date;
+  public_key: string | null;
 }
 
 const COLS =
-  'org_id, device_id, user_id, name, platform, os, arch, app_version, trust_status, last_seen, registered_at';
+  'org_id, device_id, user_id, name, platform, os, arch, app_version, trust_status, last_seen, registered_at, public_key';
 
 function mapRow(r: DeviceRow): Device {
   return {
@@ -36,6 +37,7 @@ function mapRow(r: DeviceRow): Device {
     trustStatus: r.trust_status,
     lastSeen: r.last_seen.toISOString(),
     registeredAt: r.registered_at.toISOString(),
+    publicKey: r.public_key,
   };
 }
 
@@ -44,16 +46,22 @@ export function createPgDeviceRepository(): DeviceRepository {
     async upsert(input: RegisterDeviceInput): Promise<Device> {
       // Re-registration updates identity + lastSeen but preserves the original
       // registered_at and trust_status (ON CONFLICT keeps the existing values).
+      // Key semantics (NP-RELEASE-044 §4): the enrolled public_key is NEVER
+      // overwritten; a NULL key (legacy pre-PoP row) is filled on the next
+      // registration — the RE-ENROLLMENT path. The router refuses a mismatched
+      // key before this runs; COALESCE makes the same rule hold at the storage
+      // layer regardless of caller.
       const { rows } = await query<DeviceRow>(
         `INSERT INTO devices (${COLS})
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'trusted', now(), now())
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'trusted', now(), now(), $9)
          ON CONFLICT (org_id, device_id) DO UPDATE SET
            name = EXCLUDED.name,
            platform = EXCLUDED.platform,
            os = EXCLUDED.os,
            arch = EXCLUDED.arch,
            app_version = EXCLUDED.app_version,
-           last_seen = now()
+           last_seen = now(),
+           public_key = COALESCE(devices.public_key, EXCLUDED.public_key)
          RETURNING ${COLS}`,
         [
           input.orgId,
@@ -64,6 +72,7 @@ export function createPgDeviceRepository(): DeviceRepository {
           input.os,
           input.arch,
           input.appVersion,
+          input.publicKey,
         ],
       );
       return mapRow(rows[0]);

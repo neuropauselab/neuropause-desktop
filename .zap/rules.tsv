@@ -1,0 +1,30 @@
+# ZAP baseline rules for the NeuroPause backend API (NP-RELEASE-043 §13).
+# Target is the JSON API started in CI (security-ci.yml dast job) — no HTML UI,
+# no cookies (bearer-token auth), TLS terminated by the edge in production.
+#
+# FAIL = must hold on the API; a regression fails the workflow.
+#   10021: helmet() sets X-Content-Type-Options: nosniff on every response.
+#   10035: helmet() sets Strict-Transport-Security by default.
+# WARN = reported, not gating, each with a reason:
+#   10010/10011: cookie flags — the API sets no cookies (bearer tokens only).
+#   10015/10049: cache-control on JSON responses — informational for an API.
+#   10017/10098: cross-domain script/CORS — CORS is locked to loopback origins
+#                in app.ts; ZAP's generic heuristic cannot see the regex origin.
+#   10020: X-Frame-Options — helmet sets frameguard; JSON responses are not
+#          frameable content. Kept WARN to surface any change.
+#   10038/10055: CSP — helmet sets a default CSP; an API serves no scripts.
+#   10063: Permissions-Policy — not applicable to a JSON API.
+#   10109: "modern web application" — informational fingerprint only.
+10010	WARN	(Cookie No HttpOnly Flag)
+10011	WARN	(Cookie Without Secure Flag)
+10015	WARN	(Incomplete or No Cache-control Header Set)
+10017	WARN	(Cross-Domain JavaScript Source File Inclusion)
+10020	WARN	(X-Frame-Options Header)
+10021	FAIL	(X-Content-Type-Options Header Missing)
+10035	FAIL	(Strict-Transport-Security Header Not Set)
+10038	WARN	(Content Security Policy (CSP) Header Not Set)
+10049	WARN	(Storable and Cacheable Content)
+10055	WARN	(CSP: Wildcard Directive)
+10063	WARN	(Permissions Policy Header Not Set)
+10098	WARN	(Cross-Domain Misconfiguration)
+10109	WARN	(Modern Web Application)

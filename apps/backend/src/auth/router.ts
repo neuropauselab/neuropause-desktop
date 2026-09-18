@@ -11,6 +11,7 @@ import { AppError, badRequest, notFound } from '../middleware/error';
 import { getProvider, enabledProviderIds } from './providers/registry';
 import { hashToken, randomToken, sha256Base64url } from './pkce';
 import { issueTokens, rotateTokens, revokeToken } from './session';
+import { revokeAccessToken } from './jwt';
 import { requireAuth } from './requireAuth';
 import {
   authenticateEmailUser,
@@ -201,9 +202,16 @@ export function createAuthRouter(): Router {
     res.json({ tokens });
   });
 
-  // Logout (revoke a single refresh token).
+  // Logout (revoke both the refresh token and the current access token).
   router.post('/logout', validateBody(RefreshRequest), async (req: Request, res: Response) => {
     const { refreshToken } = req.body as z.infer<typeof RefreshRequest>;
+    // Revoke the access token if the caller presents one (Belt-and-suspenders:
+    // the token will expire soon anyway, but explicit revocation closes the
+    // window immediately for stolen-token scenarios).
+    const authHeader = req.header('authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      await revokeAccessToken(authHeader.slice('Bearer '.length));
+    }
     await revokeToken(refreshToken);
     await audit(req, 'auth.logout', { tokenHash: hashToken(refreshToken).slice(0, 12) });
     res.status(204).end();

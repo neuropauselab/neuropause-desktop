@@ -88,6 +88,31 @@ describe('rateLimit middleware', () => {
     });
   });
 
+  describe('trust proxy — per-client keying behind a reverse proxy', () => {
+    it('uses req.ip (which Express sets from X-Forwarded-For when trust proxy is enabled)', async () => {
+      // When trust proxy is set, Express populates req.ip from X-Forwarded-For.
+      // This test verifies the limiter keys on req.ip, so two different IPs get
+      // independent budgets even when they share the same proxy peer address.
+      const mw = rateLimit({ bucket: 'proxy_test', windowSeconds: 900, max: 1 });
+      const r1 = await run(mw, '10.0.0.1');
+      expect(r1.passed).toBe(true);
+      const r2 = await run(mw, '10.0.0.2'); // different client
+      expect(r2.passed).toBe(true);        // independent budget
+      const r3 = await run(mw, '10.0.0.1'); // same client, over limit
+      expect(r3.passed).toBe(false);
+    });
+
+    it('spoofed req.ip without trust proxy results in proxy IP for all clients', async () => {
+      // Without trust proxy, all clients behind a proxy share the proxy's IP.
+      // This test documents the prior failure mode: all keyed to one address.
+      const mw = rateLimit({ bucket: 'spoof_test', windowSeconds: 900, max: 1 });
+      const r1 = await run(mw, '172.18.0.2'); // proxy IP
+      expect(r1.passed).toBe(true);
+      const r2 = await run(mw, '172.18.0.2'); // same proxy IP -> blocked
+      expect(r2.passed).toBe(false);
+    });
+  });
+
   describe('Redis unavailable (TD-3 fail-closed fallback)', () => {
     it('engages the in-process fallback (does not fail open) and marks the response', async () => {
       redisDown = true;

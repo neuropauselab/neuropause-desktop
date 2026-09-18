@@ -22,6 +22,8 @@ export interface Device {
   trustStatus: DeviceTrustStatus;
   lastSeen: string;
   registeredAt: string;
+  /** Base64url-encoded Ed25519 public key for proof-of-possession. */
+  publicKey: string | null;
 }
 
 export interface RegisterDeviceInput {
@@ -33,6 +35,8 @@ export interface RegisterDeviceInput {
   os: string;
   arch: string;
   appVersion: string;
+  /** Base64url-encoded Ed25519 public key. Required for new registrations. */
+  publicKey: string;
 }
 
 export interface DeviceRepository {

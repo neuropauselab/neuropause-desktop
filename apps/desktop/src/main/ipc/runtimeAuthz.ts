@@ -797,6 +797,10 @@ export const RUNTIME_CHANNEL_PERMISSIONS: Partial<Record<IpcChannelName, Enterpr
   [IpcChannel.AutomationHistory]: 'operations:read',
   [IpcChannel.ExecuteSessions]: 'operations:read',
   [IpcChannel.ExecuteHistory]: 'operations:read',
+  // NP-RELEASE-042 §11 — AssistantAsk and AssistantCancel gated: they trigger
+  // tenant-scoped retrieval and billable model calls. Previously PUBLIC.
+  [IpcChannel.AssistantAsk]: 'workspace:read',
+  [IpcChannel.AssistantCancel]: 'workspace:read',
   [IpcChannel.AssistantConversations]: 'dashboard:read',
   [IpcChannel.AssistantConversationGet]: 'dashboard:read',
   [IpcChannel.AssistantConversationSave]: 'dashboard:read',
@@ -1166,13 +1170,14 @@ export const PUBLIC_CHANNELS: ReadonlySet<IpcChannelName> = new Set<IpcChannelNa
    * them from here is the second layer, so an unauthenticated message cannot
    * reach the store at all rather than reaching it and being filtered.
    *
-   * `AssistantAsk` and `AssistantCancel` REMAIN public deliberately: asking a
-   * question is the per-user surface this list was written for, the answer is
-   * assembled from stores that are themselves scoped, and cancelling affects
-   * only the caller's own in-flight request.
+   * NP-RELEASE-042 §11 — `AssistantAsk` and `AssistantCancel` REMOVED from the
+   * public set. They were public under the per-user desktop-surface sender-trust
+   * model, but they trigger tenant-scoped retrieval and billable model calls.
+   * An unauthenticated renderer context can therefore drive model spend and
+   * read tenant data summaries. They are now gated by `workspace:read` in the
+   * permission table (RUNTIME_CHANNEL_PERMISSIONS) above — the same scope as
+   * the conversation channels that were removed in P13C N7.
    */
-  IpcChannel.AssistantAsk,
-  IpcChannel.AssistantCancel,
   // ── Phase 6 Stage 5 (D-8) — Notification Inbox + delivery preferences
   // (per-user local data, the AiConfig sender-trust precedent; zod-validated,
   // and `notifications:prefs.set` is bridge-audited on its handler def) ──

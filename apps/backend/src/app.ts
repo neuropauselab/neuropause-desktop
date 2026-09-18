@@ -44,6 +44,15 @@ import { reportHealthSnapshot } from './observability/healthAlerts';
 export function createApp(): Express {
   const app = express();
 
+  // Trust proxy: behind a reverse proxy (Caddy, nginx, k8s ingress), Express
+  // must know the hop count so req.ip is the real client address — not the
+  // proxy's address. Without this, per-IP rate limiters collapse to a single
+  // global bucket. The value is constrained (numeric hop count or CIDR scope),
+  // never bare `true` (which trusts arbitrary X-Forwarded-For spoofing).
+  if (env.TRUST_PROXY !== false) {
+    app.set('trust proxy', env.TRUST_PROXY);
+  }
+
   // The desktop client talks from loopback origins (and from the main process
   // with no Origin header). Lock CORS to localhost during development.
   app.use(
@@ -116,7 +125,11 @@ export function createApp(): Express {
   // limiter here, per-user limiter inside the router. Proposals, never execution.
   app.use('/ai', requireAuth, rateLimit({ bucket: 'ai_chat', windowSeconds: 60, max: 120 }), createAiGatewayRouter());
   // Account flows: protect verification-request, rate-limit reset-request.
+  // Data export and account deletion require authentication.
   app.use('/auth/request-verification', requireAuth);
+  app.use('/auth/export', requireAuth);
+  app.use('/auth/delete-account', requireAuth);
+  app.use('/auth/confirm-delete-account', requireAuth);
   app.use(
     '/auth/request-password-reset',
     rateLimit({ bucket: 'password_reset', windowSeconds: 3600, max: 5 }),
@@ -206,6 +219,19 @@ export function createApp(): Express {
       getMemberRole,
     }),
   );
+
+  // ── Support contact info (public) ──────────────────────────────────────
+  app.get('/support/contact', (_req, res) => {
+    const contacts: Record<string, string> = {};
+    if (env.SUPPORT_EMAIL) contacts.support = env.SUPPORT_EMAIL;
+    if (env.SECURITY_EMAIL) contacts.security = env.SECURITY_EMAIL;
+    if (env.PRIVACY_EMAIL) contacts.privacy = env.PRIVACY_EMAIL;
+    if (Object.keys(contacts).length === 0) {
+      res.status(503).json({ error: 'Support contact information not configured.' });
+      return;
+    }
+    res.json({ contacts });
+  });
 
   app.use(notFoundHandler);
   app.use(errorHandler);

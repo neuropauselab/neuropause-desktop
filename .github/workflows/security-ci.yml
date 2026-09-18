@@ -1,0 +1,133 @@
+# NP-RELEASE-042 §6–8 / NP-RELEASE-043 §10–13 — CI security controls: SAST,
+# secret scanning, DAST. Runs on every push and PR to gate security defects.
+#
+# All actions are pinned to full commit SHAs (immutable references, per GitHub
+# security hardening guidance). checkout/setup-node/upload-artifact reuse the
+# exact SHAs already pinned by the governed release workflow
+# (neuropause-release.yml). The three security actions were resolved from their
+# tags on 18/09/2026:
+#   github/codeql-action    v3      -> faaca9a8f6edddba5725ffe5adefdab6669a2eca
+#   gitleaks/gitleaks-action v2     -> ff98106e4c7b2bc287b24eaf42907196329070c7
+#   zaproxy/action-baseline v0.14.0 -> 7c4deb10e6261301961c86d65d54a516394f9aed
+name: security-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege at the workflow level; jobs widen only as needed.
+permissions:
+  contents: read
+
+jobs:
+  # ── SAST: CodeQL static analysis (JavaScript/TypeScript, security-extended) ──
+  sast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF results
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: github/codeql-action/init@faaca9a8f6edddba5725ffe5adefdab6669a2eca
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@faaca9a8f6edddba5725ffe5adefdab6669a2eca
+        with:
+          category: sast
+
+  # ── Secret scanning: gitleaks over full history + working tree ────────────
+  # Complementary control to (not a substitute for) GitHub Secret Protection /
+  # push protection, which is a repository-level setting the operator enables.
+  secret-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  # ── DAST: ZAP baseline scan against a locally started backend ─────────────
+  # Baseline mode is passive/non-destructive; the target is the ephemeral CI
+  # backend, never production.
+  dast:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: neuropause_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Build backend
+        run: npm run build -w @neuropause/backend
+      - name: Start backend for DAST scan
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/neuropause_test
+          REDIS_URL: redis://localhost:6379
+          JWT_ACCESS_SECRET: dast-test-secret-dast-test-secret-dast-test-secret
+          NODE_ENV: test
+          PORT: '4000'
+          RUN_MIGRATIONS_ON_BOOT: 'true'
+          SEED_STORE_ON_BOOT: 'false'
+        run: |
+          set -euo pipefail
+          node apps/backend/dist/index.js &
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4000/health > /dev/null 2>&1; then
+              echo "Backend is healthy"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Backend did not become healthy" >&2
+          exit 1
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed
+        with:
+          target: 'http://localhost:4000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -j'
+          fail_action: true
+          # No issue creation — the job result + uploaded report are the record,
+          # and the job then needs no `issues: write` permission.
+          allow_issue_writing: false
+      - name: Upload ZAP report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: zap-report
+          path: report_html.html
+          if-no-files-found: ignore

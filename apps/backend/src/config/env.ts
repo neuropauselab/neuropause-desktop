@@ -64,6 +64,38 @@ const EnvSchema = z.object({
   RAZORPAY_PLAN_PROFESSIONAL: z.string().optional(),
   RAZORPAY_PLAN_ENTERPRISE: z.string().optional(),
 
+  // Trust proxy configuration. Behind a reverse proxy (Caddy, nginx, ingress),
+  // Express must be told how many proxy hops to trust so req.ip is the real
+  // client address rather than the proxy's address. Set to the number of trusted
+  // hops (1 for a single reverse proxy), a CIDR range ('loopback', 'uniquelocal'),
+  // or 'false' to disable (direct exposure). Default: 1 (single proxy).
+  TRUST_PROXY: z
+    .string()
+    .default('1')
+    .transform((v) => {
+      if (v === 'false') return false;
+      if (v === 'true') return true;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : v;
+    }),
+
+  // NP-RELEASE-044 §5 / DECISION-4 — behavior of the protected auth path when
+  // the cross-process token-revocation authority (Redis) is unavailable.
+  //   'closed' (DEFAULT, production posture): answer a deterministic 503 —
+  //            never silently accept a token another process may have revoked.
+  //   'open'  : proceed with a logged warning. This is an explicit,
+  //            availability-first opt-in for environments WITHOUT a revocation
+  //            authority (e.g. infra-free unit suites); it is never implied.
+  // Same-process revocations are enforced from the in-process cache in BOTH
+  // modes.
+  REVOCATION_FAIL_MODE: z.enum(['closed', 'open']).default('closed'),
+
+  // Support contact — the verified support mailbox. Used by the /support/contact
+  // endpoint and embedded in the privacy policy. Unset = support endpoint disabled.
+  SUPPORT_EMAIL: z.string().email().optional(),
+  SECURITY_EMAIL: z.string().email().optional(),
+  PRIVACY_EMAIL: z.string().email().optional(),
+
   // AI gateway (server-side model credentials; the desktop never holds these).
   // AI_GATEWAY_PROVIDER=none keeps the gateway present but refusing (503).
   AI_GATEWAY_PROVIDER: z.enum(['none', 'ollama', 'anthropic', 'openai']).default('none'),

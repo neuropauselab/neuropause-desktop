@@ -51,6 +51,7 @@ import { graphStore } from '../graph/graphInstance';
 import { memoryStore } from '../memory/memoryInstance';
 import { activeTenantScope } from '../enterprise';
 import { memoryAuditLog } from '../memory/memoryAuditInstance';
+import { declareChannelResource } from '../ipc/channelResource';
 import { getEnterpriseTimeline } from '../timeline';
 import { generateBriefing } from '../intelligence/briefingGenerator';
 import { isCompleted } from '../intelligence/classify';
@@ -558,6 +559,20 @@ export function initAssistant(deps: AssistantSubsystemDeps): AssistantSubsystem 
         connectorProblems: connectorProblemList(),
       });
     },
+  });
+
+  // NP-RELEASE-043 — AssistantAsk left the PUBLIC allowlist (it triggers
+  // tenant-scoped retrieval + billable model calls) and is now authority-gated
+  // (workspace:read), so it declares what it reaches: the ask path loads or
+  // creates a conversation and persists the exchanged turns. AssistantCancel is
+  // gated alongside it but reaches NO store (it clears the caller's in-flight
+  // request from memory), so a declaration for it would be fiction — the
+  // FG-1/Slice-10 precedent.
+  declareChannelResource({
+    channel: IpcChannel.AssistantAsk,
+    store: 'assistant-conversations',
+    effect: 'mutate',
+    reason: 'ask() loads/creates the conversation and persists both turns of the exchange',
   });
 
   const handlers: SecureHandlerDef[] = [

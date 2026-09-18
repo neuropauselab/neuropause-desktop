@@ -26,6 +26,7 @@ const base = {
   os: 'darwin',
   arch: 'arm64',
   appVersion: '1.0.0-rc.1',
+  publicKey: 'dGVzdC1wdWJsaWMta2V5LWZvci11bml0LXRlc3Q',
 };
 
 describe('device service (V6.5)', () => {

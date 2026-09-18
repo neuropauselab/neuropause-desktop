@@ -28,6 +28,9 @@ export function createMemoryDeviceRepository(): DeviceRepository {
         trustStatus: existing?.trustStatus ?? 'trusted',
         registeredAt: existing?.registeredAt ?? now(),
         lastSeen: now(),
+        // Enrolled key is never overwritten; a NULL (legacy) key is filled on
+        // the next registration — mirrors the Postgres COALESCE semantics.
+        publicKey: existing?.publicKey ?? input.publicKey ?? null,
       };
       devices.set(key(input.orgId, input.deviceId), device);
       return { ...device };

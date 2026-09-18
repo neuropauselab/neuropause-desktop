@@ -24,6 +24,12 @@ export default defineConfig({
       DATABASE_URL: 'postgres://user:pass@localhost:5432/neuropause_test',
       REDIS_URL: 'redis://localhost:6379',
       JWT_ACCESS_SECRET: 'test-only-secret-test-only-secret-0123456789',
+      // NP-RELEASE-044 §5 — the infra-free unit run has NO revocation authority
+      // (no Redis), so the protected path opts into the documented
+      // availability-first mode here, EXPLICITLY. Production defaults to
+      // 'closed' (deterministic 503). The closed path itself is covered by
+      // requireAuth.test.ts / jwt.test.ts, which mock the Redis boundary.
+      REVOCATION_FAIL_MODE: 'open',
     },
   },
 });

@@ -32,13 +32,19 @@ extraResources:
 - from: resources/THIRD-PARTY-NOTICES.md
   to: docs/THIRD-PARTY-NOTICES.md
 afterSign: scripts/notarize.cjs
-# Auto-update feed: generic HTTPS provider on our own server. The GitHub repo is
-# private, so customer updaters can never read its Releases anonymously — the
-# release workflows copy the feed (beta*.yml) + update payloads to
+# Auto-update feed: generic HTTPS provider on our own server. The release
+# workflows copy the feed (beta*.yml) + update payloads to
 # /opt/neuropause-site/website/updates/ on the droplet, served at this URL.
 # channel=beta keeps the feed name beta-mac.yml / beta.yml while every build is
 # a pre-release; the workflows alias it to latest*.yml so the in-app "stable"
 # channel resolves too. Revisit at the first non-RC release.
+#
+# NP-RELEASE-043 §20 — the previous comment here claimed the GitHub repository
+# is private as the reason updaters cannot read Releases anonymously. The
+# repository is PUBLIC (visibility measured 18/09/2026; the rc.27 installer
+# answers anonymous HTTP 200). That rationale was false and is removed. The
+# update feed policy is release-policy/update-feed-policy.md: an UNSIGNED
+# candidate must never enter this feed.
 publish:
   provider: generic
   url: https://neuropause033.com/updates
@@ -79,6 +85,17 @@ dmg:
   artifactName: NeuroPause-${arch}.${ext}
 win:
   icon: icon.ico
+  # NP-RELEASE-043 §21 — fail closed: a Windows distribution artifact may not be
+  # produced unsigned. The governed release workflow already tests WIN_CSC_LINK
+  # before packaging; this makes the same rule hold at the builder level for any
+  # caller. (Local dev runs the app with `npm run dev`, not the packaged exe.)
+  forceCodeSigning: true
+  # OPERATOR ITEM (NP-RELEASE-043 §24): when the Windows signing certificate is
+  # supplied, set `publisherName` here to the certificate's exact Subject CN so
+  # electron-updater verifies the Authenticode signature of every downloaded
+  # update against it (verifyUpdateCodeSignature). Without publisherName the
+  # updater checks only the feed's sha512 integrity, which authenticates the
+  # feed, not the code's publisher.
   target:
   - target: nsis
     arch:

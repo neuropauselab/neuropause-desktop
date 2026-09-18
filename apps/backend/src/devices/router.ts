@@ -23,7 +23,13 @@ import {
   revokeDevice,
   type DeviceServiceDeps,
 } from './service';
-import { HeartbeatBody, OrgScopeBody, RegisterDeviceBody } from './schemas';
+import { ChallengeRequestBody, HeartbeatBody, OrgScopeBody, RegisterDeviceBody } from './schemas';
+import {
+  consumeChallenge,
+  enrollmentKeyDecision,
+  issueChallenge,
+  verifyDeviceSignature,
+} from './challenge';
 
 const STATUS: Record<DeviceErrorCode, number> = {
   forbidden: 403,
@@ -58,10 +64,50 @@ const h =
 export function createDevicesRouter(deps: DeviceServiceDeps): Router {
   const router = Router();
 
+  // Issue a challenge nonce for device proof-of-possession.
+  router.post(
+    '/challenge',
+    validateBody(ChallengeRequestBody),
+    h(async (req, res) => {
+      actorId(req); // must be authenticated
+      const nonce = await issueChallenge(req.body.deviceId);
+      res.json({ challenge: nonce });
+    }),
+  );
+
   router.post(
     '/',
     validateBody(RegisterDeviceBody),
     h(async (req, res) => {
+      // Verify proof-of-possession: the device must sign a server-issued
+      // challenge with its Ed25519 private key.
+      const nonceValid = await consumeChallenge(req.body.challengeNonce, req.body.deviceId);
+      if (!nonceValid) {
+        throw badRequest('invalid', 'Challenge nonce is invalid or expired. Request a new challenge.');
+      }
+      const sigValid = verifyDeviceSignature(
+        req.body.publicKey,
+        req.body.challengeSignature,
+        req.body.challengeNonce,
+      );
+      if (!sigValid) {
+        throw badRequest('invalid', 'Device signature verification failed.');
+      }
+
+      // NP-RELEASE-044 §4 — bind to the ENROLLED key, not merely a supplied
+      // one: an already-enrolled device must present its enrolled key (the
+      // signature above then proves possession of that credential). A legacy
+      // row without a key takes the TOFU re-enrollment path. See
+      // enrollmentKeyDecision() for the protocol statement.
+      const existing = await deps.repo.get(req.body.orgId, req.body.deviceId);
+      if (enrollmentKeyDecision(existing?.publicKey, req.body.publicKey) === 'mismatch') {
+        throw new AppError(
+          403,
+          'device_key_mismatch',
+          'This device is enrolled with a different key. Key rotation requires an owner/admin to remove the device, then re-enroll.',
+        );
+      }
+
       const device = await registerDevice(deps, {
         orgId: req.body.orgId,
         deviceId: req.body.deviceId,
@@ -71,6 +117,7 @@ export function createDevicesRouter(deps: DeviceServiceDeps): Router {
         os: req.body.os,
         arch: req.body.arch,
         appVersion: req.body.appVersion,
+        publicKey: req.body.publicKey,
       });
       res.status(201).json({ device });
     }),

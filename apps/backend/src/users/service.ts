@@ -35,8 +35,15 @@ export async function authenticateEmailUser(email: string, password: string): Pr
 
 /**
  * Resolves an OAuth profile to a user. If the federated identity is known,
- * returns that user. Otherwise links the identity to an existing user with the
- * same verified email, or provisions a brand-new account — all atomically.
+ * returns that user. Otherwise provisions a brand-new account.
+ *
+ * SECURITY: we do NOT auto-link an OAuth identity to an existing account by
+ * email alone. An attacker who controls an OAuth provider reporting a victim's
+ * email would otherwise hijack their account. A new OAuth identity always
+ * creates a fresh account. If the email is already taken, a unique suffix is
+ * appended so no collision occurs. Users who want to link multiple providers
+ * must do so explicitly through a future account-linking flow while
+ * authenticated on both sides.
  */
 export async function resolveOAuthUser(
   provider: string,
@@ -46,37 +53,36 @@ export async function resolveOAuthUser(
   if (existingByIdentity) return { user: existingByIdentity, isNew: false };
 
   return withTransaction(async (client) => {
-    let isNew = false;
-    let userId: string;
+    let email: string;
 
     if (profile.email) {
+      // Check if the email is already in use. If so, create a provider-scoped
+      // address so we never auto-link to an account we don't control.
       const byEmail = await client.query<{ id: string }>(
         'SELECT id FROM users WHERE email = $1',
         [profile.email],
       );
       if (byEmail.rows[0]) {
-        userId = byEmail.rows[0].id;
+        // Email already belongs to another user. Create a provider-scoped
+        // placeholder so this new OAuth user gets their own account.
+        email = `${provider}_${profile.providerUserId}@users.neuropause.local`;
       } else {
-        const created = await insertUserTx(
-          client,
-          profile.email,
-          profile.displayName,
-          profile.avatarUrl,
-        );
-        userId = created.id;
-        isNew = true;
+        email = profile.email;
       }
     } else {
       // No email from provider: synthesize a stable placeholder address.
-      const synthetic = `${provider}_${profile.providerUserId}@users.neuropause.local`;
-      const created = await insertUserTx(client, synthetic, profile.displayName, profile.avatarUrl);
-      userId = created.id;
-      isNew = true;
+      email = `${provider}_${profile.providerUserId}@users.neuropause.local`;
     }
 
-    await linkIdentityTx(client, userId, provider, profile.providerUserId, profile.email);
+    const created = await insertUserTx(
+      client,
+      email,
+      profile.displayName,
+      profile.avatarUrl,
+    );
+    await linkIdentityTx(client, created.id, provider, profile.providerUserId, profile.email);
 
-    const { rows } = await client.query('SELECT * FROM users WHERE id = $1', [userId]);
-    return { user: mapUser(rows[0]), isNew };
+    const { rows } = await client.query('SELECT * FROM users WHERE id = $1', [created.id]);
+    return { user: mapUser(rows[0]), isNew: true };
   });
 }
