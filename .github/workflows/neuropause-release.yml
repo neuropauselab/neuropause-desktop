@@ -81,7 +81,7 @@ jobs:
           printf '%s' "$NP_AUTHORITY_JSON" > "$RUNNER_TEMP/authority.json"
           node scripts/verify-production-environment-contract.cjs release-policy/env-contract.json
           node scripts/authority-admission.cjs --authority "$RUNNER_TEMP/authority.json" --trust release-policy/authority-trust.json --environment release-policy/environment-capture.json --review "$RUNNER_TEMP/deployment-review.json" --out "$RUNNER_TEMP/authority-admission.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: authority-receipt
           if-no-files-found: error
@@ -194,7 +194,7 @@ jobs:
       - name: Capture tracked-tree state AFTER the build
         shell: bash
         run: node scripts/tree-state.cjs "$RUNNER_TEMP/tree-post.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: desktop-win
           if-no-files-found: error
@@ -204,7 +204,7 @@ jobs:
             apps/desktop/dist/*.zip
             apps/desktop/dist/*.yml
             apps/desktop/dist/*.blockmap
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: tree-win
           if-no-files-found: error
@@ -254,7 +254,7 @@ jobs:
           npm run package:mac
       - name: Capture tracked-tree state AFTER the build
         run: node scripts/tree-state.cjs "$RUNNER_TEMP/tree-post.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: desktop-mac
           if-no-files-found: error
@@ -264,7 +264,7 @@ jobs:
             apps/desktop/dist/*.zip
             apps/desktop/dist/*.yml
             apps/desktop/dist/*.blockmap
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: tree-mac
           if-no-files-found: error
@@ -303,7 +303,7 @@ jobs:
           set -euo pipefail
           helm lint deploy/helm/neuropause-backend
           helm package deploy/helm/neuropause-backend --version "$CANDIDATE_VERSION" --app-version "$CANDIDATE_VERSION" --destination "$RUNNER_TEMP/chart"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: backend-image
           if-no-files-found: error
@@ -311,7 +311,7 @@ jobs:
           path: |
             ${{ runner.temp }}/backend-image.tar
             ${{ runner.temp }}/backend-image-id.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: backend-chart
           if-no-files-found: error
@@ -338,7 +338,7 @@ jobs:
           npm run build -w @neuropause/web
           test -d apps/web/dist
           tar -czf "$RUNNER_TEMP/neuropause-web-${CANDIDATE_VERSION}.tar.gz" -C apps/web/dist .
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: web
           if-no-files-found: error
@@ -383,7 +383,7 @@ jobs:
         uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a
         with:
           subject-path: 'dist/*'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: provenance
           if-no-files-found: error
@@ -416,7 +416,7 @@ jobs:
       - name: Verify Authenticode signatures (fail-closed; signer CN pinned by variable)
         env: { EXPECTED_WIN_SIGNER_CN: "${{ vars.EXPECTED_WIN_SIGNER_CN }}" }
         run: node scripts/verify-signing.cjs dist --platform windows
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with: { name: signing-receipt-windows, path: signing-receipt.json, if-no-files-found: error }
   signing-verification-macos:
     needs: [verify-artifacts]
@@ -428,7 +428,7 @@ jobs:
       - name: Verify codesign + Gatekeeper + notarization staple (fail-closed; team id pinned by variable)
         env: { EXPECTED_MAC_TEAM_ID: "${{ vars.EXPECTED_MAC_TEAM_ID }}" }
         run: node scripts/verify-signing.cjs dist --platform macos
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with: { name: signing-receipt-macos, path: signing-receipt.json, if-no-files-found: error }
   stage-publication:
     needs: [signing-verification-windows, signing-verification-macos, candidate-admission]
@@ -486,7 +486,7 @@ jobs:
           docker inspect --format '{{index .RepoDigests 0}}' "${BACKEND_IMAGE}:${CANDIDATE_TAG}" | tee "$RUNNER_TEMP/backend-digest.txt"
           printf '%s\n' "$BUILT_ID" > "$RUNNER_TEMP/backend-image-id.txt"
           docker logout registry.digitalocean.com
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: stage-receipt
           if-no-files-found: error
@@ -529,7 +529,7 @@ jobs:
           kubectl -n "$KUBE_NAMESPACE" rollout status "deployment/${KUBE_DEPLOYMENT}" --timeout=600s
           kubectl -n "$KUBE_NAMESPACE" get deployment "$KUBE_DEPLOYMENT" -o jsonpath='{.spec.template.spec.containers[?(@.name=="backend")].image}' | grep -qx "$DIGEST_REF"
           rm -f "$RUNNER_TEMP/kubeconfig"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: promote-backend-receipt
           if-no-files-found: error
@@ -591,7 +591,7 @@ jobs:
           curl -fsSI "$PUBLIC_DOWNLOADS_BASE/NeuroPause-Setup.exe" | head -n 1
           curl -fsSI "$PUBLIC_DOWNLOADS_BASE/NeuroPause.dmg" | head -n 1
           curl -fsS "$NEUROPAUSE_BACKEND_URL/health" | tee "$RUNNER_TEMP/backend-health.json"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with: { name: public-verification-receipt, path: '${{ runner.temp }}/backend-health.json', if-no-files-found: error, retention-days: 90 }
   independent-reconciliation:
     needs: [public-verification, candidate-admission]
@@ -611,5 +611,5 @@ jobs:
           set -euo pipefail
           node scripts/compose-release-receipt.cjs receipts control-receipt.json
           node scripts/validate-release-evidence.cjs control-receipt.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with: { name: release-evidence, path: control-receipt.json, if-no-files-found: error, retention-days: 90 }
