@@ -63,7 +63,18 @@
 /LICENSE                        @neuropause/leads                    # PLACEHOLDER
 /CONTRIBUTING.md                @neuropause/leads                    # PLACEHOLDER
 /GOVERNANCE.md                  @neuropause/leads                    # PLACEHOLDER
-/CODEOWNERS                     @neuropause/leads                    # PLACEHOLDER
+# NP-RELEASE-051 §5.2 (human instrument, Saurabh Patel, 2026-09-18): the two
+# release-governance paths below are owned by the RESOLVING individual owner
+# designated in the frozen instrument NP-HGD-SECOND-CODEOWNER-001
+# (@anjanasaurabh317-lab — verified GitHub user 245504104, org member, repo
+# admin). No owner invented: the designated second Code Owner is the only
+# identity that currently resolves (the maintainers team does not exist yet —
+# ADMIN action; Saurabh's GitHub identity binding is NOT_ESTABLISHED and is
+# therefore deliberately NOT encoded as a handle). Enforcement activates only
+# when an administrator enables code-owner review in branch protection — these
+# entries make that step safe because the owners actually resolve.
+/CODEOWNERS                     @anjanasaurabh317-lab
+/release-policy/                @anjanasaurabh317-lab
 /SECURITY.md                    @neuropause/leads @neuropause/security       # PLACEHOLDER
 /CODE_OF_CONDUCT.md             @neuropause/leads                    # PLACEHOLDER
 /SUPPORT.md                     @neuropause/leads @neuropause/docs           # PLACEHOLDER
