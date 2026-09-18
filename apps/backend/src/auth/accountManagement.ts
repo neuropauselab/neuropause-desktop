@@ -15,10 +15,9 @@ import { logger } from '../config/logger';
 interface UserExportRow { id: string; email: string; display_name: string | null; email_verified: boolean; created_at: Date }
 interface IdentityRow { provider: string; provider_user_id: string; email: string | null }
 interface SessionRow { id: string; created_at: Date; expires_at: Date; revoked_at: Date | null }
-interface MembershipRow { organization_id: string; role: string; created_at: Date }
+interface MembershipRow { org_id: string; role: string; created_at: Date }
 interface DeviceExportRow { device_id: string; org_id: string; platform: string; os: string; registered_at: Date }
 interface AuditRow { action: string; created_at: Date; detail: unknown }
-interface SyncRow { entity_type: string; entity_id: string; last_synced_at: Date | null }
 
 export interface UserExportData {
   user: {
@@ -33,7 +32,10 @@ export interface UserExportData {
   organizations: Array<{ orgId: string; role: string; joinedAt: string }>;
   devices: Array<{ deviceId: string; orgId: string; platform: string; os: string; registeredAt: string }>;
   auditLog: Array<{ action: string; createdAt: string; detail: unknown }>;
-  syncState: Array<{ entityType: string; entityId: string; lastSyncedAt: string }>;
+  // NP-047 / B HIGH-2: `sync_state` is ORG-scoped (PRIMARY KEY (org_id,
+  // entity_type, entity_id); no user_id column). It is organization data, not
+  // per-user personal data, so it is NOT part of a user export. The previous
+  // field queried a nonexistent column and could never return rows.
 }
 
 /**
@@ -42,7 +44,7 @@ export interface UserExportData {
  * are excluded.
  */
 export async function exportUserData(userId: string): Promise<UserExportData> {
-  const [userRes, identitiesRes, sessionsRes, membershipsRes, devicesRes, auditRes, syncRes] =
+  const [userRes, identitiesRes, sessionsRes, membershipsRes, devicesRes, auditRes] =
     await Promise.all([
       query<UserExportRow>(
         `SELECT id, email, display_name, email_verified, created_at FROM users WHERE id = $1`,
@@ -56,8 +58,11 @@ export async function exportUserData(userId: string): Promise<UserExportData> {
         `SELECT id, created_at, expires_at, revoked_at FROM auth_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
         [userId],
       ),
+      // NP-047 / B HIGH-1: the relation is `memberships` (column org_id), not
+      // `org_members`/`organization_id` — the previous query was 42P01 on
+      // every call.
       query<MembershipRow>(
-        `SELECT organization_id, role, created_at FROM org_members WHERE user_id = $1`,
+        `SELECT org_id, role, created_at FROM memberships WHERE user_id = $1`,
         [userId],
       ),
       query<DeviceExportRow>(
@@ -68,10 +73,6 @@ export async function exportUserData(userId: string): Promise<UserExportData> {
         `SELECT action, created_at, detail FROM audit_log WHERE user_id = $1 ORDER BY created_at DESC LIMIT 500`,
         [userId],
       ),
-      query<SyncRow>(
-        `SELECT entity_type, entity_id, last_synced_at FROM sync_state WHERE user_id = $1`,
-        [userId],
-      ).catch(() => ({ rows: [] as SyncRow[] })),
     ]);
 
   const user = userRes.rows[0];
@@ -97,7 +98,7 @@ export async function exportUserData(userId: string): Promise<UserExportData> {
       revoked: !!r.revoked_at,
     })),
     organizations: membershipsRes.rows.map((r) => ({
-      orgId: r.organization_id,
+      orgId: r.org_id,
       role: r.role,
       joinedAt: r.created_at.toISOString(),
     })),
@@ -112,11 +113,6 @@ export async function exportUserData(userId: string): Promise<UserExportData> {
       action: r.action,
       createdAt: r.created_at.toISOString(),
       detail: r.detail,
-    })),
-    syncState: syncRes.rows.map((r) => ({
-      entityType: r.entity_type,
-      entityId: r.entity_id,
-      lastSyncedAt: r.last_synced_at?.toISOString() ?? '',
     })),
   };
 }
@@ -194,8 +190,14 @@ export async function confirmAccountDeletion(
     // 4. Delete auth tokens (verification/reset).
     await client.query(`DELETE FROM auth_tokens WHERE user_id = $1`, [userId]);
 
-    // 5. Delete sync state (if table exists).
-    await client.query(`DELETE FROM sync_state WHERE user_id = $1`, [userId]).catch(() => {});
+    // NP-047 / B HIGH-2: the previous step here was
+    //   DELETE FROM sync_state WHERE user_id = $1  (.catch(() => {}))
+    // `sync_state` is ORG-scoped and has no user_id column, so the statement
+    // was 42703 on every call — and the swallowed error was poisoning the
+    // enclosing transaction (a failed statement aborts it), rolling the whole
+    // deletion back. sync_state rows are organization data, not per-user
+    // personal data; they are not part of account deletion. The swallowed
+    // catch around a transactional statement is removed as a class.
 
     // 6. Anonymize the user record. We keep the row so audit_log foreign keys
     // remain valid, but strip all PII. The email is replaced with a non-routable

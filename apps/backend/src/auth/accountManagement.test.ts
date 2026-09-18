@@ -43,7 +43,6 @@ vi.mock('../db/pool', () => {
         return { rows: [] };
       }
       if (sql.includes('DELETE FROM auth_tokens')) return { rows: [] };
-      if (sql.includes('DELETE FROM sync_state')) return { rows: [] };
       if (sql.includes('UPDATE users SET')) {
         const user = users.find((u: any) => u.id === params![0]);
         if (user) {
@@ -70,7 +69,7 @@ vi.mock('../db/pool', () => {
       if (sql.includes('FROM auth_sessions')) {
         return { rows: sessions.filter((s: any) => s.user_id === params![0]) };
       }
-      if (sql.includes('FROM org_members')) {
+      if (sql.includes('FROM memberships')) {
         return { rows: memberships.filter((m: any) => m.user_id === params![0]) };
       }
       if (sql.includes('FROM devices')) {
@@ -78,9 +77,6 @@ vi.mock('../db/pool', () => {
       }
       if (sql.includes('FROM audit_log')) {
         return { rows: auditLog.filter((a: any) => a.user_id === params![0]) };
-      }
-      if (sql.includes('FROM sync_state')) {
-        return { rows: [] };
       }
       if (sql.includes('UPDATE account_deletion_requests SET status = \'cancelled\'')) {
         deletionRequests.forEach((r: any) => {
