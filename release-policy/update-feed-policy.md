@@ -4,10 +4,14 @@ Established: NP-RELEASE-043 §23 (18/09/2026)
 
 ## Rule
 
-```
 UNSIGNED RELEASE CANDIDATE          → CANNOT ENTER PUBLIC UPDATE FEED
 SIGNED + VERIFIED RELEASE CANDIDATE → MAY ENTER PUBLIC UPDATE FEED
-```
+
+    PILOT-CLASS ARTIFACT                 -> CANNOT ENTER PUBLIC UPDATE FEED
+    (regardless of signing state; PILOT distribution is CONTROLLED_PILOT only,
+     per release-policy/pilot-class-policy.json and the PILOT-CLASS GOVERNANCE
+     AMENDMENT v1.0. A pilot artifact in updates/*.yml or any publicly
+     addressable update path is a policy violation.)
 
 The public update feed (`https://neuropause033.com/updates/*.yml` and the
 artifacts they reference) is part of the governed release path. It must not
@@ -52,3 +56,4 @@ artifact must be removed from the feed or replaced by a signed, admitted
 candidate. The removal is an OPERATOR action on the update host
 (`/opt/neuropause-site/website/updates/`), recorded in the release evidence
 when performed.
+---

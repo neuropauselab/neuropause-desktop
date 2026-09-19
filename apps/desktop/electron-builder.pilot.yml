@@ -1,0 +1,44 @@
+# DRAFT v2 (arm64) - apps/desktop/electron-builder.pilot.yml (admin-placed via the reviewed
+# successor PR). PILOT-CLASS build configuration. SCOPED exception per the PILOT-CLASS
+# GOVERNANCE AMENDMENT v1.0: used ONLY by the package:win:pilot script; the production config
+# (electron-builder.yml) keeps win.forceCodeSigning: true UNCHANGED. NO publish provider:
+# a pilot build can never reach the update feed from the builder.
+# ARCHITECTURE = arm64 per the completed s12 HUMAN DECISION RECORD (Saurabh Patel, 19/09/2026):
+#   "PILOT_ARCHITECTURE = arm64" - designated environment: non-production Windows 11 ARM64.
+# (v1 of this draft was x64-only, inherited from the baseline before the human decision existed;
+# superseded by this v2 on receipt of the explicit arm64 decision.)
+appId: com.neuropause.desktop.pilot
+productName: NeuroPause (Pilot)
+copyright: "Copyright (c) NeuroPause"
+directories:
+  output: dist-pilot
+  buildResources: resources
+asar: true
+asarUnpack:
+- resources/plugin-host.cjs
+files:
+- out/**/*
+- package.json
+- '!**/*.test.ts'
+extraResources:
+- from: resources/build-info.json
+  to: build-info.json
+- from: resources/pilot-class.json      # RELEASE_CLASS=PILOT marker, written by the pilot script
+  to: pilot-class.json
+- from: resources/THIRD-PARTY-NOTICES.md
+  to: THIRD-PARTY-NOTICES.md
+# NO publish: block - pilot artifacts have no update-feed path by construction.
+win:
+  icon: icon.ico
+  # PILOT-CLASS scoped exception (amendment s2): unsigned permitted ONLY in this pilot config.
+  forceCodeSigning: false
+  target:
+  - target: nsis
+    arch: [arm64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: NeuroPause Pilot
+  artifactName: NeuroPause-Pilot-Setup-${arch}.${ext}

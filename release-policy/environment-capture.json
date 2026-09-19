@@ -1,0 +1,25 @@
+{
+  "_template": false,
+  "_provenance": [
+    "ADMIN-PLACED DRAFT (NP-082): to be re-captured or confirmed by the non-subject admin and",
+    "placed at release-policy/environment-capture.json by hand. Values measured via",
+    "authenticated API at 2026-09-19T08:55Z (session dishantdobariya91-debug). Re-capture after ANY",
+    "environment change."
+  ],
+  "source": "admin_api_capture",
+  "captured_by_verifier": true,
+  "name": "production-release",
+  "exists": true,
+  "required_reviewers": true,
+  "prevent_self_review": true,
+  "deployment_tag_pattern": "v*",
+  "captured_at": "2026-09-19T08:55Z",
+  "captured_by_login": null,
+  "reviewer_ids": [
+    {
+      "login": "Kinjal-7",
+      "id": 321285803
+    }
+  ],
+  "api_response_sha256": null
+}

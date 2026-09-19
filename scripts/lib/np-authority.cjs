@@ -54,7 +54,18 @@ function canon(o) {
 
 const R = (verdict, code, detail) => ({ verdict, code, detail: detail === undefined ? null : detail });
 
-/** Fields covered by the issuer's signature (canonical bytes of exactly these, in canonical key order). */
+/**
+ * NP-RELEASE-082 envelope repair (SIGNED_FIELDS defect, sealed finding).
+ * v1 signed ONLY the SIGNED_FIELDS subset, so members outside it — including the rehearsal
+ * markers authority_origin / real_authority / production_validity — could be DELETED or altered
+ * without invalidating the signature, converting a signed rehearsal object into production
+ * authority. v1.1 signs the ENTIRE object except `signature` (canonical form), and additionally
+ * rejects any field outside KNOWN_FIELDS before signature verification. Schema version is bumped
+ * to np-authority/1.1: no v1 production instrument was ever issued (trust root was never
+ * populated), so no compatibility surface exists.
+ *
+ * SIGNED_FIELDS is retained as the documented core-field list; it no longer bounds the signature.
+ */
 const SIGNED_FIELDS = [
   'authority_id',
   'authority_schema_version',
@@ -79,7 +90,36 @@ const SIGNED_FIELDS = [
   'reviewer_decision',
   'decision_timestamp',
   'decision_nonce',
+  // v1.1 release-class governance fields (PILOT-CLASS amendment, NP-RELEASE-081/082):
+  'release_class',
+  'distribution_class',
+  'public_feed_permission',
+  'signing_requirement',
 ];
+
+/** Every field an np-authority/1.1 object may carry. Anything else => DENY UNKNOWN_FIELD_REJECTED. */
+const KNOWN_FIELDS = new Set([
+  ...SIGNED_FIELDS,
+  'signature',
+  'signature_algorithm',
+  'authority_origin',
+  'real_authority',
+  'production_validity',
+]);
+
+/** Release-class value contract (PILOT-CLASS governance amendment, Saurabh Patel 19/09/2026). */
+const RELEASE_CLASSES = Object.freeze({
+  PILOT: {
+    distribution_class: 'CONTROLLED_PILOT',
+    public_feed_permission: 'DENY',
+    signing_requirements: ['REQUIRED', 'UNSIGNED_PILOT_EXCEPTION'],
+  },
+  PRODUCTION: {
+    distribution_class: 'PUBLIC_PRODUCTION',
+    public_feed_permission: 'ALLOW_SIGNED_ONLY',
+    signing_requirements: ['REQUIRED'],
+  },
+});
 
 /** Fields that must be present and non-empty (B38_AUTHORITY_OBJECT_CONTRACT §6 REQUIRED). */
 const REQUIRED = [
@@ -103,11 +143,23 @@ const REQUIRED = [
   'decision_nonce',
   'signature',
   'signature_algorithm',
+  // v1.1: release-class fields are mandatory — an authority that does not state its class,
+  // distribution boundary, feed permission and signing requirement is INCOMPLETE.
+  'release_class',
+  'distribution_class',
+  'public_feed_permission',
+  'signing_requirement',
 ];
 
+/**
+ * v1.1 FULL-COVERAGE canonical signing bytes: every member of the object except `signature`
+ * itself, canonicalised (sorted keys at every depth). Deleting, adding or altering ANY member —
+ * signed-core, rehearsal marker, release-class or unknown — changes these bytes and therefore
+ * invalidates the signature. This is the repair of the SIGNED_FIELDS deletion defect.
+ */
 function signingBytes(a) {
   const o = {};
-  for (const k of SIGNED_FIELDS) if (a[k] !== undefined) o[k] = a[k];
+  for (const k of Object.keys(a)) if (k !== 'signature' && a[k] !== undefined) o[k] = a[k];
   return Buffer.from(canon(o));
 }
 
@@ -123,8 +175,37 @@ function admitAuthority(authority, actual, trust) {
       return R('DENY', 'SYNTHETIC_MISLABELLED');
     }
     if (a.authority_schema_version !== t.schemaVersion) return R('DENY', 'SCHEMA_VERSION_UNSUPPORTED');
+    // v1.1: closed field set. Any member outside the schema is rejected BEFORE signature
+    // verification (defence in depth; full-coverage signing would also invalidate it).
+    const unknown = Object.keys(a).filter((k) => !KNOWN_FIELDS.has(k));
+    if (unknown.length) return R('DENY', 'UNKNOWN_FIELD_REJECTED', unknown);
     const missing = REQUIRED.filter((k) => a[k] === undefined || a[k] === null || a[k] === '');
     if (missing.length) return R('DENY', 'AUTHORITY_INCOMPLETE', missing);
+
+    // ---- v1.1 release-class governance (PILOT-CLASS amendment): the class and its boundary
+    // fields are signed (full coverage) and validated against a fixed value contract, so a
+    // signed PILOT authority cannot be mutated into PRODUCTION, into public-feed permission,
+    // or into an unbounded distribution without invalidating the signature — and even a
+    // freshly-signed object with inconsistent class fields is DENIED here.
+    const rc = RELEASE_CLASSES[a.release_class];
+    if (!rc) return R('DENY', 'RELEASE_CLASS_INVALID', a.release_class);
+    if (t.releaseClass !== undefined && t.releaseClass !== null && a.release_class !== t.releaseClass) {
+      return R('DENY', 'RELEASE_CLASS_MISMATCH', { authority: a.release_class, trust: t.releaseClass });
+    }
+    if (a.distribution_class !== rc.distribution_class) {
+      return R('DENY', a.release_class === 'PILOT' ? 'PILOT_DISTRIBUTION_UNBOUNDED' : 'DISTRIBUTION_CLASS_INVALID');
+    }
+    if (a.public_feed_permission !== rc.public_feed_permission) {
+      return R('DENY', a.release_class === 'PILOT' ? 'PILOT_PUBLIC_FEED_FORBIDDEN' : 'FEED_PERMISSION_INVALID');
+    }
+    if (!rc.signing_requirements.includes(a.signing_requirement)) {
+      return R(
+        'DENY',
+        a.release_class === 'PRODUCTION' && a.signing_requirement !== 'REQUIRED'
+          ? 'UNSIGNED_PRODUCTION_FORBIDDEN'
+          : 'SIGNING_REQUIREMENT_INVALID',
+      );
+    }
 
     // ---- issuer independence: trust list held outside the subject; issuer ∉ subject principals ----
     if (!Array.isArray(t.trustedIssuers) || !t.trustedIssuers.includes(a.issuer_identity)) {
@@ -253,4 +334,17 @@ function attestationAuthorizes(verification, admitted, artifact) {
   }
 }
 
-module.exports = { admitAuthority, attestationAuthorizes, signingBytes, canon, H, SIGNED_FIELDS, REQUIRED, hex40, hex64, plain };
+module.exports = {
+  admitAuthority,
+  attestationAuthorizes,
+  signingBytes,
+  canon,
+  H,
+  SIGNED_FIELDS,
+  KNOWN_FIELDS,
+  RELEASE_CLASSES,
+  REQUIRED,
+  hex40,
+  hex64,
+  plain,
+};

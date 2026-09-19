@@ -25,6 +25,7 @@
     "verify:sbom": "node scripts/generate-sbom.cjs && node scripts/verify-sbom.cjs",
     "verify:packaged": "node scripts/verify-packaged-content.cjs --dir out",
     "package:win": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --win --x64 --publish never && npm run verify:release -- --platform win",
+    "package:win:pilot": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && node -e \"require('fs').writeFileSync('resources/pilot-class.json', JSON.stringify({release_class:'PILOT',distribution_class:'CONTROLLED_PILOT',public_feed_permission:'DENY',commit:process.env.GITHUB_SHA||require('child_process').execSync('git rev-parse HEAD').toString().trim(),built_at:new Date().toISOString()},null,2))\" && electron-vite build && electron-builder --config electron-builder.pilot.yml --win --arm64 --publish never",
     "package:mac:universal": "node scripts/generate-notices.cjs && node scripts/generate-build-info.cjs && electron-vite build && electron-builder --mac --universal --publish never && npm run verify:release && npm run verify:universal",
     "test:ui": "vitest run --config vitest.ui.config.ts",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",

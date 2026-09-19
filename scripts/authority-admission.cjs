@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * scripts/authority-admission.cjs — fail-closed release-authority admission gate (np-authority/1, Model E).
+ * scripts/authority-admission.cjs — fail-closed release-authority admission gate (np-authority/1.1, Model E).
+ * NP-RELEASE-082: v1.1 = full-coverage signing envelope + closed field set + release-class governance.
  *
  * CLI
  *   node scripts/authority-admission.cjs --authority <path> --trust <path> --out <path>
@@ -51,7 +52,7 @@ const NP = require('./lib/np-authority.cjs');
 const { H, canon, plain } = NP;
 
 const CONTRACT = Object.freeze({
-  schema_version: 'np-authority/1',
+  schema_version: 'np-authority/1.1',
   subject_model: 'E',
   signature_algorithm: 'ed25519',
   signature_encoding: 'hex',
@@ -101,7 +102,7 @@ const SUMMARIES = Object.freeze({
   // ---- predicate (scripts/lib/np-authority.cjs) ----
   ACTUAL_UNMEASURED: 'no measurement object was produced for the predicate',
   SYNTHETIC_MISLABELLED: 'the authority is labelled FORENSIC_SYNTHETIC_ONLY but does not carry real_authority: false',
-  SCHEMA_VERSION_UNSUPPORTED: 'authority_schema_version is not the version this verifier supports (np-authority/1)',
+  SCHEMA_VERSION_UNSUPPORTED: 'authority_schema_version is not the version this verifier supports (np-authority/1.1)',
   AUTHORITY_INCOMPLETE: 'a REQUIRED authority field is missing or empty',
   ISSUER_UNTRUSTED: 'issuer_identity is not on the trusted issuer list',
   ISSUER_IS_SUBJECT: 'the issuer is a subject principal (run initiator, tag pusher or workflow author) — circular authority',
@@ -228,6 +229,13 @@ function loadTrust(trustPath) {
     }
   }
   if (t.tag_pattern !== undefined && typeof t.tag_pattern !== 'string') problems.push('tag_pattern must be a string');
+  if (
+    t.expected_release_class !== undefined &&
+    t.expected_release_class !== null &&
+    !['PILOT', 'PRODUCTION'].includes(t.expected_release_class)
+  ) {
+    problems.push("expected_release_class must be 'PILOT' or 'PRODUCTION' when present");
+  }
   const keys = new Map();
   if (isStringList(t.trusted_issuers)) {
     for (const issuer of t.trusted_issuers) {
@@ -263,6 +271,7 @@ function loadTrust(trustPath) {
     allowedReviewers: Array.isArray(t.allowed_reviewers) ? t.allowed_reviewers.slice() : undefined,
     consumedNonces: Array.isArray(t.consumed_nonces) ? t.consumed_nonces.slice() : [],
     deploymentTimeValidity: t.deployment_time_validity !== false,
+    releaseClass: t.expected_release_class === undefined ? null : t.expected_release_class,
   };
   Object.assign(summary, {
     trusted_issuers: trust.trustedIssuers,
