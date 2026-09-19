@@ -26,9 +26,9 @@ production infrastructure and public release infrastructure.
 
 PILOT_SCOPE = Bounded NeuroPause OS pilot implementation, artifact
 generation, controlled non-public distribution, installation,
-installation verification, and limi
+installation verification, and limited pilot execution on the
 designated non-production ARM64 environment for functional,
-operational, provenance, and governn
+operational, provenance, and governance validation. No production
 deployment, public release, public feed publication, unrestricted
 distribution, or alteration of production signing/security
 controls is authorized.
@@ -36,7 +36,7 @@ controls is authorized.
 §12 HUMAN DECISION
 
 I, Saurabh Patel, authorize the above architecture, designated
-pilot environment, and bounded piloot
+pilot environment, and bounded pilot scope for NeuroPause OS pilot
 implementation, installation, verification, and execution under
 the existing Pilot Implementation & Installation Authorization
 v1.0 and its production/public-release restrictions.

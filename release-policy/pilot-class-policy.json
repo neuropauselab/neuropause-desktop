@@ -21,7 +21,7 @@
       "build_config": "apps/desktop/electron-builder.pilot.yml",
       "artifact_markers": [
         "productName ' (Pilot)' suffix",
-        "artifactName NeuroPause-Pilot-Setup.${ext}",
+        "artifactName NeuroPause-Pilot-Setup-${arch}.${ext}",
         "resources/pilot-class.json"
       ]
     },
