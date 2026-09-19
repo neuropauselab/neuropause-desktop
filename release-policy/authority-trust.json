@@ -17,8 +17,12 @@
   "scope": "production-release",
   "tag_pattern": "v*",
   "expected_release_class": null,
-  "trusted_issuers": [],
-  "issuer_keys": {},
+  "trusted_issuers": ["aryanpatel1107"],
+  "issuer_keys": {
+    "aryanpatel1107": {
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAVhC4Id+z1/hqPfsGj7VluKYlihFWY0mGEI2/kwgy0qs=\n-----END PUBLIC KEY-----\n"
+    }
+  },
   "allowed_reviewers": ["Kinjal-7"],
   "consumed_nonces": [],
   "deployment_time_validity": true,

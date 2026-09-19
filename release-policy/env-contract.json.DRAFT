@@ -1,0 +1,22 @@
+{
+  "_template": false,
+  "_provenance": [
+    "ADMIN-PLACED DRAFT (NP-082): the template forbids tool-written operative files, so this",
+    "content is delivered as evidence for the non-subject admin to verify and place at",
+    "release-policy/env-contract.json by hand. Values from a fresh authenticated API",
+    "measurement at 2026-09-19T08:55Z. verifiedByAdmin stays FALSE until the admin verifies."
+  ],
+  "name": "production-release",
+  "environmentId": 22046699406,
+  "requiredReviewers": true,
+  "reviewerLogins": [
+    "Kinjal-7"
+  ],
+  "preventSelfReview": true,
+  "deploymentTagPattern": "v*",
+  "secretsRequired": true,
+  "verifiedByAdmin": false,
+  "verifiedAt": null,
+  "verifiedByLogin": null,
+  "environmentApiSnapshotSha256": null
+}

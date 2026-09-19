@@ -1,0 +1,45 @@
+{
+  "policy_id": "np-pilot-class/1",
+  "authorized_by_instrument": "SAURABH PATEL - PILOT-CLASS GOVERNANCE AMENDMENT v1.0 (19 September 2026)",
+  "instrument_file": "release-policy/PILOT-CLASS-AMENDMENT.md",
+  "operative_condition": [
+    "Per the amendment's own s13 this policy is operative only after the successor candidate",
+    "lands through the reviewed non-subject-admin path and passes verification. Until then the",
+    "production signing requirement and public update-feed policy remain in force."
+  ],
+  "release_classes": {
+    "PILOT": {
+      "distribution_class": "CONTROLLED_PILOT",
+      "public_feed_permission": "DENY",
+      "signing_requirements": [
+        "REQUIRED",
+        "UNSIGNED_PILOT_EXCEPTION"
+      ],
+      "public_update_feed": "PROHIBITED - regardless of signing state",
+      "production_semantics": "NONE",
+      "expiry": "at pilot conclusion, or earlier per the governing authority instrument",
+      "build_config": "apps/desktop/electron-builder.pilot.yml",
+      "artifact_markers": [
+        "productName ' (Pilot)' suffix",
+        "artifactName NeuroPause-Pilot-Setup.${ext}",
+        "resources/pilot-class.json"
+      ]
+    },
+    "PRODUCTION": {
+      "distribution_class": "PUBLIC_PRODUCTION",
+      "public_feed_permission": "ALLOW_SIGNED_ONLY",
+      "signing_requirements": [
+        "REQUIRED"
+      ],
+      "build_config": "apps/desktop/electron-builder.yml - win.forceCodeSigning: true, UNCHANGED"
+    }
+  },
+  "enforcement": [
+    "scripts/lib/np-authority.cjs np-authority/1.1 (already on the branch): class fields",
+    "REQUIRED + full-coverage-signed + value-contract-validated; regressions in",
+    "scripts/pilot-class.test.cjs (51/51).",
+    "release-policy/update-feed-policy.md amendment (draft below): PILOT-class artifacts",
+    "CANNOT enter the public update feed."
+  ],
+  "pilot_execution": "NOT AUTHORIZED by this policy; requires the separate human PILOT EXECUTION AUTHORIZATION."
+}
