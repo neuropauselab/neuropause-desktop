@@ -39,7 +39,7 @@ I, Saurabh Patel, authorize the above architecture, designated
 pilot environment, and bounded piloot
 implementation, installation, verification, and execution under
 the existing Pilot Implementation & Installation Authorization
-v1.0 and its production/public-rele
+v1.0 and its production/public-release restrictions.
 
 SIGNATURE = Saurabh Patel
 
@@ -48,9 +48,8 @@ DATE = 19/09/2026
 
 Consequences encoded in this successor PR:
   - apps/desktop/electron-builder.pilot.yml targets win nsis arch
-    [arm64] (artifactName NeuroPaus
+    [arm64] (artifactName NeuroPause-Pilot-Setup-arm64.exe).
   - package.json "package:win:pilot" builds with --arm64 (the
-    earlier draft's --x64 was a pre
-    in admin review).
+    earlier draft's --x64 was a pre-decision leftover, corrected in admin review).
 This record authorizes no build, installation, or execution by
 itself; those remain governed by the pilot gate sequence.
