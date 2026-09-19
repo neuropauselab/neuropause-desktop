@@ -1,0 +1,26 @@
+{
+  "_template": false,
+  "_provenance": [
+    "OPERATIVE trust-root file, drafted on branch governance/pilot-readiness-082 under the",
+    "SUCCESSOR GOVERNANCE DRAFTING AUTHORIZATION v1.0 (Saurabh Patel, 19/09/2026) for review",
+    "and commit by a repository admin who is NOT the release subject, via this reviewed PR.",
+    "FAIL-CLOSED BY CONSTRUCTION: trusted_issuers is EMPTY, so scripts/authority-admission.cjs",
+    "treats this file as AUTHORITY_TRUST_ABSENT and DENIES. It becomes operative only when the",
+    "non-subject admin adds the human-designated issuer identity and its offline-generated",
+    "Ed25519 PUBLIC key (SPKI PEM) during review. Private keys never enter the repository.",
+    "The reviewing admin must verify every value below and ratify authorship in the PR review",
+    "(the template forbids tool-written trust lists; the admin's review+merge is the",
+    "authoritative human act that satisfies that rule's intent)."
+  ],
+  "schema_version": "np-authority/1.1",
+  "signature_algorithm": "ed25519",
+  "scope": "production-release",
+  "tag_pattern": "v*",
+  "expected_release_class": null,
+  "trusted_issuers": [],
+  "issuer_keys": {},
+  "allowed_reviewers": ["Kinjal-7"],
+  "consumed_nonces": [],
+  "deployment_time_validity": true,
+  "accept_synthetic_authorities": false
+}
