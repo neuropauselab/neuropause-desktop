@@ -155,14 +155,14 @@ test('baseline: well-formed signed PRODUCTION authority is ADMITTED', () => {
   assert.equal(r.verdict, 'ALLOW');
 });
 
-test('FIELD-DELETION TAMPER (sealed defect): deleting the three rehearsal markers now invalidates the signature', () => {
+test('FIELD-DELETION TAMPER (sealed defect): deleting the three rehearsal markers is refused as AUTHORITY_INCOMPLETE (REQUIRED=27)', () => {
   const a = authority(); // validly signed rehearsal instrument
   delete a.authority_origin;
   delete a.real_authority;
   delete a.production_validity;
   const r = NP.admitAuthority(a, rebind(authority()), TRUST); // review bound to ORIGINAL subject
   assert.equal(r.verdict, 'DENY');
-  assert.equal(r.code, 'SIGNATURE_INVALID');
+  assert.equal(r.code, 'AUTHORITY_INCOMPLETE');
 });
 
 for (const field of ['authority_origin', 'real_authority', 'production_validity', 'release_class', 'public_feed_permission']) {
