@@ -149,6 +149,9 @@ const REQUIRED = [
   'distribution_class',
   'public_feed_permission',
   'signing_requirement',
+  'authority_origin',
+  'real_authority',
+  'production_validity',
 ];
 
 /**
