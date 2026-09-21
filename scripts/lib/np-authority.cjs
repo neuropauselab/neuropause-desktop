@@ -36,7 +36,22 @@ const hex40 = (s) => typeof s === 'string' && /^[0-9a-f]{40}$/.test(s);
 const hex64 = (s) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
 const plain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-/** Canonical JSON: keys sorted at every depth, `undefined` members dropped, arrays kept in order. */
+/**
+ * Canonical JSON: keys sorted at every depth, `undefined` members dropped, arrays kept in order.
+ *
+ * NP-101 (F3 repair). The rebuild below DEFINES each own key instead of assigning it. Plain
+ * assignment routes through the target's prototype chain, and `Object.prototype.__proto__` is an
+ * ACCESSOR: `r.__proto__ = value` therefore invoked the setter and set r's prototype instead of
+ * creating an own property, so a `__proto__` member present in the input — which `JSON.parse`
+ * produces as an ordinary own data key — vanished from the output at every depth. Two
+ * semantically distinct objects could canonicalise to identical bytes, and one signature covered
+ * both. `Object.defineProperty` creates an own data property for every key including
+ * `__proto__`, so distinct inputs stay distinct.
+ *
+ * This is a serialization-collision repair, not prototype-pollution protection: the old code
+ * polluted the fresh local object `r`, never `Object.prototype`. Bytes are unchanged for every
+ * input that carries no own `__proto__` key, so previously computed digests still reproduce.
+ */
 function canon(o) {
   const seen = new WeakSet();
   const f = (v, d) => {
@@ -46,7 +61,11 @@ function canon(o) {
     seen.add(v);
     if (Array.isArray(v)) return v.map((x) => f(x, d + 1));
     const r = {};
-    for (const k of Object.keys(v).sort()) if (v[k] !== undefined) r[k] = f(v[k], d + 1);
+    for (const k of Object.keys(v).sort()) {
+      if (v[k] !== undefined) {
+        Object.defineProperty(r, k, { value: f(v[k], d + 1), enumerable: true, writable: true, configurable: true });
+      }
+    }
     return r;
   };
   return JSON.stringify(f(o, 0));
@@ -159,10 +178,22 @@ const REQUIRED = [
  * itself, canonicalised (sorted keys at every depth). Deleting, adding or altering ANY member —
  * signed-core, rehearsal marker, release-class or unknown — changes these bytes and therefore
  * invalidates the signature. This is the repair of the SIGNED_FIELDS deletion defect.
+ *
+ * NP-103 (signing-boundary repair). This rebuild DEFINES each own key rather than assigning it,
+ * for the same reason canon() does. NP-101 repaired canon(), but this function runs one frame
+ * ABOVE it and rebuilt with plain assignment, so `o.__proto__ = value` invoked the
+ * Object.prototype accessor and destroyed a TOP-LEVEL own `__proto__` member before canon() ever
+ * saw it: three semantically distinct objects collapsed to one signing representation and a
+ * single signature covered all of them. Repairing canon() alone did not reach this path.
+ * One mechanism is now used for both rebuilds, so the two cannot drift apart again.
  */
 function signingBytes(a) {
   const o = {};
-  for (const k of Object.keys(a)) if (k !== 'signature' && a[k] !== undefined) o[k] = a[k];
+  for (const k of Object.keys(a)) {
+    if (k !== 'signature' && a[k] !== undefined) {
+      Object.defineProperty(o, k, { value: a[k], enumerable: true, writable: true, configurable: true });
+    }
+  }
   return Buffer.from(canon(o));
 }
 
