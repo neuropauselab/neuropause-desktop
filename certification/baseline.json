@@ -1,11 +1,11 @@
 {
   "program": "13C",
-  "certification_id": "CERT-f318e14",
-  "frozen_at_utc": "2026-09-20T18:48:32Z",
-  "source": { "commit": "f318e142ad586bcb379804d0d2c18cc00a9b1407", "branch": "main", "worktree_clean": true, "clean_excludes": ["certification/"] },
+  "certification_id": "CERT-2ec8f7f",
+  "frozen_at_utc": "2026-09-21T17:00:48Z",
+  "source": { "commit": "2ec8f7f67205d758e2875599f979d095fcdb18a8", "branch": "np108/signing-boundary-integration", "worktree_clean": true, "clean_excludes": ["certification/"] },
   "versions": {
     "desktop": "1.0.0-rc.30", "backend": "0.1.0", "electron": "42.8.1",
-    "node_running": "24.14.0", "node_pinned": "20", "npm": "11.9.0"
+    "node_running": "20.20.2", "node_pinned": "20", "npm": "10.8.2"
   },
   "schema": { "migration_count": 15 },
   "ipc": { "channels_declared": 776, "authority_gated": 193, "public_allowlist": 61 },
