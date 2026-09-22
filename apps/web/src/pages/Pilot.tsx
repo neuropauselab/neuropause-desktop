@@ -57,9 +57,24 @@ export default function Pilot() {
   return (
     <main>
       <h1>NeuroPause Global Pilot</h1>
+      {/*
+        CLAIM BOUNDARY. The previous copy read "No payment method exists on your account",
+        which is a factual assertion ABOUT THE READER'S ACCOUNT that this page never checks —
+        a compile-time string presented as a live fact. The backend does have a billing module,
+        so an account could hold a payment method from elsewhere and this page would still have
+        said otherwise.
+
+        What IS measurable, and is what the copy now says: the pilot itself has no billing
+        step. Measured — zero billing/payment/subscription references anywhere in
+        apps/backend/src/pilot (positive control: 12 files exist in apps/backend/src/billing),
+        and the web client calls no billing endpoint. "Nothing converts automatically" is a
+        property of this pilot; "you have no card on file" was never this page's to assert.
+      */}
       <p>
-        30-day free controlled pilot. <strong>Day 7 is a measurement checkpoint — never a billing
-        date.</strong> No payment method exists on your account and nothing converts automatically.
+        30-day free controlled pilot. <strong>Day 7 is a measurement checkpoint, not a billing
+        date.</strong> This pilot has no billing step: it collects no payment method, and
+        nothing converts to a paid plan automatically. Any outcome — including a paid one — is
+        reachable only through a recorded human decision.
       </p>
       {!signedIn && (
         <p>
