@@ -183,18 +183,62 @@ describe('the authority-gated routes create no authority', () => {
   });
 });
 
-describe('GET /pilot/control — the pilot-wide state is readable', () => {
-  it('reports the control row to any authenticated caller, disclosing no participant data', async () => {
-    const base = await start();
+describe('GET /pilot/control — readable, but REDACTED for an ordinary caller', () => {
+  /**
+   * NP-PILOT-FIRST-005 found this route returning the FULL control row to any signed-in
+   * caller, including `stopActorId` and `stopReason`. That contradicted this programme's own
+   * position: the pilot-wide stop HISTORY was deliberately left unexposed because who may see
+   * who stopped the pilot and why is undecided - while the CURRENT stop was disclosing exactly
+   * that through a different door. An undecided disclosure must default to non-disclosure.
+   */
+  it('PRODUCTION SHAPE: an ordinary caller learns ONLY whether the pilot is stopped', async () => {
+    const base = await start(); // no evaluator - exactly how app.ts wires it
 
     const res = await call(base, 'GET', '/pilot/control', undefined, P);
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as { control: Record<string, unknown> };
+    expect(Object.keys(body.control)).toEqual(['stopped']);
+    expect(body.control.stopped).toBe(false);
+  });
+
+  it('THE OPERATOR IDENTITY AND REASON ARE WITHHELD even while the pilot is stopped', async () => {
+    repo.control.stopped = true;
+    repo.control.stopActorId = OPERATOR;
+    repo.control.stopReason = 'a reason an ordinary participant must not read';
+    const base = await start();
+
+    const res = await call(base, 'GET', '/pilot/control', undefined, P);
+    const raw = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(JSON.parse(raw)).toEqual({ control: { stopped: true } }); // the refusal IS explained
+    expect(raw).not.toContain(OPERATOR);
+    expect(raw).not.toContain('must not read');
+  });
+
+  it('a DESIGNATED authority receives the full row', async () => {
+    repo.control.stopped = true;
+    repo.control.stopActorId = OPERATOR;
+    repo.control.stopReason = 'safety signal';
+    const base = await start({ evaluate: () => 'ALLOW' });
+
+    const res = await call(base, 'GET', '/pilot/control', undefined, OPERATOR);
+
+    const body = (await res.json()) as { control: Record<string, unknown> };
     expect(Object.keys(body.control).sort()).toEqual(
       ['maxParticipants', 'stopActorId', 'stopAt', 'stopReason', 'stopped'].sort(),
     );
-    expect(body.control.stopped).toBe(false);
+    expect(body.control.stopReason).toBe('safety signal');
+  });
+
+  it('the evaluator is asked with its own action, not borrowed from stop or resume', async () => {
+    const seen: string[] = [];
+    const base = await start({ evaluate: (c) => { seen.push(c.action); return 'DENY'; } });
+
+    await call(base, 'GET', '/pilot/control', undefined, P);
+
+    expect(seen).toEqual(['pilot.control.read']);
   });
 });
 

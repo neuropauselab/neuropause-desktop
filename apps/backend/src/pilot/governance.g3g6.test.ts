@@ -318,7 +318,7 @@ describe('C-04 — a pilot-scoped stop exists, and building it created no author
 
     expect((await err(stopPilot(deps, OPERATOR, 'safety signal')))!.code).toBe('human_decision_required');
     expect((await err(resumePilot(deps, OPERATOR, 'cleared')))!.code).toBe('human_decision_required');
-    expect((await pilotControl(deps)).stopped).toBe(false);
+    expect((await pilotControl(deps, OPERATOR)).stopped).toBe(false);
     expect(repo.lifecycle).toHaveLength(0);
   });
 
@@ -378,7 +378,7 @@ describe('C-04 — a pilot-scoped stop exists, and building it created no author
     expect((await err(resumePilot(d, OPERATOR, 'restart')))!.code).toBe('human_decision_required');
 
     expect(seen).toEqual(['pilot.stop', 'pilot.resume']);
-    expect((await pilotControl(deps)).stopped).toBe(true); // still stopped
+    expect((await pilotControl(deps, OPERATOR)).stopped).toBe(true); // still stopped
     expect(repo.lifecycle).toHaveLength(1);                // no RESUME event was written
   });
 

@@ -62,6 +62,20 @@ export interface PilotControl {
   maxParticipants: number | null;
 }
 
+/**
+ * What an ORDINARY authenticated caller may see of the control row.
+ *
+ * A participant has a legitimate need to know the pilot is stopped: it explains the refusal
+ * they just received. They have no established need to know WHICH HUMAN stopped it or WHY, and
+ * that disclosure is undecided (see decisions/HUMAN-DECISION-G5-STOP-AUTHORITY.md).
+ *
+ * `maxParticipants` is excluded too - the programme's capacity is an operational fact about the
+ * pilot, not a fact about the participant asking.
+ */
+export interface PilotControlPublic {
+  stopped: boolean;
+}
+
 export interface PilotLifecycleEvent {
   id: string;
   /** NULL for pilot-wide events (STOP / RESUME), which belong to no single participation. */

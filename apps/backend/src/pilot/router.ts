@@ -24,7 +24,8 @@
  *                                                         (authority-gated)
  *   POST /pilot/resume    { reason }                      C-04 resume; a SEPARATE authority
  *                                                         question from stop
- *   GET  /pilot/control                                   the pilot-wide control state
+ *   GET  /pilot/control                                   whether the pilot is stopped
+ *                                                         (actor/reason/cap need authority)
  *   GET  /pilot/terms                                     the PUBLISHED terms, so a surface
  *                                                         never invents a version string
  */
@@ -198,7 +199,9 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
       res.status(201).json({ control: await resumePilot(deps, uid(req), reason) });
     }),
   );
-  router.get('/control', h(async (_req, res) => { res.json({ control: await pilotControl(deps) }); }));
+  // Redacted for an ordinary caller: `stopped` only. The full row - actor, reason, time and
+  // the participant cap - requires authority, and production designates none.
+  router.get('/control', h(async (req, res) => { res.json({ control: await pilotControl(deps, uid(req)) }); }));
 
   // C-05 — what a participant may be asked to agree to. The registry ships EMPTY, so this
   // answers `[]` and an honest surface offers no consent button. A surface that hard-codes a

@@ -11,7 +11,7 @@
  */
 import { EXITED_STATES, HUMAN_DECISION_STATES, PILOT_EVENT_TYPES, PilotError } from './types';
 import { isPermitted, ownAuthority, resolveAuthority, type AuthorityEvaluator } from './authority';
-import type { HumanDecision, PilotControl, PilotTerms, PilotEnrollment, PilotEvent, PilotEventType, PilotLifecycleEvent, PilotState } from './types';
+import type { HumanDecision, PilotControl, PilotControlPublic, PilotTerms, PilotEnrollment, PilotEvent, PilotEventType, PilotLifecycleEvent, PilotState } from './types';
 import type { PilotRepository } from './repository';
 
 export interface PilotServiceDeps {
@@ -370,8 +370,29 @@ export async function resumePilot(deps: PilotServiceDeps, actorId: string, reaso
   return deps.repo.getControl();
 }
 
-export async function pilotControl(deps: PilotServiceDeps): Promise<PilotControl> {
-  return deps.repo.getControl();
+/**
+ * The pilot-wide control state, REDACTED BY DEFAULT.
+ *
+ * NP-PILOT-FIRST-005 found this route returning the full row - `stop_actor_id` and
+ * `stop_reason` included - to any signed-in caller. That contradicted this programme's own
+ * stated position: the pilot-wide stop HISTORY was deliberately left unexposed because "who may
+ * see who stopped the pilot and why is a disclosure question no human has decided", while the
+ * CURRENT stop was disclosing exactly that through a different door.
+ *
+ * The inconsistency is resolved in the conservative direction, because an undecided disclosure
+ * must default to non-disclosure: an ordinary caller learns only WHETHER the pilot is stopped,
+ * which is what explains the refusal they just received. The full row requires authority, and
+ * production designates none - so today every caller gets the redacted view.
+ */
+export async function pilotControl(
+  deps: PilotServiceDeps,
+  actorId: string,
+): Promise<PilotControl | PilotControlPublic> {
+  const control = await deps.repo.getControl();
+  const authority = resolveAuthority(ownAuthority(deps), {
+    actorId, subjectId: actorId, action: 'pilot.control.read',
+  });
+  return isPermitted(authority) ? control : { stopped: control.stopped };
 }
 
 /**
