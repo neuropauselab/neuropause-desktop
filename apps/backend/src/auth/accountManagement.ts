@@ -1,8 +1,14 @@
 /**
  * Account management: data export and account deletion.
  *
- * Data export: collects all user data from across the system into a JSON
- * envelope. Only the authenticated user's own data is included.
+ * Data export: collects the authenticated user's data into a JSON envelope.
+ *
+ * SCOPE, STATED HONESTLY (corrected in NP-PILOT-FIRST-005): this is NOT "all data across the
+ * system". It reads the account tables below plus the participant's pilot record, and it
+ * TRUNCATES - `auth_sessions` at 100 rows and `audit_log` at 500 - with no marker in the JSON
+ * saying so. A participant with more history than that receives a partial export that looks
+ * complete. Recorded as an open gap rather than silently fixed, because adding a marker
+ * changes the response contract.
  *
  * Account deletion: implements a confirmed deletion lifecycle:
  *   request → confirm → execute (revoke sessions, anonymize/delete data)
@@ -10,6 +16,8 @@
 import { query, withTransaction } from '../db/pool';
 import { revokeAllAccessTokensForUser } from './jwt';
 import { logger } from '../config/logger';
+import { sqlPilotRepository } from '../pilot/repository';
+import { exportParticipantPilotData, type ParticipantPilotExport } from '../pilot/export';
 
 /* Row types for the export queries — no `any` needed. */
 interface UserExportRow { id: string; email: string; display_name: string | null; email_verified: boolean; created_at: Date }
@@ -32,6 +40,12 @@ export interface UserExportData {
   organizations: Array<{ orgId: string; role: string; joinedAt: string }>;
   devices: Array<{ deviceId: string; orgId: string; platform: string; os: string; registeredAt: string }>;
   auditLog: Array<{ action: string; createdAt: string; detail: unknown }>;
+  /**
+   * The participant's pilot record. `null` when this account never entered the pilot - which
+   * is distinguishable from "enrolled but empty", because the block itself carries
+   * `enrollment.recorded`.
+   */
+  pilot: ParticipantPilotExport;
   // NP-047 / B HIGH-2: `sync_state` is ORG-scoped (PRIMARY KEY (org_id,
   // entity_type, entity_id); no user_id column). It is organization data, not
   // per-user personal data, so it is NOT part of a user export. The previous
@@ -39,12 +53,14 @@ export interface UserExportData {
 }
 
 /**
- * Exports all data associated with the authenticated user. Only the user's
- * own data is returned. Internal secrets (password hashes, token hashes)
- * are excluded.
+ * Exports the authenticated user's data. Only the user's own data is returned; internal
+ * secrets (password hashes, token hashes, device public keys) are excluded.
+ *
+ * The `pilot` block is assembled by the pilot module, which declares what it withholds rather
+ * than omitting it - see pilot/export.ts.
  */
 export async function exportUserData(userId: string): Promise<UserExportData> {
-  const [userRes, identitiesRes, sessionsRes, membershipsRes, devicesRes, auditRes] =
+  const [userRes, identitiesRes, sessionsRes, membershipsRes, devicesRes, auditRes, pilotData] =
     await Promise.all([
       query<UserExportRow>(
         `SELECT id, email, display_name, email_verified, created_at FROM users WHERE id = $1`,
@@ -73,6 +89,10 @@ export async function exportUserData(userId: string): Promise<UserExportData> {
         `SELECT action, created_at, detail FROM audit_log WHERE user_id = $1 ORDER BY created_at DESC LIMIT 500`,
         [userId],
       ),
+      // The pilot's own record, assembled by the pilot module so that knowledge of what the
+      // pilot holds — and of what it withholds pending a human decision — lives with the
+      // pilot rather than being re-derived here. Reads only, and runs concurrently.
+      exportParticipantPilotData(sqlPilotRepository, userId),
     ]);
 
   const user = userRes.rows[0];
@@ -114,6 +134,7 @@ export async function exportUserData(userId: string): Promise<UserExportData> {
       createdAt: r.created_at.toISOString(),
       detail: r.detail,
     })),
+    pilot: pilotData,
   };
 }
 
