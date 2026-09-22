@@ -97,6 +97,9 @@ export function createMemoryPilotRepository(): PilotRepository & {
     async findTerms(version) {
       return terms.find((t) => t.version === version) ?? null;
     },
+    async findTermsById(id) {
+      return terms.find((t) => t.id === id) ?? null;
+    },
     async listPublishedTerms() {
       return terms
         .filter((t) => t.status === 'PUBLISHED')

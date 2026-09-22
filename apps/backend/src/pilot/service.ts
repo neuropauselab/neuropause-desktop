@@ -76,6 +76,40 @@ export async function enroll(deps: PilotServiceDeps, userId: string): Promise<Pi
   if (!consent.termsId)
     throw new PilotError('consent_not_bound', 'The recorded consent is not bound to a published terms version.');
 
+  /*
+   * THE BOUND TERMS ARE RE-READ AND COMPARED, NOT MERELY COPIED.
+   *
+   * NP-PILOT-FIRST-005 measured the hole: a consent recorded against terms whose content then
+   * CHANGED under the same version still enrolled — ADMITTED at PILOT_ACTIVE, and the
+   * evidence read-back reported IN_PILOT with zero deviations. `terms_digest` was written at
+   * consent time and compared by nothing, so it documented a claim instead of enforcing one.
+   * `pilot_terms` has no immutability trigger, so rewriting a digest is one UPDATE.
+   *
+   * That is the same write-only shape this module already fixed once for `insertDecision`,
+   * one field away: `terms_id` was written and never read BY ID.
+   *
+   * Resolution is BY ID, deliberately. Resolving by version would answer "whatever row
+   * currently answers to that string", which is exactly the question a re-published registry
+   * gets wrong. Three things must still hold at admission, not merely at consent:
+   *   the bound row still exists; it is still PUBLISHED; and its digest is unchanged.
+   */
+  const boundTerms = await deps.repo.findTermsById(consent.termsId);
+  if (!boundTerms)
+    throw new PilotError(
+      'terms_unknown',
+      'The terms this consent is bound to are no longer in the registry, so the consent cannot be honoured.',
+    );
+  if (boundTerms.status !== 'PUBLISHED')
+    throw new PilotError(
+      'terms_no_longer_published',
+      `The terms this consent is bound to are now ${boundTerms.status}, not PUBLISHED.`,
+    );
+  if (consent.termsDigest !== boundTerms.digest)
+    throw new PilotError(
+      'terms_digest_mismatch',
+      'The terms have changed since this consent was recorded, so the consent does not cover the current document.',
+    );
+
   const existing = await deps.repo.getEnrollment(userId);
   if (existing) throw new PilotError('already_enrolled', 'A pilot enrollment already exists for this account.');
 

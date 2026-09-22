@@ -41,7 +41,7 @@ function unreachableRepository(): PilotRepository & { calls: string[] } {
   const METHODS = [
     'recordConsent', 'latestConsent', 'createEnrollment', 'createEnrollmentWithinBoundary',
     'getEnrollment', 'setEnrollmentState', 'insertEvent', 'listEvents', 'insertDecision',
-    'findDecision', 'findTerms', 'listPublishedTerms', 'getControl', 'setStopped',
+    'findDecision', 'findTerms', 'findTermsById', 'listPublishedTerms', 'getControl', 'setStopped',
     'countActiveEnrollments', 'insertLifecycleEvent', 'listLifecycleEvents',
     'listPilotWideLifecycleEvents',
   ] as const;

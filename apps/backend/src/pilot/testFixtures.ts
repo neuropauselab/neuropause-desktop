@@ -57,6 +57,10 @@ export function seedPilotFixtures(
   repo: { terms: PilotTerms[]; control: PilotControl },
   opts: { cap?: number; terms?: PilotTerms[] } = {},
 ): void {
-  repo.terms.push(...(opts.terms ?? [TEST_TERMS, TEST_TERMS_DRAFT, TEST_TERMS_RETIRED]));
+  // COPIES, not the shared constants. A test that mutates a terms row - which is exactly what
+  // the digest-mismatch and re-publication cases must do - would otherwise poison every later
+  // test in the file, because `push` stores the reference. Found the hard way: a mutation in
+  // one case made an unrelated CONTROL test fail three describes later.
+  repo.terms.push(...(opts.terms ?? [TEST_TERMS, TEST_TERMS_DRAFT, TEST_TERMS_RETIRED]).map((t) => ({ ...t })));
   repo.control.maxParticipants = opts.cap ?? 100;
 }

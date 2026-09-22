@@ -51,6 +51,7 @@ function detached(repo: Repo): PilotRepository {
     listPilotWideLifecycleEvents: async () => lifecycle.filter((e) => e.enrollmentId === null),
     findDecision: async (id) => decisions.find((d) => d.id === id) ?? null,
     findTerms: async (version) => terms.find((t) => t.version === version) ?? null,
+    findTermsById: async (id) => terms.find((t) => t.id === id) ?? null,
     listPublishedTerms: async () => terms.filter((t) => t.status === 'PUBLISHED'),
     getControl: async () => ({ ...repo.control }),
     countActiveEnrollments: async () => enrollments.length,

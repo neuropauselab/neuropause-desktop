@@ -85,7 +85,9 @@ export async function readBackParticipation(repo: PilotRepository, userId: strin
   const events = enrollment ? await repo.listEvents(enrollment.id) : [];
   const transitions = enrollment ? await repo.listLifecycleEvents(enrollment.id) : [];
   const decision = enrollment?.decisionId ? await repo.findDecision(enrollment.decisionId) : null;
-  const terms = consent?.version ? await repo.findTerms(consent.version) : null;
+  // Resolved BY THE BOUND ID, not by the version string: a reconstruction must report the
+  // object actually accepted, not whatever row currently answers to that name.
+  const terms = consent?.termsId ? await repo.findTermsById(consent.termsId) : null;
 
   return reconstruct({ userId, consent, enrollment, events, transitions, decision, terms });
 }
@@ -98,7 +100,7 @@ export function reconstruct(input: {
   events: PilotEvent[];
   transitions: PilotLifecycleEvent[];
   decision: HumanDecision | null;
-  terms: { version: string; status: string } | null;
+  terms: { version: string; status: string; digest: string } | null;
 }): ParticipationReadBack {
   const { userId, consent, enrollment, decision, terms } = input;
   const events = [...input.events].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
@@ -109,6 +111,14 @@ export function reconstruct(input: {
 
   if (consent && !consent.termsId)
     notRecorded.push('terms_accepted (this consent is bound to no terms object — what was agreed cannot be reconstructed)');
+  // The digest was recorded so that a later reader could tell whether the text a participant
+  // agreed to is the text that exists now. Comparing it is what makes it evidence.
+  if (consent?.termsId && !terms)
+    deviations.push(`consent is bound to terms ${consent.termsId}, which is no longer in the registry`);
+  if (consent?.termsDigest && terms && consent.termsDigest !== terms.digest)
+    deviations.push(
+      `the terms have changed since consent: the consent records digest ${consent.termsDigest}, the registry now holds ${terms.digest}`,
+    );
   if (enrollment?.decisionId && !decision)
     deviations.push(`decision ${enrollment.decisionId} is referenced by the enrollment but no decision row was found`);
 

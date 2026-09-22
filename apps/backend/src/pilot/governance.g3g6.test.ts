@@ -38,7 +38,7 @@ import {
   resumePilot, status, stopPilot, terminateParticipation, withdraw,
 } from './service';
 import type { AuthorityEvaluator, DecisionContext } from './authority';
-import { readBackPilotControl } from './readBack';
+import { readBackParticipation, readBackPilotControl } from './readBack';
 import { PILOT_RE_ENROLLMENT_POLICY } from './types';
 
 const P = 'participant-1';
@@ -497,5 +497,103 @@ describe('§13 — the remaining enrollment-boundary cases', () => {
 
   it('re-enrollment policy is ENCODED, not inferred from a database constraint', async () => {
     expect(PILOT_RE_ENROLLMENT_POLICY).toBe('NOT_ALLOWED_PENDING_HUMAN_DECISION');
+  });
+});
+
+/* ============================================================================================
+ * C-05 CONTINUED - THE BOUND TERMS ARE RE-READ AT ENROLLMENT, NOT MERELY COPIED AT CONSENT.
+ *
+ * NP-PILOT-FIRST-005 measured the hole these tests close: a consent recorded against terms
+ * whose content then CHANGED under the same version still enrolled - admitted at
+ * PILOT_ACTIVE, with the evidence read-back reporting IN_PILOT and zero deviations. The digest
+ * was written and compared by nothing, so it documented a claim rather than enforcing one.
+ * `pilot_terms` carries no immutability trigger, so rewriting a digest is one UPDATE.
+ * ========================================================================================== */
+
+describe('C-05 - a consent does not survive the document changing underneath it', () => {
+  it('REGRESSION: a digest that no longer matches the registry REFUSES enrollment', async () => {
+    const { repo, deps } = seeded();
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+
+    // One field rewritten under the same id and version - exactly what no trigger prevents.
+    repo.terms.find((t) => t.version === TEST_TERMS_VERSION)!.digest = 'A-DIFFERENT-DIGEST';
+
+    const e = await err(enroll(deps, P));
+
+    expect(e!.code).toBe('terms_digest_mismatch');
+    expect(repo.enrollments.size).toBe(0);
+  });
+
+  it('terms RETIRED after consent refuse enrollment - publication is re-checked, not remembered', async () => {
+    const { repo, deps } = seeded();
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    repo.terms.find((t) => t.version === TEST_TERMS_VERSION)!.status = 'RETIRED';
+
+    expect((await err(enroll(deps, P)))!.code).toBe('terms_no_longer_published');
+    expect(repo.enrollments.size).toBe(0);
+  });
+
+  it('terms REMOVED from the registry after consent refuse enrollment', async () => {
+    const { repo, deps } = seeded();
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    repo.terms.length = 0;
+
+    expect((await err(enroll(deps, P)))!.code).toBe('terms_unknown');
+    expect(repo.enrollments.size).toBe(0);
+  });
+
+  it('RESOLUTION IS BY BOUND ID, not by the version string', async () => {
+    const { repo, deps } = seeded();
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+
+    // A DIFFERENT row is re-published under the same version string - the shape that a
+    // version-based lookup would silently accept.
+    repo.terms.find((t) => t.version === TEST_TERMS_VERSION)!.version = 'TEST-FIXTURE-terms-v1-old';
+    repo.terms.push({
+      ...TEST_TERMS,
+      id: '00000000-0000-4000-8000-00000000beef',
+      digest: 'A-REPUBLISHED-DIGEST',
+    });
+
+    await enroll(deps, P);
+
+    // THE PARTICIPANT IS ADMITTED, AND THAT IS THE CORRECT ANSWER. They consented to a
+    // specific document; someone else re-publishing a DIFFERENT document under the same
+    // version string is not a change to what THEY agreed to, and must not affect them.
+    //
+    // Resolving by VERSION would have found the impostor row and compared the participant's
+    // digest against ITS digest - refusing a consent that was never invalidated, or worse,
+    // silently accepting one that was. Resolving by ID asks about the object actually
+    // accepted. The distinction only becomes visible in exactly this case.
+    expect(repo.enrollments.get(P)!.state).toBe('PILOT_ACTIVE');
+
+    const rb = await readBackParticipation(repo, P);
+    expect(rb.consent.digest).toBe(TEST_TERMS.digest);                  // the content they accepted
+    expect(rb.consent.termsVersion).toBe('TEST-FIXTURE-terms-v1-old');  // that row, as it now reads
+    expect(rb.consent.version).toBe(TEST_TERMS_VERSION);                // the string they sent
+    expect(rb.deviations).toEqual([]);                      // nothing changed for them
+  });
+
+  it('CONTROL: an unchanged registry still admits, so the check is not simply refusing everything', async () => {
+    const { repo, deps } = seeded();
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+
+    await enroll(deps, P);
+
+    expect(repo.enrollments.get(P)!.state).toBe('PILOT_ACTIVE');
+  });
+
+  it('THE EVIDENCE NOTICES TOO: a changed digest is a DEVIATION, not a silent IN_PILOT', async () => {
+    const { repo, deps } = seeded();
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    await enroll(deps, P);
+
+    // The document changes AFTER a legitimate enrollment - the enrollment gate has already run.
+    repo.terms.find((t) => t.version === TEST_TERMS_VERSION)!.digest = 'CHANGED-AFTER-ENROLLMENT';
+
+    const rb = await readBackParticipation(repo, P);
+
+    expect(rb.status).toBe('DEVIATION');
+    expect(rb.deviations.join('\n')).toContain('the terms have changed since consent');
   });
 });

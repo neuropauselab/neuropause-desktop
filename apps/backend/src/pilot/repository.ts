@@ -39,6 +39,15 @@ export interface PilotRepository {
   /** The terms object for a version, or null if the registry does not hold it. */
   findTerms(version: string): Promise<PilotTerms | null>;
   /**
+   * The terms object a consent is BOUND to, by id.
+   *
+   * `consents.terms_id` was written and never read by id — the same write-only shape this
+   * module already fixed once for `insertDecision`. Resolving by VERSION instead answers
+   * "whatever row currently answers to that string", which is precisely the question a
+   * tampered or re-published registry gets wrong.
+   */
+  findTermsById(id: string): Promise<PilotTerms | null>;
+  /**
    * Every PUBLISHED terms version, newest first.
    *
    * Consent binds to a document (C-05), but nothing told the participant WHICH document —
@@ -142,6 +151,10 @@ export const sqlPilotRepository: PilotRepository = {
   },
   async findTerms(version) {
     const { rows } = await query('SELECT * FROM pilot_terms WHERE version=$1', [version]);
+    return rows[0] ? termsRow(rows[0]) : null;
+  },
+  async findTermsById(id) {
+    const { rows } = await query('SELECT * FROM pilot_terms WHERE id=$1', [id]);
     return rows[0] ? termsRow(rows[0]) : null;
   },
   async listPublishedTerms() {

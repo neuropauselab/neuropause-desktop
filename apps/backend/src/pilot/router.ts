@@ -56,6 +56,8 @@ const STATUS: Record<PilotErrorCode, number> = {
   enrollment_boundary_undecided: 409,
   enrollment_full: 409,
   already_exited: 409,
+  terms_digest_mismatch: 409,
+  terms_no_longer_published: 409,
 };
 
 const ConsentBody = z.object({ version: z.string().min(1).max(64) });

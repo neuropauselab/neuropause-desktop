@@ -156,7 +156,10 @@ export type PilotErrorCode =
   | 'pilot_stopped'          // the pilot as a whole is stopped
   | 'enrollment_boundary_undecided' // no approved cap exists, so enrollment is withheld
   | 'enrollment_full'        // the approved cap is reached
-  | 'already_exited';        // withdrawn / terminated / completed
+  | 'already_exited'
+  // NP-PILOT-FIRST-005 — the bound terms are re-read at enrollment, not merely copied at consent.
+  | 'terms_digest_mismatch'
+  | 'terms_no_longer_published';        // withdrawn / terminated / completed
 
 export class PilotError extends Error {
   constructor(
