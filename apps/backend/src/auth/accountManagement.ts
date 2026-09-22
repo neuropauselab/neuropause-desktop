@@ -11,7 +11,21 @@
  * changes the response contract.
  *
  * Account deletion: implements a confirmed deletion lifecycle:
- *   request → confirm → execute (revoke sessions, anonymize/delete data)
+ *   request → confirm → execute (revoke sessions, delete auth data, pseudonymize the user row)
+ *
+ * WHAT DELETION DOES AND DOES NOT DO, measured in NP-PILOT-FIRST-005 and stated here because
+ * the previous wording ("anonymize") overstated it:
+ *   - devices, auth_identities and auth_tokens are DELETED;
+ *   - the users row is PSEUDONYMIZED, not anonymized — see the note at the UPDATE below;
+ *   - NO user row is ever DELETED, so the `ON DELETE CASCADE` that every pilot table declares
+ *     on users(id) CAN NEVER FIRE. The pilot record survives in full;
+ *   - and a hard delete would not work either: three FKs to users(id) carry no ON DELETE
+ *     clause at all (human_decisions.actor_id, pilot_lifecycle_events.actor_user_id,
+ *     pilot_control.stop_actor_id), so NO ACTION applies and the statement would raise 23503
+ *     for anyone who has ever acted in the pilot. Those three hold GOVERNANCE ACCOUNTABILITY
+ *     records about an operator, which is a different question from erasing a subject.
+ * None of this is repaired here: what a pilot participation owes an erasure request is a
+ * controller decision, not an engineering one.
  */
 import { query, withTransaction } from '../db/pool';
 import { revokeAllAccessTokensForUser } from './jwt';
@@ -41,9 +55,12 @@ export interface UserExportData {
   devices: Array<{ deviceId: string; orgId: string; platform: string; os: string; registeredAt: string }>;
   auditLog: Array<{ action: string; createdAt: string; detail: unknown }>;
   /**
-   * The participant's pilot record. `null` when this account never entered the pilot - which
-   * is distinguishable from "enrolled but empty", because the block itself carries
-   * `enrollment.recorded`.
+   * The participant's pilot record. ALWAYS PRESENT, never null: an account that never entered
+   * the pilot gets the block with `consent.recorded` and `enrollment.recorded` both false.
+   *
+   * That is the point. A null block, or an omitted key, would be indistinguishable from "the
+   * export forgot to look" — whereas an explicit `recorded: false` is a positive statement
+   * that the pilot was asked and holds nothing.
    */
   pilot: ParticipantPilotExport;
   // NP-047 / B HIGH-2: `sync_state` is ORG-scoped (PRIMARY KEY (org_id,
@@ -220,9 +237,20 @@ export async function confirmAccountDeletion(
     // personal data; they are not part of account deletion. The swallowed
     // catch around a transactional statement is removed as a class.
 
-    // 6. Anonymize the user record. We keep the row so audit_log foreign keys
-    // remain valid, but strip all PII. The email is replaced with a non-routable
-    // placeholder so the unique constraint is satisfied.
+    // 6. PSEUDONYMIZE the user record — not anonymize, and the distinction is load-bearing.
+    //
+    // The row is kept so foreign keys stay valid, and the direct identifiers are cleared. But
+    // the replacement email EMBEDS users.id VERBATIM, so the mapping back to the original
+    // account is reversible by inspection: anyone holding the row can read the subject's
+    // primary key out of the address, and every other table still keys off that same uuid.
+    // (Measured in NP-PILOT-FIRST-005. The previous comment here said "strip all PII" and
+    // called the result anonymized; that was inaccurate as written, and a false comment about
+    // a privacy control is worse than none, because it is what a reviewer reads.)
+    //
+    // Whether a reversible pseudonym is acceptable, and whether a random local part should
+    // replace the id, is a controller decision — see
+    // NP-PILOT-FIRST-005 decisions/HUMAN-DECISION-DATA-LIFECYCLE.md. The UNIQUE index on
+    // users.email is satisfied by any unique string, so the choice is not constrained here.
     const anonymizedEmail = `deleted_${userId}@deleted.neuropause.local`;
     await client.query(
       `UPDATE users SET
