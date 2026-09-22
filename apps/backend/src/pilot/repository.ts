@@ -22,6 +22,22 @@ export interface PilotRepository {
   createEnrollmentWithinBoundary(userId: string, consentId: string): Promise<PilotEnrollment | null>;
   getEnrollment(userId: string): Promise<PilotEnrollment | null>;
   setEnrollmentState(id: string, state: PilotState, decisionId: string | null): Promise<void>;
+  /**
+   * Move a participation to an EXITED state ONLY IF it has not already exited, atomically.
+   * Returns false when the row had already exited — i.e. when this caller lost the race.
+   *
+   * NP-PILOT-FIRST-005 measured why this must exist: `requireExitable` read the state and the
+   * writes followed as separate statements, so TWO CONCURRENT WITHDRAWALS BOTH SUCCEEDED,
+   * writing two WITHDRAWAL rows that each claimed previousState=PILOT_ACTIVE — and a
+   * withdrawal racing a termination also both succeeded, leaving a ledger asserting that an
+   * operator ended a participation the participant had already left. The read-back reported
+   * EXITED with zero deviations in both cases, so the reconstruction built to catch
+   * inconsistency could not see it.
+   *
+   * This is the same read-then-write shape `enroll` already fixed, in the same module, one
+   * function away — `createEnrollmentWithinBoundary` is the pattern.
+   */
+  exitEnrollmentIfActive(id: string, state: PilotState, decisionId: string | null): Promise<boolean>;
   insertEvent(userId: string, enrollmentId: string, type: PilotEventType, metadata: Record<string, unknown>): Promise<PilotEvent>;
   listEvents(enrollmentId: string): Promise<PilotEvent[]>;
   insertDecision(d: Omit<HumanDecision, 'id' | 'createdAt'>): Promise<HumanDecision>;
@@ -126,6 +142,16 @@ export const sqlPilotRepository: PilotRepository = {
   },
   async setEnrollmentState(id, state, decisionId) {
     await query('UPDATE pilot_enrollments SET state=$2, decision_id=COALESCE($3, decision_id), updated_at=now() WHERE id=$1', [id, state, decisionId]);
+  },
+  async exitEnrollmentIfActive(id, state, decisionId) {
+    // One statement: the state precondition is IN the UPDATE, so two concurrent callers
+    // cannot both observe an active row and both write.
+    const { rowCount } = await query(
+      `UPDATE pilot_enrollments SET state=$2, decision_id=COALESCE($3, decision_id), updated_at=now()
+       WHERE id=$1 AND state NOT IN ('WITHDRAWN','TERMINATED','COMPLETED')`,
+      [id, state, decisionId],
+    );
+    return (rowCount ?? 0) > 0;
   },
   async insertEvent(userId, enrollmentId, type, metadata) {
     const { rows } = await query(

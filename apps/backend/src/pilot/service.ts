@@ -238,6 +238,28 @@ export async function applyHumanDecision(
     throw new PilotError('invalid_decision', `Not a human-decision outcome state: ${targetState}`);
   const e = await deps.repo.getEnrollment(subjectUserId);
   if (!e) throw new PilotError('not_enrolled', 'No pilot enrollment for this account.');
+
+  /*
+   * AN EXITED PARTICIPATION CANNOT BE DECIDED ABOUT — the guard its two siblings had and this
+   * path did not.
+   *
+   * MEASURED before the fix: withdraw() a participation, then apply a CONTINUE decision with
+   * a designated evaluator, and the state became CONTINUE and the participant could record
+   * events again. A participant who left was put back. `withdraw` and `terminateParticipation`
+   * both call `requireExitable`; this one read the row and never checked it, which is why the
+   * comment two functions down claiming "a withdrawn participation cannot silently return to
+   * active" was true of the machine and false of the decision path.
+   *
+   * Reinstatement may be a thing this pilot eventually wants. If so it needs its own named
+   * operation and its own authority question, not an outcome decision that happens to land on
+   * a closed participation.
+   */
+  if ((EXITED_STATES as readonly string[]).includes(e.state))
+    throw new PilotError(
+      'already_exited',
+      `This participation is ${e.state}; no further outcome decision is accepted.`,
+    );
+
   const rec = await deps.repo.insertDecision({
     actorId,
     decisionType: 'commercial',
@@ -310,6 +332,23 @@ export async function advanceMachineStates(deps: PilotServiceDeps, userId: strin
   const e = await deps.repo.getEnrollment(userId);
   if (!e) return null;
   const day = pilotDay(e);
+
+  /*
+   * THE MACHINE DOES NOT WRITE WHILE THE PILOT IS STOPPED.
+   *
+   * MEASURED before this guard: with the pilot stopped, GET /pilot/status still advanced a
+   * participation all the way to DAY30_READY. A stop refuses new participant activity, so the
+   * pilot was advancing people through a period in which they were forbidden to take part.
+   *
+   * THIS FREEZES THE WRITES, NOT THE CLOCK, and the difference is deliberate. `pilotDay` is
+   * wall-clock arithmetic over `startedAt`; on resume the machine will advance to whatever day
+   * it now is. WHETHER STOPPED TIME COUNTS TOWARD THE 30 DAYS IS A HUMAN DECISION
+   * (decisions/HUMAN-DECISION-G5-STOP-AUTHORITY.md) and subtracting stop intervals here would
+   * be inventing that answer. Not writing is the conservative half that needs no decision.
+   */
+  const control = await deps.repo.getControl();
+  if (control.stopped) return e;
+
   // An exited participation is terminal: the machine never advances out of WITHDRAWN,
   // TERMINATED or COMPLETED, so a withdrawn participant cannot be returned to the clock.
   if ((EXITED_STATES as readonly string[]).includes(e.state)) return e;
@@ -327,8 +366,10 @@ export async function advanceMachineStates(deps: PilotServiceDeps, userId: strin
  *   TERMINATED  an operator ended this participation    — authority-gated
  *   COMPLETED   the pilot finished                      — reached via applyHumanDecision
  *
- * Both exits here are TERMINAL. `advanceMachineStates` never leaves an exited state, so a
- * withdrawn participation cannot silently return to active.
+ * Both exits here are TERMINAL, and NP-PILOT-FIRST-005 had to make that true of every path
+ * rather than of most of them: `applyHumanDecision` had no exited-state guard, so a
+ * designated authority could put a withdrawn participant back to CONTINUE and they could
+ * record events again. The machine was innocent; the decision path was not.
  * ========================================================================================== */
 
 async function requireExitable(deps: PilotServiceDeps, subjectUserId: string): Promise<PilotEnrollment> {
@@ -353,11 +394,22 @@ export async function withdraw(
   reason: string,
 ): Promise<{ enrollment: PilotEnrollment; event: PilotLifecycleEvent }> {
   const e = await requireExitable(deps, userId);
+  const previousState = e.state;
+
+  // THE STATE CHANGE GOES FIRST, AND IT IS A COMPARE-AND-SET. `requireExitable` above is a
+  // courtesy that produces a clean error for the ordinary case; it is NOT what makes the exit
+  // safe, because a read cannot. Losing the race here means someone else exited this
+  // participation first, and the answer is the same as if we had seen it: already_exited.
+  // Writing the ledger row only after the CAS succeeds is what stops two concurrent
+  // withdrawals from both appearing in the ledger, each claiming to have left an active
+  // participation.
+  if (!(await deps.repo.exitEnrollmentIfActive(e.id, 'WITHDRAWN', null)))
+    throw new PilotError('already_exited', `This participation is already exited.`);
+
   const event = await deps.repo.insertLifecycleEvent({
     enrollmentId: e.id, subjectUserId: userId, actorUserId: userId,
-    kind: 'WITHDRAWAL', previousState: e.state, newState: 'WITHDRAWN', reason,
+    kind: 'WITHDRAWAL', previousState, newState: 'WITHDRAWN', reason,
   });
-  await deps.repo.setEnrollmentState(e.id, 'WITHDRAWN', null);
   return { enrollment: (await deps.repo.getEnrollment(userId))!, event };
 }
 
@@ -381,11 +433,19 @@ export async function terminateParticipation(
       `Terminating a participation requires a designated pilot authority. Authority is ${authority}; none is designated, so this operation is withheld.`,
     );
   const e = await requireExitable(deps, subjectUserId);
+  const previousState = e.state;
+
+  // Same compare-and-set as withdrawal, and for a sharper reason: measured before the fix, a
+  // withdrawal racing a termination left a ledger asserting that an operator ended a
+  // participation the participant had already left. The three distinct exits are the whole
+  // point of C-03, and a race that produces two of them at once erases the distinction.
+  if (!(await deps.repo.exitEnrollmentIfActive(e.id, 'TERMINATED', null)))
+    throw new PilotError('already_exited', `This participation is already exited.`);
+
   const event = await deps.repo.insertLifecycleEvent({
     enrollmentId: e.id, subjectUserId, actorUserId: actorId,
-    kind: 'TERMINATION', previousState: e.state, newState: 'TERMINATED', reason,
+    kind: 'TERMINATION', previousState, newState: 'TERMINATED', reason,
   });
-  await deps.repo.setEnrollmentState(e.id, 'TERMINATED', null);
   return { enrollment: (await deps.repo.getEnrollment(subjectUserId))!, event };
 }
 

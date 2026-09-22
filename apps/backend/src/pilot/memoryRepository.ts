@@ -78,6 +78,17 @@ export function createMemoryPilotRepository(): PilotRepository & {
       for (const e of enrollments.values())
         if (e.id === id) Object.assign(e, { state, decisionId: decisionId ?? e.decisionId, updatedAt: now() });
     },
+    async exitEnrollmentIfActive(id, state, decisionId) {
+      // No `await` between the test and the assignment: the memory analogue of putting the
+      // precondition inside the UPDATE.
+      for (const e of enrollments.values()) {
+        if (e.id !== id) continue;
+        if (e.state === 'WITHDRAWN' || e.state === 'TERMINATED' || e.state === 'COMPLETED') return false;
+        Object.assign(e, { state, decisionId: decisionId ?? e.decisionId, updatedAt: now() });
+        return true;
+      }
+      return false;
+    },
     async insertEvent(userId, enrollmentId, eventType, metadata) {
       const ev: PilotEvent = { id: randomUUID(), userId, enrollmentId, eventType, metadata, createdAt: now() };
       events.push(ev);

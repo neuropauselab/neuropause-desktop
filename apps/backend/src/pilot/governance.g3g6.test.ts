@@ -34,7 +34,7 @@ import {
   TEST_TERMS, TEST_TERMS_DRAFT, TEST_TERMS_RETIRED, TEST_TERMS_VERSION, seedPilotFixtures,
 } from './testFixtures';
 import {
-  advanceMachineStates, enroll, pilotControl, recordConsent, recordEvent,
+  advanceMachineStates, applyHumanDecision, enroll, pilotControl, recordConsent, recordEvent,
   resumePilot, status, stopPilot, terminateParticipation, withdraw,
 } from './service';
 import type { AuthorityEvaluator, DecisionContext } from './authority';
@@ -595,5 +595,96 @@ describe('C-05 - a consent does not survive the document changing underneath it'
 
     expect(rb.status).toBe('DEVIATION');
     expect(rb.deviations.join('\n')).toContain('the terms have changed since consent');
+  });
+});
+
+/* ============================================================================================
+ * EXIT INTEGRITY - three guarantees this programme had STATED and not enforced, each
+ * reproduced before it was fixed (NP-PILOT-FIRST-005).
+ * ========================================================================================== */
+
+describe('exit integrity - an exit is terminal on EVERY path, not just most of them', () => {
+  it('REGRESSION: a designated authority cannot decide a WITHDRAWN participation back to active', async () => {
+    const { repo, deps } = await enrolled();
+    await withdraw(deps, P, 'leaving');
+
+    const e = await err(applyHumanDecision({ ...deps, authority: allowing(() => true) }, OPERATOR, P, 'CONTINUE', 'd', 'r'));
+
+    // Measured before the fix: the state became CONTINUE and the participant could record
+    // events again. `withdraw` and `terminateParticipation` both guarded; this path did not.
+    expect(e!.code).toBe('already_exited');
+    expect(repo.enrollments.get(P)!.state).toBe('WITHDRAWN');
+    expect(repo.decisions).toHaveLength(0);
+  });
+
+  it.each(['TERMINATED', 'COMPLETED'] as const)('a %s participation is equally closed to decisions', async (state) => {
+    const { repo, deps } = await enrolled();
+    repo.enrollments.get(P)!.state = state;
+
+    const e = await err(applyHumanDecision({ ...deps, authority: allowing(() => true) }, OPERATOR, P, 'CONTINUE', 'd', 'r'));
+
+    expect(e!.code).toBe('already_exited');
+    expect(repo.decisions).toHaveLength(0);
+  });
+});
+
+describe('exit integrity - the exit is a compare-and-set, not a read then a write', () => {
+  it('REGRESSION: two concurrent withdrawals produce ONE exit and ONE ledger row', async () => {
+    const { repo, deps } = await enrolled();
+
+    const results = await Promise.allSettled([withdraw(deps, P, 'first'), withdraw(deps, P, 'second')]);
+
+    // Measured before the fix: BOTH succeeded, writing two WITHDRAWAL rows that each claimed
+    // previousState PILOT_ACTIVE - and the read-back reported EXITED with no deviations, so
+    // the reconstruction built to catch inconsistency could not see it.
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect((results.find((r) => r.status === 'rejected') as PromiseRejectedResult).reason.code).toBe('already_exited');
+    expect(repo.lifecycle).toHaveLength(1);
+    expect(repo.enrollments.get(P)!.state).toBe('WITHDRAWN');
+  });
+
+  it('REGRESSION: a withdrawal racing a termination yields ONE exit, preserving the C-03 distinction', async () => {
+    const { repo, deps } = await enrolled();
+    const d = { ...deps, authority: allowing(() => true) };
+
+    const results = await Promise.allSettled([
+      withdraw(deps, P, 'the participant left'),
+      terminateParticipation(d, OPERATOR, P, 'the operator ended it'),
+    ]);
+
+    // Measured before the fix: both succeeded, and the ledger asserted that an operator ended
+    // a participation the participant had already left. WITHDRAWAL, TERMINATION and COMPLETION
+    // being distinct is the entire point of C-03; a race that produces two at once erases it.
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(repo.lifecycle).toHaveLength(1);
+    expect(['WITHDRAWN', 'TERMINATED']).toContain(repo.enrollments.get(P)!.state);
+    // Whichever won, the ledger and the state agree - which is what the read-back checks.
+    expect(repo.lifecycle[0]!.newState).toBe(repo.enrollments.get(P)!.state);
+  });
+});
+
+describe('exit integrity - a stopped pilot does not advance its participants', () => {
+  it('REGRESSION: the machine writes nothing while the pilot is stopped', async () => {
+    const { repo, deps } = await enrolled();
+    await stopPilot({ ...deps, authority: allowing(() => true) }, OPERATOR, 'stop');
+    repo.enrollments.get(P)!.startedAt = new Date(Date.now() - 40 * 86_400_000).toISOString();
+
+    // Measured before the guard: GET /pilot/status advanced this participation to
+    // DAY30_READY while the participant was forbidden to generate any activity at all.
+    expect((await advanceMachineStates(deps, P))?.state).toBe('PILOT_ACTIVE');
+  });
+
+  it('and resumes advancing once the pilot resumes', async () => {
+    const { repo, deps } = await enrolled();
+    const d = { ...deps, authority: allowing(() => true) };
+    await stopPilot(d, OPERATOR, 'stop');
+    repo.enrollments.get(P)!.startedAt = new Date(Date.now() - 40 * 86_400_000).toISOString();
+    expect((await advanceMachineStates(deps, P))?.state).toBe('PILOT_ACTIVE');
+
+    await resumePilot(d, OPERATOR, 'cleared');
+
+    // THE CLOCK WAS NOT FROZEN, ONLY THE WRITES. Whether stopped time should count toward the
+    // 30 days is a human decision; subtracting it here would be inventing that answer.
+    expect((await advanceMachineStates(deps, P))?.state).toBe('DAY30_READY');
   });
 });

@@ -59,6 +59,7 @@ function detached(repo: Repo): PilotRepository {
     createEnrollment: refuse('createEnrollment') as PilotRepository['createEnrollment'],
     createEnrollmentWithinBoundary: refuse('createEnrollmentWithinBoundary') as PilotRepository['createEnrollmentWithinBoundary'],
     setEnrollmentState: refuse('setEnrollmentState') as PilotRepository['setEnrollmentState'],
+    exitEnrollmentIfActive: refuse('exitEnrollmentIfActive') as PilotRepository['exitEnrollmentIfActive'],
     insertEvent: refuse('insertEvent') as PilotRepository['insertEvent'],
     insertDecision: refuse('insertDecision') as PilotRepository['insertDecision'],
     setStopped: refuse('setStopped') as PilotRepository['setStopped'],
