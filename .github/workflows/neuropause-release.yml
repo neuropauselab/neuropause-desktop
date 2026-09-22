@@ -297,7 +297,7 @@ jobs:
           docker load -i "$RUNNER_TEMP/backend-image.tar"
           docker inspect --format '{{.Id}}' "neuropause-backend:${CANDIDATE_VERSION}" > "$RUNNER_TEMP/backend-image-id.txt"
           cat "$RUNNER_TEMP/backend-image-id.txt"
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310
       - name: Package the helm chart for this candidate (appVersion = candidate version)
         env: { CANDIDATE_VERSION: '${{ needs.candidate-admission.outputs.candidate_version }}' }
         run: |
