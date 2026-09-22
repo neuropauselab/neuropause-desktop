@@ -81,6 +81,11 @@ export function createMemoryPilotRepository(): PilotRepository & {
     async findTerms(version) {
       return terms.find((t) => t.version === version) ?? null;
     },
+    async listPublishedTerms() {
+      return terms
+        .filter((t) => t.status === 'PUBLISHED')
+        .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
+    },
     async getControl() {
       return { ...control };
     },

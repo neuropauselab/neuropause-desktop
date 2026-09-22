@@ -115,7 +115,24 @@ export interface Day7Report {
   osUsage: string;
   state: string;
 }
+/** A published terms document. The registry ships EMPTY, so this list is normally []. */
+export interface PilotTerms {
+  version: string;
+  status: string;
+  digest: string;
+  contentReference: string;
+  publishedAt: string | null;
+}
+
 export const pilot = {
+  /**
+   * What a participant may be asked to agree to.
+   *
+   * This exists because the page used to hard-code a version string that named no document
+   * anywhere in the system. A surface must read what is actually published and offer nothing
+   * when the answer is empty.
+   */
+  terms: () => req<{ terms: PilotTerms[] }>('/pilot/terms'),
   consent: (version: string) => req<unknown>('/pilot/consent', { method: 'POST', body: JSON.stringify({ version }) }),
   enroll: () => req<unknown>('/pilot/enroll', { method: 'POST' }),
   status: () => req<PilotStatus>('/pilot/status'),
@@ -124,4 +141,13 @@ export const pilot = {
   day7: () => req<Day7Report>('/pilot/day7'),
   decision: (targetState: string, decision: string, reason: string) =>
     req<unknown>('/pilot/decision', { method: 'POST', body: JSON.stringify({ targetState, decision, reason }) }),
+  /**
+   * Leave your OWN participation. The server derives the subject from the authenticated
+   * caller, so this cannot be pointed at anyone else.
+   *
+   * There is deliberately NO client here for /pilot/terminate, /pilot/stop or /pilot/resume.
+   * Those are operator actions, they are refused until a human designates a pilot authority
+   * (MR-04), and shipping a button for them would imply an operator exists.
+   */
+  withdraw: (reason: string) => req<unknown>('/pilot/withdraw', { method: 'POST', body: JSON.stringify({ reason }) }),
 };

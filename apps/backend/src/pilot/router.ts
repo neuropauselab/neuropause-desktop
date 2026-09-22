@@ -25,6 +25,8 @@
  *   POST /pilot/resume    { reason }                      C-04 resume; a SEPARATE authority
  *                                                         question from stop
  *   GET  /pilot/control                                   the pilot-wide control state
+ *   GET  /pilot/terms                                     the PUBLISHED terms, so a surface
+ *                                                         never invents a version string
  */
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -35,7 +37,7 @@ import { sqlPilotRepository } from './repository';
 import type { PilotServiceDeps } from './service';
 import {
   advanceMachineStates, applyHumanDecision, day7Report, enroll, pilotControl, recordConsent,
-  recordEvent, resumePilot, status, stopPilot, terminateParticipation, withdraw,
+  recordEvent, publishedTerms, resumePilot, status, stopPilot, terminateParticipation, withdraw,
 } from './service';
 
 const STATUS: Record<PilotErrorCode, number> = {
@@ -197,6 +199,11 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
     }),
   );
   router.get('/control', h(async (_req, res) => { res.json({ control: await pilotControl(deps) }); }));
+
+  // C-05 — what a participant may be asked to agree to. The registry ships EMPTY, so this
+  // answers `[]` and an honest surface offers no consent button. A surface that hard-codes a
+  // version instead of reading this is presenting a placeholder as operative consent.
+  router.get('/terms', h(async (_req, res) => { res.json({ terms: await publishedTerms(deps) }); }));
 
   return router;
 }

@@ -197,3 +197,31 @@ describe('GET /pilot/control — the pilot-wide state is readable', () => {
     expect(body.control.stopped).toBe(false);
   });
 });
+
+describe('GET /pilot/terms — a surface never has to invent a version string', () => {
+  it('reports the PUBLISHED terms only — DRAFT and RETIRED are not offered', async () => {
+    const base = await start();
+
+    const res = await call(base, 'GET', '/pilot/terms', undefined, P);
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { terms: Array<{ version: string; status: string }> };
+    expect(body.terms.map((t) => t.status)).toEqual(['PUBLISHED']);
+    expect(body.terms[0]!.version).toBe(TEST_TERMS_VERSION);
+  });
+
+  it('PRODUCTION SHAPE: an empty registry answers an EMPTY LIST, so nothing can be offered', async () => {
+    repo.terms.length = 0; // exactly what migration 0016 leaves behind
+    const base = await start();
+
+    const res = await call(base, 'GET', '/pilot/terms', undefined, P);
+
+    expect(res.status).toBe(200);
+    expect((await res.json()) as unknown).toEqual({ terms: [] });
+  });
+
+  it('requires authentication like every other pilot route', async () => {
+    const base = await start();
+    expect((await call(base, 'GET', '/pilot/terms', undefined)).status).toBe(401);
+  });
+});

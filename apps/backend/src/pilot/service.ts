@@ -11,7 +11,7 @@
  */
 import { EXITED_STATES, HUMAN_DECISION_STATES, PILOT_EVENT_TYPES, PilotError } from './types';
 import { isPermitted, ownAuthority, resolveAuthority, type AuthorityEvaluator } from './authority';
-import type { HumanDecision, PilotControl, PilotEnrollment, PilotEvent, PilotEventType, PilotLifecycleEvent, PilotState } from './types';
+import type { HumanDecision, PilotControl, PilotTerms, PilotEnrollment, PilotEvent, PilotEventType, PilotLifecycleEvent, PilotState } from './types';
 import type { PilotRepository } from './repository';
 
 export interface PilotServiceDeps {
@@ -351,4 +351,17 @@ export async function resumePilot(deps: PilotServiceDeps, actorId: string, reaso
 
 export async function pilotControl(deps: PilotServiceDeps): Promise<PilotControl> {
   return deps.repo.getControl();
+}
+
+/**
+ * What a participant may be asked to agree to.
+ *
+ * A surface must never present a version string it invented. The registry ships EMPTY, so
+ * this returns [] and a surface that renders it honestly shows "no terms are published" and
+ * offers no consent button — which is the correct state until a human publishes real terms.
+ *
+ * This is a READ. Publishing terms is a human act and no code path here performs it.
+ */
+export async function publishedTerms(deps: PilotServiceDeps): Promise<PilotTerms[]> {
+  return deps.repo.listPublishedTerms();
 }

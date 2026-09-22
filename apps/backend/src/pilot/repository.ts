@@ -27,6 +27,15 @@ export interface PilotRepository {
   // NP-PILOT-FIRST-004
   /** The terms object for a version, or null if the registry does not hold it. */
   findTerms(version: string): Promise<PilotTerms | null>;
+  /**
+   * Every PUBLISHED terms version, newest first.
+   *
+   * Consent binds to a document (C-05), but nothing told the participant WHICH document —
+   * the web page hard-coded a version string that named no terms anywhere. This read is what
+   * lets a surface show what is actually published, and show NOTHING when the registry is
+   * empty, instead of offering consent to a placeholder.
+   */
+  listPublishedTerms(): Promise<PilotTerms[]>;
   /** The pilot-wide control row. Always present; the migration seeds exactly one. */
   getControl(): Promise<PilotControl>;
   setStopped(stopped: boolean, actorId: string | null, reason: string | null): Promise<void>;
@@ -98,6 +107,10 @@ export const sqlPilotRepository: PilotRepository = {
   async findTerms(version) {
     const { rows } = await query('SELECT * FROM pilot_terms WHERE version=$1', [version]);
     return rows[0] ? termsRow(rows[0]) : null;
+  },
+  async listPublishedTerms() {
+    const { rows } = await query("SELECT * FROM pilot_terms WHERE status='PUBLISHED' ORDER BY published_at DESC");
+    return rows.map(termsRow);
   },
   async getControl() {
     const { rows } = await query('SELECT * FROM pilot_control WHERE id=true');

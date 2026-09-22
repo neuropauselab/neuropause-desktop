@@ -50,6 +50,7 @@ function detached(repo: Repo): PilotRepository {
     listLifecycleEvents: async (enrollmentId) => lifecycle.filter((e) => e.enrollmentId === enrollmentId),
     findDecision: async (id) => decisions.find((d) => d.id === id) ?? null,
     findTerms: async (version) => terms.find((t) => t.version === version) ?? null,
+    listPublishedTerms: async () => terms.filter((t) => t.status === 'PUBLISHED'),
     getControl: async () => ({ ...repo.control }),
     countActiveEnrollments: async () => enrollments.length,
     recordConsent: refuse('recordConsent') as PilotRepository['recordConsent'],
