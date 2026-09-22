@@ -82,7 +82,7 @@ export interface PilotLifecycleEvent {
   enrollmentId: string | null;
   subjectUserId: string | null;
   actorUserId: string;
-  kind: 'WITHDRAWAL' | 'TERMINATION' | 'STOP' | 'RESUME';
+  kind: 'WITHDRAWAL' | 'TERMINATION' | 'COMPLETION' | 'STOP' | 'RESUME';
   previousState: PilotState;
   newState: PilotState;
   reason: string;

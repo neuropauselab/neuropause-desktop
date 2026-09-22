@@ -46,7 +46,16 @@ CREATE TABLE auth_sessions (
 CREATE INDEX auth_sessions_user_id_idx ON auth_sessions (user_id);
 CREATE INDEX auth_sessions_expires_at_idx ON auth_sessions (expires_at);
 
--- Append-only audit log of security-relevant events.
+-- Audit log of security-relevant events.
+--
+-- NOT APPEND-ONLY, despite what this comment said until NP-PILOT-FIRST-005 measured it. The
+-- application itself UPDATEs this table: account deletion runs
+--   UPDATE audit_log SET ip = NULL, detail = '{"redacted": true}'::jsonb WHERE user_id = $1
+-- and nothing prevents it. Across all 17 migrations, zero triggers, rules or REVOKEs target
+-- this table (every trigger in the schema is a `set_updated_at`), and the application role is
+-- the migration role. Append-only was a description of intent, not of an enforced property,
+-- and the redaction statement is a deliberate privacy control rather than a violation - the
+-- claim was simply stated more strongly than the schema supports.
 CREATE TABLE audit_log (
   id          BIGSERIAL PRIMARY KEY,
   user_id     UUID REFERENCES users (id) ON DELETE SET NULL,

@@ -1,8 +1,16 @@
 /**
  * Audit provenance bridge (NCEA 10.2B, Principles 7-8).
  *
- * Backend operations record tamper-evident provenance on the shared cloud-core
+ * Backend operations CAN record tamper-evident provenance on the shared cloud-core
  * AuditChain — one audit model across the platform, not a backend-specific one.
+ *
+ * TENSE CORRECTED IN NP-PILOT-FIRST-005, because the present tense was measurably false:
+ * `createAuditRecorder` has exactly ONE call site in apps/backend/src and it is
+ * platform.test.ts:51. No backend operation calls it, and no pilot code imports it, so no
+ * production record has ever been written to this chain. The chain itself is real and its
+ * verify() works; what did not exist is a caller. A capability described in the present tense
+ * reads as a delivered control, and a reviewer auditing the pilot's evidence would have
+ * counted this as one.
  * Only a HASH of the payload is stored ("audit references, not contents"), so no
  * secret or personal content enters the chain.
  */

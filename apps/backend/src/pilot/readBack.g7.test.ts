@@ -243,3 +243,44 @@ describe('G7 — disagreement is reported, never resolved by preference', () => 
     expect(rb.decision.recorded).toBe(false);
   });
 });
+
+describe('G13 - a COMPLETION is an exit, and appears in the ledger of exits', () => {
+  /**
+   * Migration 0016 called pilot_lifecycle_events "an append-only record of every lifecycle
+   * exit" while its kind vocabulary admitted only WITHDRAWAL / TERMINATION / STOP / RESUME.
+   * COMPLETED is in EXITED_STATES and is the one exit a 30-day pilot exists to produce, so
+   * the ledger's own claim was false by one value. 0017 widened it; this pins the row.
+   */
+  it('a completed participation carries a COMPLETION transition, not just a state literal', async () => {
+    const { repo, deps } = seeded();
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    await enroll(deps, P);
+    await applyHumanDecision({ ...deps, ...ALLOW }, OPERATOR, P, 'COMPLETED', 'pilot completed', 'day-30 evidence reviewed');
+
+    const rb = await readBack(repo);
+
+    expect(rb.status).toBe('EXITED');
+    expect(rb.transitions).toHaveLength(1);
+    expect(rb.transitions[0]).toMatchObject({
+      kind: 'COMPLETION', previousState: 'PILOT_ACTIVE', newState: 'COMPLETED',
+      actorUserId: OPERATOR, reason: 'day-30 evidence reviewed',
+    });
+    expect(rb.deviations).toEqual([]);
+  });
+
+  it.each(['CONTINUE', 'EXTENDED', 'PAID_PENDING_HUMAN_DECISION', 'INSTITUTIONAL_PENDING'])(
+    'a %s decision writes NO exit row - it is an outcome, not an exit',
+    async (state) => {
+      const { repo, deps } = seeded();
+      await recordConsent(deps, P, TEST_TERMS_VERSION);
+      await enroll(deps, P);
+      await applyHumanDecision({ ...deps, ...ALLOW }, OPERATOR, P, state, 'd', 'r');
+
+      const rb = await readBack(repo);
+
+      expect(rb.transitions).toEqual([]);   // inventing an exit here would overstate it
+      expect(rb.status).toBe('DECIDED');
+      expect(rb.decision.recorded).toBe(true);
+    },
+  );
+});

@@ -245,7 +245,39 @@ export async function applyHumanDecision(
     decision: `${targetState}: ${decision}`,
     reason,
   });
+  // Captured BEFORE the write. `setEnrollmentState` mutates the row in place in the in-memory
+  // repository, so reading `e.state` afterwards would report the NEW state as the previous
+  // one — which is how this was caught. Relying on a repository not to alias its rows is a
+  // property no interface here promises.
+  const stateBeforeDecision = e.state;
+
   await deps.repo.setEnrollmentState(e.id, targetState as PilotState, rec.id);
+
+  /*
+   * A COMPLETION IS AN EXIT, AND THE LEDGER OF EXITS MUST CONTAIN IT.
+   *
+   * `pilot_lifecycle_events` was introduced as "an append-only record of every lifecycle
+   * exit", but its `kind` vocabulary admitted only WITHDRAWAL / TERMINATION / STOP / RESUME —
+   * so COMPLETED, which `EXITED_STATES` lists alongside the other two and which is the one
+   * exit a 30-day pilot exists to produce, was NOT EXPRESSIBLE. It had to be inferred from a
+   * state literal on the enrollment row, which is exactly the inference the ledger was built
+   * to remove. Migration 0017 widens the vocabulary; this writes the row.
+   *
+   * Only COMPLETED gets one. The other human-decision states (CONTINUE, EXTENDED,
+   * PAID_PENDING_HUMAN_DECISION, INSTITUTIONAL_PENDING, STOPPED) are outcomes that do not end
+   * the participation, and inventing exit rows for them would overstate what happened.
+   */
+  if (targetState === 'COMPLETED')
+    await deps.repo.insertLifecycleEvent({
+      enrollmentId: e.id,
+      subjectUserId,
+      actorUserId: actorId,
+      kind: 'COMPLETION',
+      previousState: stateBeforeDecision,
+      newState: 'COMPLETED',
+      reason,
+    });
+
   const updated = await deps.repo.getEnrollment(subjectUserId);
   return { decision: rec, enrollment: updated! };
 }
