@@ -134,6 +134,7 @@ jobs:
           node scripts/verify-workflow-permissions.cjs
           bash scripts/check-workflows.sh
           node --test scripts/authority-admission.test.cjs scripts/capture-deployment-review.test.cjs
+          node --test scripts/signing-boundary.test.cjs scripts/canon-proto.test.cjs scripts/known-fields-gate.test.cjs
       - name: Typecheck every workspace
         run: npm run typecheck --workspaces --if-present
       - name: Lint the whole repository
