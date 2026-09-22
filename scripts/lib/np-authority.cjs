@@ -8,6 +8,10 @@
  * Differences from the source are non-semantic only: `require('node:crypto')` instead of
  * `require('crypto')`, one statement per line, and comments. No predicate was added, removed,
  * reordered or re-typed. CommonJS; no dependency beyond node:crypto.
+ * That statement describes the original port only. Semantic departures made since are marked where they
+ * occur: v1.1 full-object signing, the closed KNOWN_FIELDS set and the release-class checks
+ * (NP-RELEASE-081/082), the canon()/signingBytes() own-__proto__ repairs (NP-101, NP-103), and the NP-116
+ * (N1) authority-metadata type and value checks in admitAuthority(), with their three new DENY codes.
  *
  * admitAuthority(authority, actual, trust)
  *   `authority` — the externally issued np-authority/1 object (parsed JSON).
@@ -140,6 +144,15 @@ const RELEASE_CLASSES = Object.freeze({
   },
 });
 
+/**
+ * NP-116 (N1): the only authority_origin values, compared exactly (Contract-B, Saurabh Patel 22/09/2026).
+ * Array.prototype.includes uses SameValueZero, which for strings is exact code-unit equality.
+ */
+const AUTHORITY_ORIGINS = Object.freeze(['FORENSIC_SYNTHETIC_ONLY', 'HUMAN_GOVERNED_AUTHORITY']);
+
+/** JSON type name for a DENY detail. Never echoes the value itself. */
+const jsonType = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
+
 /** Fields that must be present and non-empty (B38_AUTHORITY_OBJECT_CONTRACT §6 REQUIRED). */
 const REQUIRED = [
   'authority_id',
@@ -215,6 +228,23 @@ function admitAuthority(authority, actual, trust) {
     if (unknown.length) return R('DENY', 'UNKNOWN_FIELD_REJECTED', unknown);
     const missing = REQUIRED.filter((k) => a[k] === undefined || a[k] === null || a[k] === '');
     if (missing.length) return R('DENY', 'AUTHORITY_INCOMPLETE', missing);
+
+    // ---- NP-116 (N1): authority-metadata contract. Presence alone let any non-empty value through,
+    // so a validly signed "false", 0, [] or a case/whitespace variant of an origin literal reached
+    // ALLOW. The signature proves who signed the object, not that its markers are well-formed, so
+    // the markers are checked here, independently of the issuer and before the signature is used.
+    // Exact JSON types and exact literals: no coercion, trimming, case folding or normalization.
+    // A well-typed `false` passes this check; it is NOT affirmative authority, and its existing
+    // synthetic handling (SYNTHETIC_MISLABELLED here, SYNTHETIC_AUTHORITY_REJECTED at the gate) is unchanged.
+    if (typeof a.real_authority !== 'boolean') {
+      return R('DENY', 'REAL_AUTHORITY_TYPE_INVALID', { type: jsonType(a.real_authority) });
+    }
+    if (typeof a.production_validity !== 'boolean') {
+      return R('DENY', 'PRODUCTION_VALIDITY_TYPE_INVALID', { type: jsonType(a.production_validity) });
+    }
+    if (typeof a.authority_origin !== 'string' || !AUTHORITY_ORIGINS.includes(a.authority_origin)) {
+      return R('DENY', 'AUTHORITY_ORIGIN_INVALID', { type: jsonType(a.authority_origin) });
+    }
 
     // ---- v1.1 release-class governance (PILOT-CLASS amendment): the class and its boundary
     // fields are signed (full coverage) and validated against a fixed value contract, so a

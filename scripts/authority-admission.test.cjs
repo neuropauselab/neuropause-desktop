@@ -547,3 +547,252 @@ test('library: admitFromEnvironment() is require()-able, admits directly, and ne
   assert.equal(noCaptures.verdict, 'DENY');
   assert.deepEqual(noCaptures.codes, ['REVIEW_RECORD_UNCAPTURED']);
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// NP-116 (N1) — authority-metadata contract (Contract-B, Saurabh Patel 22/09/2026).
+//   real_authority, production_validity : JSON boolean only
+//   authority_origin                    : JSON string, exactly FORENSIC_SYNTHETIC_ONLY or HUMAN_GOVERNED_AUTHORITY
+// Every envelope below is freshly and VALIDLY signed after its markers are set, so each DENY shows that a
+// valid signature does not turn malformed metadata into authority. "live trust" is
+// accept_synthetic_authorities:false, the value in release-policy/authority-trust.json.
+// ---------------------------------------------------------------------------------------------------------------
+const HUMAN = 'HUMAN_GOVERNED_AUTHORITY';
+const REAL = { authority_origin: HUMAN, real_authority: true, production_validity: true };
+const LIVE_TRUST = { accept_synthetic_authorities: false };
+const CLASSES = {
+  PRODUCTION: {},
+  PILOT: { release_class: 'PILOT', distribution_class: 'CONTROLLED_PILOT', public_feed_permission: 'DENY' },
+};
+const ABSENT = Symbol('absent');
+
+/** Signed contract-valid envelope for a class, with `marks` applied BEFORE signing (ABSENT deletes a key). */
+function n1Fixture(cls, marks = {}, trust = LIVE_TRUST) {
+  const env = ciEnv(M);
+  const f = fixture(M, env, { authority: { ...REAL, ...CLASSES[cls] }, trust });
+  for (const [k, v] of Object.entries(marks)) {
+    if (v === ABSENT) delete f.a[k];
+    else f.a[k] = v;
+  }
+  delete f.a.signature;
+  f.a.signature = sign(f.a);
+  f.rv.approved_subject_digest = NP.H(NP.signingBytes(f.a));
+  return { f, env };
+}
+
+let n1seq = 0;
+function n1Gate({ f, env }) {
+  const dir = path.join(TMP, `n1-${String(++n1seq).padStart(3, '0')}`);
+  fs.mkdirSync(dir);
+  const p = {};
+  for (const [k, v] of Object.entries(std(f))) {
+    p[k] = path.join(dir, `${k}.json`);
+    fs.writeFileSync(p[k], JSON.stringify(v));
+  }
+  return GATE.admitFromEnvironment({
+    authorityPath: p.authority, trustPath: p.trust, reviewPath: p.review, environmentPath: p.environment,
+    cwd: REPO, env, now: Date.now(),
+  });
+}
+
+function n1Deny(cls, marks, code, trust = LIVE_TRUST) {
+  const x = n1Fixture(cls, marks, trust);
+  assert.equal(verify(x.f.a), true, 'premise: the envelope is validly signed');
+  const v = n1Gate(x);
+  assert.equal(v.verdict, 'DENY', `${cls} ${JSON.stringify(marks)} must be DENIED, got ${v.verdict}`);
+  assert.deepEqual(v.codes, [code], `${cls} ${JSON.stringify(marks)}`);
+  assert.equal(v.authority_subject_digest, null, 'no admitted subject digest on DENY');
+  return v;
+}
+
+// Type-invalid encodings of a boolean (CASE-003..007, CASE-009..013 and the wider NP-115 set).
+const NOT_BOOLEAN = ['true', 'false', 'TRUE', 'FALSE', 'True', '1', '0', ' false', 1, 0, -0, 2, [], {}, [true], [false], { value: true }];
+// Contract-violating authority_origin values (CASE-016..020 and the wider NP-115 set).
+const BAD_ORIGIN = [
+  'forensic_synthetic_only', 'FORENSIC_SYNTHETIC_ONLY ', ' FORENSIC_SYNTHETIC_ONLY', ' HUMAN_GOVERNED_AUTHORITY',
+  'HUMAN_GOVERNED_AUTHORITY ', 'human_governed_authority', 'Human_Governed_Authority', 'HUMAN_GOVERNED_AUTHORITY\n',
+  '\tHUMAN_GOVERNED_AUTHORITY', 'HUMAN-GOVERNED-AUTHORITY', 'HUMAN_GOVERNED_AUTHORITY​', 'HUMAN_GOVERNED_АUTHORITY',
+  'ＨUMAN_GOVERNED_AUTHORITY', 'HUMAN_GOVERNED_AUTHORITY\u0000', 'REAL', 'PRODUCTION', 'UNKNOWN_ORIGIN',
+  // proper substrings, prefixes and concatenations of the literals: membership is equality, not containment
+  'HUMAN', 'GOVERNED', 'AUTHORITY', 'HUMAN_GOVERNED', 'FORENSIC', 'SYNTHETIC_ONLY', 'Y|H', 'ONLY|HUMAN',
+  'FORENSIC_SYNTHETIC_ONLY|HUMAN_GOVERNED_AUTHORITY', 'FORENSIC_SYNTHETIC_ONLYHUMAN_GOVERNED_AUTHORITY',
+  'HUMAN_GOVERNED_AUTHORITYHUMAN_GOVERNED_AUTHORITY', 'HUMAN_GOVERNED_AUTHORIT', 'UMAN_GOVERNED_AUTHORITY',
+  0, 1, true, false, [], {}, [HUMAN], { authority_origin: HUMAN },
+];
+
+for (const cls of Object.keys(CLASSES)) {
+  test(`N1 CASE-001/015 ${cls}: contract-valid HUMAN_GOVERNED_AUTHORITY/true/true is ADMITTED under the live trust`, () => {
+    const x = n1Fixture(cls);
+    assert.equal(verify(x.f.a), true);
+    const v = n1Gate(x);
+    assert.equal(v.verdict, 'ADMIT', JSON.stringify(v.codes));
+    assert.equal(v.authority_origin, HUMAN);
+    assert.equal(v.authority_subject_digest, NP.H(NP.signingBytes(x.f.a)));
+  });
+
+  for (const field of ['real_authority', 'production_validity']) {
+    const code = field === 'real_authority' ? 'REAL_AUTHORITY_TYPE_INVALID' : 'PRODUCTION_VALIDITY_TYPE_INVALID';
+
+    test(`N1 ${cls}: validly signed ${field} that is not a JSON boolean is DENIED ${code} (both trusts)`, () => {
+      for (const bad of NOT_BOOLEAN) {
+        n1Deny(cls, { [field]: bad }, code);
+        n1Deny(cls, { [field]: bad }, code, { accept_synthetic_authorities: true });
+      }
+    });
+
+    test(`N1 ${cls}: ${field} null / absent / "" stays DENIED AUTHORITY_INCOMPLETE`, () => {
+      for (const bad of [null, ABSENT, '']) {
+        const v = n1Deny(cls, { [field]: bad }, 'AUTHORITY_INCOMPLETE');
+        assert.deepEqual(v.reasons[0].detail, [field]);
+      }
+    });
+
+    test(`N1 CASE-002/008 ${cls}: ${field}=false is type-valid but NOT authority — DENIED under the live trust`, () => {
+      n1Deny(cls, { [field]: false }, 'SYNTHETIC_AUTHORITY_REJECTED');
+    });
+  }
+
+  test(`N1 ${cls}: validly signed authority_origin outside the two exact literals is DENIED AUTHORITY_ORIGIN_INVALID (both trusts)`, () => {
+    for (const bad of BAD_ORIGIN) {
+      n1Deny(cls, { authority_origin: bad }, 'AUTHORITY_ORIGIN_INVALID');
+      n1Deny(cls, { authority_origin: bad }, 'AUTHORITY_ORIGIN_INVALID', { accept_synthetic_authorities: true });
+    }
+  });
+
+  test(`N1 ${cls}: authority_origin null / absent / "" stays DENIED AUTHORITY_INCOMPLETE`, () => {
+    for (const bad of [null, ABSENT, '']) n1Deny(cls, { authority_origin: bad }, 'AUTHORITY_INCOMPLETE');
+  });
+
+  test(`N1 CASE-014 ${cls}: FORENSIC_SYNTHETIC_ONLY keeps the existing synthetic-path semantics`, () => {
+    // labelled synthetic but claiming real authority: mislabelled, whatever the trust says
+    n1Deny(cls, { authority_origin: 'FORENSIC_SYNTHETIC_ONLY' }, 'SYNTHETIC_AUTHORITY_REJECTED');
+    n1Deny(cls, { authority_origin: 'FORENSIC_SYNTHETIC_ONLY' }, 'SYNTHETIC_MISLABELLED', { accept_synthetic_authorities: true });
+    // a correctly labelled drill object is rejected by the live trust
+    n1Deny(cls, { authority_origin: 'FORENSIC_SYNTHETIC_ONLY', real_authority: false, production_validity: false }, 'SYNTHETIC_AUTHORITY_REJECTED');
+    // a drill label spelt as strings is no longer silently non-synthetic
+    n1Deny(cls, { authority_origin: 'forensic_synthetic_only', real_authority: 'false', production_validity: 'false' }, 'REAL_AUTHORITY_TYPE_INVALID');
+  });
+
+  test(`N1 ${cls}: a HUMAN_GOVERNED origin cannot carry a single false marker into admission (live trust)`, () => {
+    n1Deny(cls, { real_authority: true, production_validity: false }, 'SYNTHETIC_AUTHORITY_REJECTED');
+    n1Deny(cls, { real_authority: false, production_validity: true }, 'SYNTHETIC_AUTHORITY_REJECTED');
+    n1Deny(cls, { real_authority: false, production_validity: false }, 'SYNTHETIC_AUTHORITY_REJECTED');
+  });
+
+  test(`N1 ${cls}: the type contract does not depend on the synthetic path — every marker is checked in every label context`, () => {
+    // Each malformed marker is paired with every well-formed setting of the OTHER markers, including the
+    // synthetic ones, under both trusts. A check skipped when the object already looks synthetic (origin
+    // FORENSIC, or a false marker) is exposed under the drill trust, where the gate's synthetic rejection
+    // does not mask it.
+    const DRILL = { accept_synthetic_authorities: true };
+    for (const origin of ['FORENSIC_SYNTHETIC_ONLY', HUMAN]) {
+      for (const other of [true, false]) {
+        for (const bad of ['true', 'false', 0, 1, [], {}]) {
+          for (const [field, sibling] of [['production_validity', 'real_authority'], ['real_authority', 'production_validity']]) {
+            const x = n1Fixture(cls, { authority_origin: origin, [sibling]: other, [field]: bad }, DRILL);
+            assert.equal(verify(x.f.a), true);
+            const v = n1Gate(x);
+            const label = `${cls} origin=${origin} ${sibling}=${other} ${field}=${JSON.stringify(bad)}`;
+            assert.equal(v.verdict, 'DENY', label);
+            // FORENSIC with a real_authority other than false stops one step earlier as SYNTHETIC_MISLABELLED
+            // (existing semantics). Every other combination must name the malformed field.
+            const mislabelled = origin === 'FORENSIC_SYNTHETIC_ONLY' && x.f.a.real_authority !== false;
+            const code = field === 'real_authority' ? 'REAL_AUTHORITY_TYPE_INVALID' : 'PRODUCTION_VALIDITY_TYPE_INVALID';
+            assert.deepEqual(v.codes, [mislabelled ? 'SYNTHETIC_MISLABELLED' : code], label);
+          }
+        }
+      }
+    }
+  });
+
+  test(`N1 CASE-021 ${cls}: contract-valid metadata with an invalid signature is DENIED SIGNATURE_INVALID`, () => {
+    const x = n1Fixture(cls);
+    const sig = Buffer.from(x.f.a.signature, 'hex');
+    sig[11] ^= 0x01;
+    x.f.a.signature = sig.toString('hex');
+    assert.equal(verify(x.f.a), false);
+    const v = n1Gate(x);
+    assert.equal(v.verdict, 'DENY');
+    assert.deepEqual(v.codes, ['SIGNATURE_INVALID']);
+  });
+}
+
+test('N1 CLI: a validly signed contract-invalid authority exits 1, so no `needs: authority-admission` job can run', () => {
+  const x = n1Fixture('PRODUCTION', { real_authority: 'true' });
+  assert.equal(verify(x.f.a), true);
+  const r = runCli({ repo: REPO, env: x.env, files: std(x.f) });
+  expectDeny(r, 'REAL_AUTHORITY_TYPE_INVALID');
+  assert.equal(r.verdict.authority_subject_digest, null);
+});
+
+test('N1 LIB: the contract check is independent of the signature — an always-true verifier still DENIES', () => {
+  const trustingEverything = { verifySignature: () => true };
+  const lib = (marks) => {
+    const { f, env } = n1Fixture('PRODUCTION', marks);
+    const t = {
+      schemaVersion: 'np-authority/1.1', trustedIssuers: [ISSUER], signatureAlgorithm: 'ed25519',
+      scope: 'production-release', ...trustingEverything,
+    };
+    return NP.admitAuthority(f.a, { repository_id: env.GITHUB_REPOSITORY_ID }, t);
+  };
+  assert.equal(lib({ real_authority: 'false' }).code, 'REAL_AUTHORITY_TYPE_INVALID');
+  assert.equal(lib({ production_validity: 0 }).code, 'PRODUCTION_VALIDITY_TYPE_INVALID');
+  assert.equal(lib({ authority_origin: 'human_governed_authority' }).code, 'AUTHORITY_ORIGIN_INVALID');
+  // control: a contract-valid object passes the contract and the (always-true) signature step and stops later
+  assert.equal(lib({}).code, 'CANDIDATE_UNMEASURED');
+});
+
+test('N1 ORDERING PIN: contract-invalid metadata is DENIED before signature verification is reached', () => {
+  const calls = [];
+  const t = {
+    schemaVersion: 'np-authority/1.1', trustedIssuers: [ISSUER], signatureAlgorithm: 'ed25519', scope: 'production-release',
+    verifySignature: (i, b, s) => { calls.push(1); return verify({ ...JSON.parse(b.toString()), signature: s }); },
+  };
+  const run = (marks) => {
+    calls.length = 0;
+    const { f } = n1Fixture('PRODUCTION', marks);
+    return { v: NP.admitAuthority(f.a, { repository_id: 'x' }, t), n: calls.length };
+  };
+  for (const marks of [{ real_authority: 0 }, { production_validity: 'true' }, { authority_origin: ' HUMAN_GOVERNED_AUTHORITY' }]) {
+    const { v, n } = run(marks);
+    assert.equal(v.verdict, 'DENY', JSON.stringify(marks));
+    assert.equal(n, 0, `verifySignature must not be reached for ${JSON.stringify(marks)}`);
+  }
+  const ctrl = run({});
+  assert.equal(ctrl.n, 1, 'control: a contract-valid object DOES reach verification exactly once');
+  assert.equal(ctrl.v.code, 'REPOSITORY_MISMATCH', 'control passes the signature and stops at subject binding');
+});
+
+test('N1 DETAIL: the DENY names the JSON type only and never echoes the marker value', () => {
+  const v = n1Deny('PRODUCTION', { authority_origin: 'HUMAN_GOVERNED_AUTHORITY-SECRET-LOOKALIKE' }, 'AUTHORITY_ORIGIN_INVALID');
+  assert.deepEqual(v.reasons[0].detail, { type: 'string' });
+  assert.deepEqual(n1Deny('PRODUCTION', { real_authority: [] }, 'REAL_AUTHORITY_TYPE_INVALID').reasons[0].detail, { type: 'array' });
+  assert.deepEqual(n1Deny('PRODUCTION', { production_validity: {} }, 'PRODUCTION_VALIDITY_TYPE_INVALID').reasons[0].detail, { type: 'object' });
+});
+
+test('N1 SIGNING BOUNDARY: changing any signed marker after signing invalidates the signature', () => {
+  const tampers = {
+    'real_authority true->"true"': (a) => { a.real_authority = 'true'; },
+    'real_authority true->false': (a) => { a.real_authority = false; },
+    'production_validity true->1': (a) => { a.production_validity = 1; },
+    'production_validity true->false': (a) => { a.production_validity = false; },
+    'authority_origin HUMAN->FORENSIC': (a) => { a.authority_origin = 'FORENSIC_SYNTHETIC_ONLY'; },
+    'authority_origin trailing space': (a) => { a.authority_origin = `${HUMAN} `; },
+    'release_class PRODUCTION->PILOT (+class fields)': (a) => Object.assign(a, CLASSES.PILOT),
+    'issuer_identity': (a) => { a.issuer_identity = 'someone-else@forensic.invalid'; },
+    'subject_commit': (a) => { a.subject_commit = 'f'.repeat(40); },
+    'scope': (a) => { a.scope = 'other'; },
+  };
+  for (const [name, tamper] of Object.entries(tampers)) {
+    const x = n1Fixture('PRODUCTION');
+    assert.equal(verify(x.f.a), true, `${name}: signed`);
+    tamper(x.f.a);
+    assert.equal(verify(x.f.a), false, `${name}: the signature must no longer verify`);
+    const v = n1Gate(x);
+    assert.equal(v.verdict, 'DENY', `${name}: must be DENIED`);
+  }
+  // canonicalization, not a bypass: reordering keys leaves the signing bytes (and the signature) intact
+  const x = n1Fixture('PRODUCTION');
+  const reordered = Object.fromEntries(Object.entries(x.f.a).reverse());
+  assert.equal(NP.signingBytes(reordered).equals(NP.signingBytes(x.f.a)), true);
+  assert.equal(verify(reordered), true);
+});
