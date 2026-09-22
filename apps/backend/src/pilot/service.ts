@@ -146,14 +146,35 @@ export async function applyHumanDecision(
 }
 
 /**
- * The ONLY machine-driven state transitions: PILOT_ACTIVE→DAY7_READY (day>=7)
- * and →DAY30_READY (day>=30). Outcome states are unreachable here by design.
+ * The ONLY machine-driven state transitions. Outcome states remain unreachable here
+ * by design — the machine advances the CLOCK, never the OUTCOME.
+ *
+ *   PILOT_ACTIVE  --day>=7-->   DAY7_READY
+ *   PILOT_ACTIVE  --day>=30-->  DAY30_READY   (a participant who never checked in)
+ *   DAY7_READY    --day>=30-->  DAY30_READY
+ *   DAY30_READY                 terminal for the machine
+ *   any human-decision state    never touched by the machine
+ *
+ * DAY7_READY IS AN ELIGIBLE SOURCE FOR THE DAY-30 TRANSITION, AND THAT IS THE FIX.
+ *
+ * Previously both branches required `state === 'PILOT_ACTIVE'`, so DAY7_READY was a
+ * machine dead end: once it was set, day>=30 could never fire. Because `/pilot/status`
+ * calls this on every request and the web page polls status on load, ANY single check-in
+ * between day 7 and day 29 permanently foreclosed DAY30_READY. The 30-day lifecycle was
+ * reachable only by a participant who never looked at it — participation suppressed
+ * completion, which inverts the intent. Measured and recorded as C-01 in
+ * NP-PILOT-FIRST-003.
+ *
+ * Order still matters: the day>=30 test is evaluated first so that a lapsed PILOT_ACTIVE
+ * enrollment lands directly on DAY30_READY rather than stepping through DAY7_READY on a
+ * clock that has already passed both thresholds.
  */
 export async function advanceMachineStates(deps: PilotServiceDeps, userId: string): Promise<PilotEnrollment | null> {
   const e = await deps.repo.getEnrollment(userId);
   if (!e) return null;
   const day = pilotDay(e);
-  if (e.state === 'PILOT_ACTIVE' && day >= 30) await deps.repo.setEnrollmentState(e.id, 'DAY30_READY', null);
+  const machineAdvanceable = e.state === 'PILOT_ACTIVE' || e.state === 'DAY7_READY';
+  if (machineAdvanceable && day >= 30) await deps.repo.setEnrollmentState(e.id, 'DAY30_READY', null);
   else if (e.state === 'PILOT_ACTIVE' && day >= 7) await deps.repo.setEnrollmentState(e.id, 'DAY7_READY', null);
   return deps.repo.getEnrollment(userId);
 }
