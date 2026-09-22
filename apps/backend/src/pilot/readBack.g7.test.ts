@@ -48,6 +48,7 @@ function detached(repo: Repo): PilotRepository {
     getEnrollment: async (userId) => enrollments.find((e) => e.userId === userId) ?? null,
     listEvents: async (enrollmentId) => events.filter((e) => e.enrollmentId === enrollmentId),
     listLifecycleEvents: async (enrollmentId) => lifecycle.filter((e) => e.enrollmentId === enrollmentId),
+    listPilotWideLifecycleEvents: async () => lifecycle.filter((e) => e.enrollmentId === null),
     findDecision: async (id) => decisions.find((d) => d.id === id) ?? null,
     findTerms: async (version) => terms.find((t) => t.version === version) ?? null,
     listPublishedTerms: async () => terms.filter((t) => t.status === 'PUBLISHED'),
@@ -55,6 +56,7 @@ function detached(repo: Repo): PilotRepository {
     countActiveEnrollments: async () => enrollments.length,
     recordConsent: refuse('recordConsent') as PilotRepository['recordConsent'],
     createEnrollment: refuse('createEnrollment') as PilotRepository['createEnrollment'],
+    createEnrollmentWithinBoundary: refuse('createEnrollmentWithinBoundary') as PilotRepository['createEnrollmentWithinBoundary'],
     setEnrollmentState: refuse('setEnrollmentState') as PilotRepository['setEnrollmentState'],
     insertEvent: refuse('insertEvent') as PilotRepository['insertEvent'],
     insertDecision: refuse('insertDecision') as PilotRepository['insertDecision'],
@@ -109,7 +111,7 @@ describe('G7 — a complete participation reconstructs from evidence alone', () 
 
     await readBackParticipation(view, P); // must not touch a single writer
 
-    for (const name of ['createEnrollment', 'setEnrollmentState', 'insertEvent', 'insertDecision', 'setStopped', 'insertLifecycleEvent'] as const) {
+    for (const name of ['createEnrollment', 'createEnrollmentWithinBoundary', 'setEnrollmentState', 'insertEvent', 'insertDecision', 'setStopped', 'insertLifecycleEvent'] as const) {
       expect(() => (view[name] as (...a: never[]) => unknown)()).toThrow(/read-back attempted a write/);
     }
   });

@@ -55,6 +55,22 @@ export function createMemoryPilotRepository(): PilotRepository & {
       enrollments.set(userId, e);
       return e;
     },
+    async createEnrollmentWithinBoundary(userId, consentId) {
+      // The memory analogue of the SQL row lock: count and insert with NO await between
+      // them, so no other caller can interleave inside the critical section.
+      const cap = control.maxParticipants;
+      if (cap === null) return null;
+      let active = 0;
+      for (const e of enrollments.values())
+        if (e.state !== 'WITHDRAWN' && e.state !== 'TERMINATED' && e.state !== 'COMPLETED') active += 1;
+      if (active >= cap) return null;
+      const e: PilotEnrollment = {
+        id: randomUUID(), userId, state: 'PILOT_ACTIVE', consentId,
+        decisionId: null, startedAt: now(), updatedAt: now(),
+      };
+      enrollments.set(userId, e);
+      return e;
+    },
     async getEnrollment(userId) {
       return enrollments.get(userId) ?? null;
     },
@@ -108,6 +124,9 @@ export function createMemoryPilotRepository(): PilotRepository & {
     },
     async listLifecycleEvents(enrollmentId) {
       return lifecycle.filter((e) => e.enrollmentId === enrollmentId);
+    },
+    async listPilotWideLifecycleEvents() {
+      return lifecycle.filter((e) => e.enrollmentId === null);
     },
   };
 }

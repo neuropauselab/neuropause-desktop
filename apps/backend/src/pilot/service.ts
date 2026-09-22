@@ -79,11 +79,13 @@ export async function enroll(deps: PilotServiceDeps, userId: string): Promise<Pi
   const existing = await deps.repo.getEnrollment(userId);
   if (existing) throw new PilotError('already_enrolled', 'A pilot enrollment already exists for this account.');
 
-  const active = await deps.repo.countActiveEnrollments();
-  if (active >= control.maxParticipants)
+  // THE BOUNDARY IS ENFORCED BY THE WRITE, NOT BY A PRECEDING READ. Counting first and
+  // inserting second is read-then-write: two enrollments that begin before either finishes
+  // both see room and both are admitted. A cap of one admitted two until this was atomic.
+  const enrolled = await deps.repo.createEnrollmentWithinBoundary(userId, consent.id);
+  if (!enrolled)
     throw new PilotError('enrollment_full', 'The approved enrollment boundary for this pilot has been reached.');
-
-  return deps.repo.createEnrollment(userId, consent.id);
+  return enrolled;
 }
 
 export async function recordEvent(
@@ -323,6 +325,20 @@ export async function stopPilot(deps: PilotServiceDeps, actorId: string, reason:
       'human_decision_required',
       `Stopping the pilot requires a designated pilot authority. Authority is ${authority}; none is designated, so this operation is withheld.`,
     );
+  /**
+   * A REPEATED STOP PRESERVES THE FIRST STOP'S RECORD.
+   *
+   * Writing again would overwrite stop_actor_id / stop_reason / stop_at with the second
+   * caller's, silently replacing the authority record for WHY AND BY WHOM the pilot was
+   * stopped — the one fact a stop exists to preserve. So a second stop is a no-op that
+   * returns the standing control unchanged.
+   *
+   * The authority check above still runs first, so an UNAUTHORIZED repeat is still refused
+   * rather than quietly succeeding because the pilot happened to be stopped already.
+   */
+  const current = await deps.repo.getControl();
+  if (current.stopped) return current;
+
   await deps.repo.insertLifecycleEvent({
     enrollmentId: null, subjectUserId: null, actorUserId: actorId,
     kind: 'STOP', previousState: 'PILOT_ACTIVE', newState: 'STOPPED', reason,
@@ -341,6 +357,11 @@ export async function resumePilot(deps: PilotServiceDeps, actorId: string, reaso
       'human_decision_required',
       `Resuming the pilot requires a designated pilot authority. Authority is ${authority}; none is designated, so this operation is withheld.`,
     );
+  // Symmetrically: resuming a pilot that is not stopped records nothing, so the ledger never
+  // carries a RESUME that resumed nothing.
+  const current = await deps.repo.getControl();
+  if (!current.stopped) return current;
+
   await deps.repo.insertLifecycleEvent({
     enrollmentId: null, subjectUserId: null, actorUserId: actorId,
     kind: 'RESUME', previousState: 'STOPPED', newState: 'PILOT_ACTIVE', reason,

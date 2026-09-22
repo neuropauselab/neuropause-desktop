@@ -1,5 +1,5 @@
 /** SQL repository for the pilot lifecycle (mirrors devices/repository style). */
-import { query } from '../db/pool';
+import { query, withTransaction } from '../db/pool';
 import type {
   ConsentRecord, HumanDecision, PilotControl, PilotEnrollment, PilotEvent, PilotEventType,
   PilotLifecycleEvent, PilotState, PilotTerms,
@@ -9,6 +9,17 @@ export interface PilotRepository {
   recordConsent(userId: string, version: string, terms?: PilotTerms | null): Promise<ConsentRecord>;
   latestConsent(userId: string): Promise<ConsentRecord | null>;
   createEnrollment(userId: string, consentId: string): Promise<PilotEnrollment>;
+  /**
+   * Admit a participant ONLY IF the approved boundary still has room — counted and written
+   * ATOMICALLY, returning null when full.
+   *
+   * A test found the reason this must exist: checking `countActiveEnrollments()` and then
+   * calling `createEnrollment()` is read-then-write, so two enrollments that begin before
+   * either finishes BOTH see room and BOTH are admitted. A cap of one admitted two. The
+   * boundary is the thing a human approves, so "approximately the approved number" is not a
+   * boundary at all.
+   */
+  createEnrollmentWithinBoundary(userId: string, consentId: string): Promise<PilotEnrollment | null>;
   getEnrollment(userId: string): Promise<PilotEnrollment | null>;
   setEnrollmentState(id: string, state: PilotState, decisionId: string | null): Promise<void>;
   insertEvent(userId: string, enrollmentId: string, type: PilotEventType, metadata: Record<string, unknown>): Promise<PilotEvent>;
@@ -43,6 +54,13 @@ export interface PilotRepository {
   countActiveEnrollments(): Promise<number>;
   insertLifecycleEvent(e: Omit<PilotLifecycleEvent, 'id' | 'createdAt'>): Promise<PilotLifecycleEvent>;
   listLifecycleEvents(enrollmentId: string): Promise<PilotLifecycleEvent[]>;
+  /**
+   * The PILOT-WIDE lifecycle rows (STOP / RESUME), which belong to no participation and so
+   * carry enrollment_id NULL — meaning `listLifecycleEvents` can never return them. Without
+   * this read they are write-only, and §11's "audit reconstruction" could not be performed
+   * for the one control that affects every participant at once.
+   */
+  listPilotWideLifecycleEvents(): Promise<PilotLifecycleEvent[]>;
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -74,6 +92,24 @@ export const sqlPilotRepository: PilotRepository = {
       [userId, consentId],
     );
     return enrollRow(rows[0]);
+  },
+  async createEnrollmentWithinBoundary(userId, consentId) {
+    return withTransaction(async (client) => {
+      // Lock the singleton control row FIRST. Every concurrent enrollment serializes here, so
+      // the count below is taken while no other enrollment can be committing.
+      const control = await client.query('SELECT max_participants FROM pilot_control FOR UPDATE');
+      const cap: number | null = control.rows[0]?.max_participants ?? null;
+      if (cap === null) return null; // UNDECIDED boundary — never treated as unlimited.
+      const counted = await client.query(
+        "SELECT count(*)::int AS n FROM pilot_enrollments WHERE state NOT IN ('WITHDRAWN','TERMINATED','COMPLETED')",
+      );
+      if (counted.rows[0].n >= cap) return null;
+      const { rows } = await client.query(
+        "INSERT INTO pilot_enrollments (user_id, state, consent_id) VALUES ($1,'PILOT_ACTIVE',$2) RETURNING *",
+        [userId, consentId],
+      );
+      return enrollRow(rows[0]);
+    });
   },
   async getEnrollment(userId) {
     const { rows } = await query('SELECT * FROM pilot_enrollments WHERE user_id=$1', [userId]);
@@ -141,6 +177,12 @@ export const sqlPilotRepository: PilotRepository = {
   },
   async listLifecycleEvents(enrollmentId) {
     const { rows } = await query('SELECT * FROM pilot_lifecycle_events WHERE enrollment_id=$1 ORDER BY created_at', [enrollmentId]);
+    return rows.map(lifecycleRow);
+  },
+  async listPilotWideLifecycleEvents() {
+    const { rows } = await query(
+      'SELECT * FROM pilot_lifecycle_events WHERE enrollment_id IS NULL ORDER BY created_at ASC',
+    );
     return rows.map(lifecycleRow);
   },
 };

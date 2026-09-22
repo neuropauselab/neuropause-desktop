@@ -38,6 +38,8 @@ import {
   resumePilot, status, stopPilot, terminateParticipation, withdraw,
 } from './service';
 import type { AuthorityEvaluator, DecisionContext } from './authority';
+import { readBackPilotControl } from './readBack';
+import { PILOT_RE_ENROLLMENT_POLICY } from './types';
 
 const P = 'participant-1';
 const Q = 'participant-2';
@@ -391,5 +393,109 @@ describe('C-04 — a pilot-scoped stop exists, and building it created no author
     expect(repo.lifecycle.map((e) => e.kind)).toEqual(['STOP', 'RESUME']);
     expect(repo.lifecycle[1]!.reason).toBe('safety review cleared');
     await expect(recordEvent(deps, P, 'session_started', {})).resolves.toMatchObject({ userId: P });
+  });
+});
+
+/* ============================================================================================
+ * The remaining §10 / §11 / §13 cases named by the directive.
+ * ========================================================================================== */
+
+describe('§11 — a repeated stop is deterministic and does not overwrite the first one', () => {
+  it('THE SECOND STOP PRESERVES THE FIRST STOP\'S ACTOR, REASON AND TIME', async () => {
+    const { repo, deps } = seeded();
+    const d = { ...deps, authority: allowing(() => true) };
+    const first = await stopPilot(d, OPERATOR, 'adverse safety signal');
+
+    const second = await stopPilot(d, 'operator-2', 'unrelated later reason');
+
+    // The authority record for WHY AND BY WHOM the pilot was stopped is the one fact a stop
+    // exists to preserve, so the later caller must not replace it.
+    expect(second).toEqual(first);
+    expect(second.stopActorId).toBe(OPERATOR);
+    expect(second.stopReason).toBe('adverse safety signal');
+    expect(repo.lifecycle).toHaveLength(1); // no second STOP row either
+  });
+
+  it('an UNAUTHORIZED repeat is still refused — authority is asked before the no-op', async () => {
+    const { repo, deps } = seeded();
+    await stopPilot({ ...deps, authority: allowing(() => true) }, OPERATOR, 'stop');
+
+    expect((await err(stopPilot(deps, 'stranger', 'me too')))!.code).toBe('human_decision_required');
+    expect(repo.lifecycle).toHaveLength(1);
+  });
+
+  it('resuming a pilot that is not stopped records nothing — no RESUME that resumed nothing', async () => {
+    const { repo, deps } = seeded();
+    const d = { ...deps, authority: allowing(() => true) };
+
+    const control = await resumePilot(d, OPERATOR, 'nothing to resume');
+
+    expect(control.stopped).toBe(false);
+    expect(repo.lifecycle).toHaveLength(0);
+  });
+
+  it('AUDIT RECONSTRUCTION: the stop history is recoverable from the pilot-wide ledger', async () => {
+    const { repo, deps } = seeded();
+    const d = { ...deps, authority: allowing(() => true) };
+    await stopPilot(d, OPERATOR, 'first stop');
+    await resumePilot(d, 'operator-2', 'cleared');
+    await stopPilot(d, OPERATOR, 'second stop');
+
+    const history = await readBackPilotControl(repo);
+
+    expect(history.stopped).toBe(true);
+    expect(history.episodes.map((e) => `${e.kind}:${e.actorUserId}:${e.reason}`)).toEqual([
+      'STOP:operator-1:first stop',
+      'RESUME:operator-2:cleared',
+      'STOP:operator-1:second stop',
+    ]);
+    expect(history.standingStop).toMatchObject({ actorId: OPERATOR, reason: 'second stop' });
+    expect(history.deviations).toEqual([]);
+  });
+
+  it('a control row that disagrees with its own ledger is a DEVIATION, not a silent answer', async () => {
+    const { repo, deps } = seeded();
+    await stopPilot({ ...deps, authority: allowing(() => true) }, OPERATOR, 'stop');
+    repo.control.stopActorId = 'somebody-else'; // the control row rewritten out of band
+
+    const history = await readBackPilotControl(repo);
+
+    expect(history.deviations.join('\n')).toContain("ledger's last STOP was by operator-1");
+  });
+});
+
+describe('§13 — the remaining enrollment-boundary cases', () => {
+  it('CONCURRENT ENROLLMENT against a cap of one admits exactly one participant', async () => {
+    const { repo, deps } = seeded(1);
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    await recordConsent(deps, Q, TEST_TERMS_VERSION);
+
+    // Both started before either finished — the shape a real race has.
+    const results = await Promise.allSettled([enroll(deps, P), enroll(deps, Q)]);
+
+    const admitted = results.filter((r) => r.status === 'fulfilled');
+    const refused = results.filter((r) => r.status === 'rejected');
+    expect(admitted).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect((refused[0] as PromiseRejectedResult).reason.code).toBe('enrollment_full');
+    expect(repo.enrollments.size).toBe(1);
+    expect(await repo.countActiveEnrollments()).toBe(1);
+  });
+
+  it('ENROLLMENT AFTER COMPLETION is refused — a finished participation is not a free place', async () => {
+    const { repo, deps } = seeded(1);
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    await enroll(deps, P);
+    repo.enrollments.get(P)!.state = 'COMPLETED';
+
+    // The same account cannot re-enroll...
+    expect((await err(enroll(deps, P)))!.code).toBe('already_enrolled');
+    // ...and the cap's accounting is a separate question, answered explicitly:
+    // a COMPLETED participation is EXITED, so it does not occupy the boundary.
+    expect(await repo.countActiveEnrollments()).toBe(0);
+  });
+
+  it('re-enrollment policy is ENCODED, not inferred from a database constraint', async () => {
+    expect(PILOT_RE_ENROLLMENT_POLICY).toBe('NOT_ALLOWED_PENDING_HUMAN_DECISION');
   });
 });

@@ -174,3 +174,49 @@ export function reconstruct(input: {
     deviations,
   };
 }
+
+
+/* ============================================================================================
+ * §11 — PILOT-WIDE AUDIT RECONSTRUCTION
+ *
+ * A stop affects every participant at once, so its evidence belongs to no participation and
+ * cannot be recovered by reading one. This reconstructs the pilot's own control history from
+ * the STOP / RESUME ledger.
+ *
+ * DELIBERATELY NOT EXPOSED ON A ROUTE. Who may see WHO stopped the pilot and WHY is a
+ * disclosure question no human has decided, and this seam does not decide it. The evidence is
+ * readable — which is what §11 requires — without inventing a disclosure policy.
+ * ========================================================================================== */
+
+export interface PilotControlHistory {
+  stopped: boolean;
+  /** The actor and reason of the STANDING stop, from the control row. */
+  standingStop: { actorId: string | null; reason: string | null; at: string | null };
+  /** Every STOP / RESUME ever recorded, oldest first. */
+  episodes: Array<{ kind: 'STOP' | 'RESUME'; actorUserId: string; reason: string; at: string }>;
+  /** Disagreements between the control row and its own ledger. */
+  deviations: string[];
+}
+
+export async function readBackPilotControl(repo: PilotRepository): Promise<PilotControlHistory> {
+  const control = await repo.getControl();
+  const rows = (await repo.listPilotWideLifecycleEvents())
+    .filter((e): e is typeof e & { kind: 'STOP' | 'RESUME' } => e.kind === 'STOP' || e.kind === 'RESUME')
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  const deviations: string[] = [];
+  const last = rows.at(-1) ?? null;
+  if (control.stopped && last?.kind !== 'STOP')
+    deviations.push('the pilot is stopped but the ledger does not end in a STOP');
+  if (!control.stopped && last?.kind === 'STOP')
+    deviations.push('the ledger ends in a STOP but the pilot is not stopped');
+  if (control.stopped && last?.kind === 'STOP' && control.stopActorId !== last.actorUserId)
+    deviations.push(`the standing stop names ${String(control.stopActorId)} but the ledger's last STOP was by ${last.actorUserId}`);
+
+  return {
+    stopped: control.stopped,
+    standingStop: { actorId: control.stopActorId, reason: control.stopReason, at: control.stopAt },
+    episodes: rows.map((e) => ({ kind: e.kind, actorUserId: e.actorUserId, reason: e.reason, at: e.createdAt })),
+    deviations,
+  };
+}
