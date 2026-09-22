@@ -159,21 +159,41 @@ export async function applyHumanDecision(
 ): Promise<{ decision: HumanDecision; enrollment: PilotEnrollment }> {
   // Fail-closed on the AUTHORITY PREDICATE, not on actor/subject equality.
   //
-  // The previous guard refused only when actor === subject. That made enforcement an
-  // incidental consequence of the router passing one id twice: a SEPARATED actor with
-  // no authority passed straight through and wrote both rows. Separation is a property,
-  // not a permission.
+  // THE HISTORICAL CLAIM BELOW IS UNVERIFIED AND APPEARS TO BE FALSE — kept visible rather
+  // than deleted, because a later reader could otherwise cite it as an established fact about
+  // what this code used to do. NP-PILOT-FIRST-005 searched all 7 revisions of this file
+  // reachable from every ref in this clone: ZERO contain an actor/subject equality comparison
+  // (positive controls on the same loop: `applyHumanDecision` in 7/7, `resolveAuthority` in
+  // 6/7). In the one revision predating the authority guard there was no guard here AT ALL —
+  // the true prior state was WEAKER than the claim describes, not stronger. Search-space
+  // caveat: a guard living in another repository or an unfetched branch is invisible to this.
+  //
+  //   SUPERSEDED: "The previous guard refused only when actor === subject. That made
+  //   enforcement an incidental consequence of the router passing one id twice: a SEPARATED
+  //   actor with no authority passed straight through and wrote both rows."
+  //
+  // The sentence that followed it is independently true and still governs:
+  // SEPARATION IS A PROPERTY, NOT A PERMISSION.
   //
   // This guard asks the authority question instead, and withholds unless the answer is
   // an explicit ALLOW. No evaluator is configured in production, so the answer is
   // UNKNOWN and every caller is refused — separated or not. That grants authority to
   // no one. Placed before the value-domain check and before any repository read, so the
   // refusal path performs zero reads and cannot be used as a state-name oracle.
+  //
+  // `targetState` IS PASSED, AND IT MATTERS BEFORE A DESIGNATION EXISTS RATHER THAN AFTER.
+  // Without it the evaluator is only asked "may this actor record a decision about this
+  // subject?", so a single ALLOW would authorise EVERY state in HUMAN_DECISION_STATES — an
+  // evaluator could not permit COMPLETED while refusing PAID_PENDING_HUMAN_DECISION, because
+  // it would never learn which was being asked. Adding the field changes nothing today (no
+  // evaluator reads it), which is precisely why it is safe now and would be a breaking change
+  // to introduce once someone is designated and their evaluator is written.
   const authority = resolveAuthority(ownAuthority(deps), {
     actorId,
     subjectId: subjectUserId,
     action: 'pilot.decision.record',
     targetId: subjectUserId,
+    targetState,
   });
   if (!isPermitted(authority))
     throw new PilotError(

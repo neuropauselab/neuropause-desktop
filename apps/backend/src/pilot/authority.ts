@@ -29,6 +29,16 @@ export interface DecisionContext {
   readonly action: string;
   /** The object the action targets, where one is known before the decision. */
   readonly targetId?: string;
+  /**
+   * WHAT is being decided, for actions that carry a value domain.
+   *
+   * Present so a designated evaluator can permit one outcome while refusing another. Without
+   * it, an ALLOW for `pilot.decision.record` is necessarily an ALLOW for every state in
+   * HUMAN_DECISION_STATES — including paid conversion — because the evaluator would have no
+   * way to tell which was asked. Optional: stop, resume, terminate and control-read carry no
+   * target state, and an evaluator that ignores this field behaves exactly as before.
+   */
+  readonly targetState?: string;
 }
 
 export type AuthorityDecision = 'ALLOW' | 'DENY' | 'UNKNOWN';

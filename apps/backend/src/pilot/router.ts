@@ -77,10 +77,16 @@ const DecisionBody = z.object({
    * caller is refused with zero writes — separated or not. Supplying a subject is a
    * SEPARATION property; permission still requires a designated evaluator (MR-04).
    */
-  subjectUserId: z.string().min(1).max(200).optional(),
+  /**
+   * Constrained to a UUID because `pilot_enrollments.user_id` and `users.id` are `uuid`.
+   * Not a security fix - the authority gate refuses first, and the value is always a bound
+   * parameter - but after a designation exists a non-UUID subject would reach Postgres and
+   * surface as 22P02, i.e. a 500 where a clean 404 belongs.
+   */
+  subjectUserId: z.string().uuid().optional(),
 });
 const ReasonBody = z.object({ reason: z.string().min(1).max(2000) });
-const TerminateBody = z.object({ subjectUserId: z.string().min(1).max(200), reason: z.string().min(1).max(2000) });
+const TerminateBody = z.object({ subjectUserId: z.string().uuid(), reason: z.string().min(1).max(2000) });
 
 function toHttp(err: unknown): never {
   if (err instanceof PilotError) throw new AppError(STATUS[err.code], `pilot_${err.code}`, err.message);
