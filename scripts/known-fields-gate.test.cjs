@@ -33,7 +33,12 @@ const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
 // this battery exists to detect, so it must not be used to build the fixtures.
 const clone = (o) => Object.create(Object.getPrototypeOf(o), Object.getOwnPropertyDescriptors(o));
 
-/** A maximally-complete authority, so admission reaches as deep as possible. */
+/**
+ * A maximally-complete authority, so admission reaches as deep as possible.
+ * NP-116: authority_origin was 'REAL', which the frozen contract does not admit, so the object stopped
+ * at AUTHORITY_ORIGIN_INVALID before verification. With real_authority/production_validity true, the only
+ * contract literal that keeps this fixture non-synthetic and reaching verification is HUMAN_GOVERNED_AUTHORITY.
+ */
 function baseAuthority() {
   return JSON.parse(JSON.stringify({
     authority_id: 'NP-AUTH-1', authority_schema_version: 'np-authority/1.1',
@@ -46,7 +51,7 @@ function baseAuthority() {
     decision_timestamp: '2026-06-01T00:00:00Z', decision_nonce: 'n'.repeat(24),
     signature: 'f'.repeat(128), signature_algorithm: 'ed25519',
     release_class: 'PILOT', distribution_class: 'CONTROLLED_PILOT', public_feed_permission: 'DENY',
-    signing_requirement: 'REQUIRED', authority_origin: 'REAL', real_authority: true,
+    signing_requirement: 'REQUIRED', authority_origin: 'HUMAN_GOVERNED_AUTHORITY', real_authority: true,
     production_validity: true,
   }));
 }
