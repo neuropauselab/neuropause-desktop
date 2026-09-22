@@ -14,6 +14,16 @@ export interface PilotRepository {
   insertEvent(userId: string, enrollmentId: string, type: PilotEventType, metadata: Record<string, unknown>): Promise<PilotEvent>;
   listEvents(enrollmentId: string): Promise<PilotEvent[]>;
   insertDecision(d: Omit<HumanDecision, 'id' | 'createdAt'>): Promise<HumanDecision>;
+  /**
+   * The human decision behind `pilot_enrollments.decision_id`.
+   *
+   * G7 (NP-PILOT-FIRST-004) found this reader MISSING: `insertDecision` had no counterpart,
+   * so the row that authorizes an outcome state was WRITE-ONLY through this interface and a
+   * participation could not be reconstructed from evidence past the point where a human
+   * decided something. A record nothing can read is not a separate evidence class; it is an
+   * absent one. This is a READ and grants nothing.
+   */
+  findDecision(id: string): Promise<HumanDecision | null>;
   // NP-PILOT-FIRST-004
   /** The terms object for a version, or null if the registry does not hold it. */
   findTerms(version: string): Promise<PilotTerms | null>;
@@ -80,6 +90,10 @@ export const sqlPilotRepository: PilotRepository = {
       [d.actorId, d.decisionType, d.subject, d.decision, d.reason],
     );
     return decisionRow(rows[0]);
+  },
+  async findDecision(id) {
+    const { rows } = await query('SELECT * FROM human_decisions WHERE id=$1', [id]);
+    return rows[0] ? decisionRow(rows[0]) : null;
   },
   async findTerms(version) {
     const { rows } = await query('SELECT * FROM pilot_terms WHERE version=$1', [version]);

@@ -75,6 +75,9 @@ export function createMemoryPilotRepository(): PilotRepository & {
       decisions.push(rec);
       return rec;
     },
+    async findDecision(id) {
+      return decisions.find((d) => d.id === id) ?? null;
+    },
     async findTerms(version) {
       return terms.find((t) => t.version === version) ?? null;
     },
