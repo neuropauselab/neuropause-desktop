@@ -15,6 +15,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createMemoryPilotRepository } from './memoryRepository';
+import { seedPilotFixtures, TEST_TERMS_VERSION } from './testFixtures';
 import { advanceMachineStates, enroll, pilotDay, recordConsent, status } from './service';
 import type { PilotState } from './types';
 
@@ -23,8 +24,9 @@ const DAY = 86_400_000;
 
 async function enrolled() {
   const repo = createMemoryPilotRepository();
+  seedPilotFixtures(repo);
   const deps = { repo };
-  await recordConsent(deps, U, 'v1');
+  await recordConsent(deps, U, TEST_TERMS_VERSION);
   await enroll(deps, U);
   return { deps, repo };
 }

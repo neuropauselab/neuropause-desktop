@@ -26,6 +26,7 @@ import { signAccessToken } from '../auth/jwt';
 import { requireAuth } from '../auth/requireAuth';
 import { errorHandler, notFoundHandler } from '../middleware/error';
 import { createMemoryPilotRepository } from './memoryRepository';
+import { seedPilotFixtures, TEST_TERMS_VERSION } from './testFixtures';
 import { createPilotRouter } from './router';
 import { enroll, recordConsent } from './service';
 
@@ -60,7 +61,8 @@ async function postDecision(base: string, userId: string, targetState: string) {
 
 beforeEach(async () => {
   repo = createMemoryPilotRepository();
-  await recordConsent({ repo }, U, 'v1');
+  seedPilotFixtures(repo);
+  await recordConsent({ repo }, U, TEST_TERMS_VERSION);
   await enroll({ repo }, U);
 });
 

@@ -8,8 +8,23 @@
  *   GET  /pilot/status                                    lifecycle status + day
  *   POST /pilot/events    { eventType, metadata? }        append a pilot event
  *   GET  /pilot/day7                                      Day-7 measurement report
- *   POST /pilot/decision  { targetState, decision, reason } record a HUMAN decision
+ *   POST /pilot/decision  { targetState, decision, reason, subjectUserId? }
+ *                                                         record a HUMAN decision
  *                                                         (sole path to outcome states)
+ *
+ *   NP-PILOT-FIRST-004 added the five routes below. The three authority-gated ones create no
+ *   authority: production supplies no evaluator, so each is refused with zero writes until a
+ *   human designation (MR-04) exists.
+ *
+ *   POST /pilot/withdraw  { reason }                      C-03 leave your OWN participation
+ *                                                         (NOT authority-gated, deliberately)
+ *   POST /pilot/terminate { subjectUserId, reason }       C-03 end ANOTHER participation
+ *                                                         (authority-gated)
+ *   POST /pilot/stop      { reason }                      C-04 stop the PILOT, not the service
+ *                                                         (authority-gated)
+ *   POST /pilot/resume    { reason }                      C-04 resume; a SEPARATE authority
+ *                                                         question from stop
+ *   GET  /pilot/control                                   the pilot-wide control state
  */
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -18,7 +33,10 @@ import { AppError, unauthorized } from '../middleware/error';
 import { PilotError, type PilotErrorCode } from './types';
 import { sqlPilotRepository } from './repository';
 import type { PilotServiceDeps } from './service';
-import { advanceMachineStates, applyHumanDecision, day7Report, enroll, recordConsent, recordEvent, status } from './service';
+import {
+  advanceMachineStates, applyHumanDecision, day7Report, enroll, pilotControl, recordConsent,
+  recordEvent, resumePilot, status, stopPilot, terminateParticipation, withdraw,
+} from './service';
 
 const STATUS: Record<PilotErrorCode, number> = {
   consent_required: 409,
@@ -27,6 +45,14 @@ const STATUS: Record<PilotErrorCode, number> = {
   invalid_event: 400,
   human_decision_required: 403,
   invalid_decision: 400,
+  // NP-PILOT-FIRST-004
+  terms_unknown: 409,
+  terms_not_published: 409,
+  consent_not_bound: 409,
+  pilot_stopped: 409,
+  enrollment_boundary_undecided: 409,
+  enrollment_full: 409,
+  already_exited: 409,
 };
 
 const ConsentBody = z.object({ version: z.string().min(1).max(64) });
@@ -50,6 +76,8 @@ const DecisionBody = z.object({
    */
   subjectUserId: z.string().min(1).max(200).optional(),
 });
+const ReasonBody = z.object({ reason: z.string().min(1).max(2000) });
+const TerminateBody = z.object({ subjectUserId: z.string().min(1).max(200), reason: z.string().min(1).max(2000) });
 
 function toHttp(err: unknown): never {
   if (err instanceof PilotError) throw new AppError(STATUS[err.code], `pilot_${err.code}`, err.message);
@@ -127,6 +155,48 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
       res.status(201).json(await applyHumanDecision(deps, actor, subject, targetState, decision, reason));
     }),
   );
+
+  // C-03 — a participant leaves their OWN participation. Not authority-gated: requiring a
+  // designated operator to let someone leave would make withdrawal unavailable for exactly
+  // as long as the designation is missing.
+  router.post(
+    '/withdraw',
+    validateBody(ReasonBody),
+    h(async (req, res) => {
+      const { reason } = req.body as z.infer<typeof ReasonBody>;
+      res.status(201).json(await withdraw(deps, uid(req), reason));
+    }),
+  );
+
+  // C-03 — an operator ends ANOTHER participant's participation. Authority-gated.
+  router.post(
+    '/terminate',
+    validateBody(TerminateBody),
+    h(async (req, res) => {
+      const { subjectUserId, reason } = req.body as z.infer<typeof TerminateBody>;
+      res.status(201).json(await terminateParticipation(deps, uid(req), subjectUserId, reason));
+    }),
+  );
+
+  // C-04 — pilot-scoped stop and resume. Separate authority questions, so recovery is never
+  // an accident of the stop path.
+  router.post(
+    '/stop',
+    validateBody(ReasonBody),
+    h(async (req, res) => {
+      const { reason } = req.body as z.infer<typeof ReasonBody>;
+      res.status(201).json({ control: await stopPilot(deps, uid(req), reason) });
+    }),
+  );
+  router.post(
+    '/resume',
+    validateBody(ReasonBody),
+    h(async (req, res) => {
+      const { reason } = req.body as z.infer<typeof ReasonBody>;
+      res.status(201).json({ control: await resumePilot(deps, uid(req), reason) });
+    }),
+  );
+  router.get('/control', h(async (_req, res) => { res.json({ control: await pilotControl(deps) }); }));
 
   return router;
 }

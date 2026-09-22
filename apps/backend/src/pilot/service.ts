@@ -9,9 +9,9 @@
  *    EXTENDED / STOPPED / COMPLETED) is reachable ONLY through applyHumanDecision, which
  *    requires a recorded human decision — there is no machine path to paid conversion.
  */
-import { HUMAN_DECISION_STATES, PILOT_EVENT_TYPES, PilotError } from './types';
+import { EXITED_STATES, HUMAN_DECISION_STATES, PILOT_EVENT_TYPES, PilotError } from './types';
 import { isPermitted, ownAuthority, resolveAuthority, type AuthorityEvaluator } from './authority';
-import type { HumanDecision, PilotEnrollment, PilotEvent, PilotEventType, PilotState } from './types';
+import type { HumanDecision, PilotControl, PilotEnrollment, PilotEvent, PilotEventType, PilotLifecycleEvent, PilotState } from './types';
 import type { PilotRepository } from './repository';
 
 export interface PilotServiceDeps {
@@ -30,15 +30,59 @@ export function pilotDay(e: PilotEnrollment, at = Date.now()): number {
   return Math.floor((at - new Date(e.startedAt).getTime()) / DAY_MS) + 1;
 }
 
+/**
+ * C-05. Consent binds to an AUTHORITATIVE TERMS OBJECT, never to a browser-supplied string.
+ *
+ * Before this, `version` was whatever the client sent — the server accepted any string of
+ * 1..64 characters and stored it as the record of what the participant agreed to, while the
+ * one version the UI sent ('pilot-terms-draft-v1') named no document anywhere in the
+ * repository. A consent record could not be reconstructed against anything.
+ *
+ * The registry ships EMPTY, so every version is unknown and consent fails closed until a
+ * human publishes real terms. That is the intended state, not a gap.
+ */
 export async function recordConsent(deps: PilotServiceDeps, userId: string, version: string) {
-  return deps.repo.recordConsent(userId, version);
+  const terms = await deps.repo.findTerms(version);
+  if (!terms)
+    throw new PilotError('terms_unknown', `No pilot terms are published under version '${version}'.`);
+  if (terms.status !== 'PUBLISHED')
+    throw new PilotError('terms_not_published', `Pilot terms '${version}' are ${terms.status}, not PUBLISHED.`);
+  return deps.repo.recordConsent(userId, version, terms);
 }
 
+/**
+ * Enrollment now passes four governance gates before the original two.
+ *
+ * Order matters and is deliberate: the pilot-wide gates come first, so a stopped pilot or an
+ * undecided boundary refuses BEFORE any per-user record is read. A refusal therefore cannot
+ * be used to probe whether a given account has consented.
+ *
+ * `maxParticipants === null` means the boundary is UNDECIDED, and that REFUSES. It does not
+ * mean unlimited. No number is invented here; the cap is a human decision
+ * (NP-PILOT-FIRST-004, HUMAN_DECISION_REQUIRED) and the code enforces whatever is approved.
+ */
 export async function enroll(deps: PilotServiceDeps, userId: string): Promise<PilotEnrollment> {
+  const control = await deps.repo.getControl();
+  if (control.stopped)
+    throw new PilotError('pilot_stopped', 'The pilot is stopped; new enrollment is not accepted.');
+  if (control.maxParticipants === null)
+    throw new PilotError(
+      'enrollment_boundary_undecided',
+      'No approved enrollment boundary exists for this pilot, so enrollment is withheld.',
+    );
+
   const consent = await deps.repo.latestConsent(userId);
   if (!consent) throw new PilotError('consent_required', 'Record consent before enrolling in the pilot.');
+  if (!consent.termsId)
+    throw new PilotError('consent_not_bound', 'The recorded consent is not bound to a published terms version.');
+
   const existing = await deps.repo.getEnrollment(userId);
   if (existing) throw new PilotError('already_enrolled', 'A pilot enrollment already exists for this account.');
+
+  const active = await deps.repo.countActiveEnrollments();
+  if (active >= control.maxParticipants)
+    throw new PilotError('enrollment_full', 'The approved enrollment boundary for this pilot has been reached.');
+
   return deps.repo.createEnrollment(userId, consent.id);
 }
 
@@ -52,6 +96,11 @@ export async function recordEvent(
     throw new PilotError('invalid_event', `Unknown pilot event type: ${eventType}`);
   const e = await deps.repo.getEnrollment(userId);
   if (!e) throw new PilotError('not_enrolled', 'No pilot enrollment for this account.');
+  if ((EXITED_STATES as readonly string[]).includes(e.state))
+    throw new PilotError('already_exited', `This participation is ${e.state}; no further pilot activity is accepted.`);
+  const control = await deps.repo.getControl();
+  if (control.stopped)
+    throw new PilotError('pilot_stopped', 'The pilot is stopped; no further pilot activity is accepted.');
   return deps.repo.insertEvent(userId, e.id, eventType as PilotEventType, metadata);
 }
 
@@ -173,8 +222,133 @@ export async function advanceMachineStates(deps: PilotServiceDeps, userId: strin
   const e = await deps.repo.getEnrollment(userId);
   if (!e) return null;
   const day = pilotDay(e);
+  // An exited participation is terminal: the machine never advances out of WITHDRAWN,
+  // TERMINATED or COMPLETED, so a withdrawn participant cannot be returned to the clock.
+  if ((EXITED_STATES as readonly string[]).includes(e.state)) return e;
   const machineAdvanceable = e.state === 'PILOT_ACTIVE' || e.state === 'DAY7_READY';
   if (machineAdvanceable && day >= 30) await deps.repo.setEnrollmentState(e.id, 'DAY30_READY', null);
   else if (e.state === 'PILOT_ACTIVE' && day >= 7) await deps.repo.setEnrollmentState(e.id, 'DAY7_READY', null);
   return deps.repo.getEnrollment(userId);
+}
+
+/* ==========================================================================================
+ * C-03 — WITHDRAWAL AND TERMINATION
+ *
+ * Three distinct exits, never collapsed:
+ *   WITHDRAWN   the participant chose to leave          — self-service, no authority needed
+ *   TERMINATED  an operator ended this participation    — authority-gated
+ *   COMPLETED   the pilot finished                      — reached via applyHumanDecision
+ *
+ * Both exits here are TERMINAL. `advanceMachineStates` never leaves an exited state, so a
+ * withdrawn participation cannot silently return to active.
+ * ========================================================================================== */
+
+async function requireExitable(deps: PilotServiceDeps, subjectUserId: string): Promise<PilotEnrollment> {
+  const e = await deps.repo.getEnrollment(subjectUserId);
+  if (!e) throw new PilotError('not_enrolled', 'No pilot enrollment for this account.');
+  if ((EXITED_STATES as readonly string[]).includes(e.state))
+    throw new PilotError('already_exited', `This participation is already ${e.state}.`);
+  return e;
+}
+
+/**
+ * A participant withdraws from their OWN participation.
+ *
+ * Deliberately NOT authority-gated: requiring a designated operator to let someone leave
+ * would make withdrawal unavailable for exactly as long as the operator designation is
+ * missing — which is now. A participant leaving their own pilot is not a consequential
+ * action against anyone else.
+ */
+export async function withdraw(
+  deps: PilotServiceDeps,
+  userId: string,
+  reason: string,
+): Promise<{ enrollment: PilotEnrollment; event: PilotLifecycleEvent }> {
+  const e = await requireExitable(deps, userId);
+  const event = await deps.repo.insertLifecycleEvent({
+    enrollmentId: e.id, subjectUserId: userId, actorUserId: userId,
+    kind: 'WITHDRAWAL', previousState: e.state, newState: 'WITHDRAWN', reason,
+  });
+  await deps.repo.setEnrollmentState(e.id, 'WITHDRAWN', null);
+  return { enrollment: (await deps.repo.getEnrollment(userId))!, event };
+}
+
+/**
+ * An operator ends ANOTHER participant's participation. Authority-gated exactly like
+ * applyHumanDecision: the predicate is asked before any state is written, production
+ * supplies no evaluator, so this is refused until someone is designated.
+ */
+export async function terminateParticipation(
+  deps: PilotServiceDeps,
+  actorId: string,
+  subjectUserId: string,
+  reason: string,
+): Promise<{ enrollment: PilotEnrollment; event: PilotLifecycleEvent }> {
+  const authority = resolveAuthority(ownAuthority(deps), {
+    actorId, subjectId: subjectUserId, action: 'pilot.participation.terminate', targetId: subjectUserId,
+  });
+  if (!isPermitted(authority))
+    throw new PilotError(
+      'human_decision_required',
+      `Terminating a participation requires a designated pilot authority. Authority is ${authority}; none is designated, so this operation is withheld.`,
+    );
+  const e = await requireExitable(deps, subjectUserId);
+  const event = await deps.repo.insertLifecycleEvent({
+    enrollmentId: e.id, subjectUserId, actorUserId: actorId,
+    kind: 'TERMINATION', previousState: e.state, newState: 'TERMINATED', reason,
+  });
+  await deps.repo.setEnrollmentState(e.id, 'TERMINATED', null);
+  return { enrollment: (await deps.repo.getEnrollment(subjectUserId))!, event };
+}
+
+/* ==========================================================================================
+ * C-04 — PILOT STOP
+ *
+ * A pilot-scoped stop. It refuses new enrollment and new participant activity while leaving
+ * every other backend route serving — stopping the pilot is NOT stopping the service, and the
+ * previous practical options (take down the backend, or edit the database by hand) were
+ * neither auditable nor pilot-scoped.
+ *
+ * Evidence is preserved: nothing is deleted, and the stop itself is recorded with actor,
+ * reason and time. Resume is a separate authority-gated act, so a stopped pilot never
+ * restarts silently.
+ * ========================================================================================== */
+
+export async function stopPilot(deps: PilotServiceDeps, actorId: string, reason: string): Promise<PilotControl> {
+  const authority = resolveAuthority(ownAuthority(deps), {
+    actorId, subjectId: actorId, action: 'pilot.stop',
+  });
+  if (!isPermitted(authority))
+    throw new PilotError(
+      'human_decision_required',
+      `Stopping the pilot requires a designated pilot authority. Authority is ${authority}; none is designated, so this operation is withheld.`,
+    );
+  await deps.repo.insertLifecycleEvent({
+    enrollmentId: null, subjectUserId: null, actorUserId: actorId,
+    kind: 'STOP', previousState: 'PILOT_ACTIVE', newState: 'STOPPED', reason,
+  });
+  await deps.repo.setStopped(true, actorId, reason);
+  return deps.repo.getControl();
+}
+
+/** Resume is its own authority question, so recovery is never an accident of the stop path. */
+export async function resumePilot(deps: PilotServiceDeps, actorId: string, reason: string): Promise<PilotControl> {
+  const authority = resolveAuthority(ownAuthority(deps), {
+    actorId, subjectId: actorId, action: 'pilot.resume',
+  });
+  if (!isPermitted(authority))
+    throw new PilotError(
+      'human_decision_required',
+      `Resuming the pilot requires a designated pilot authority. Authority is ${authority}; none is designated, so this operation is withheld.`,
+    );
+  await deps.repo.insertLifecycleEvent({
+    enrollmentId: null, subjectUserId: null, actorUserId: actorId,
+    kind: 'RESUME', previousState: 'STOPPED', newState: 'PILOT_ACTIVE', reason,
+  });
+  await deps.repo.setStopped(false, null, null);
+  return deps.repo.getControl();
+}
+
+export async function pilotControl(deps: PilotServiceDeps): Promise<PilotControl> {
+  return deps.repo.getControl();
 }

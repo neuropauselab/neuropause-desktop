@@ -9,7 +9,12 @@ export type PilotState =
   | 'INSTITUTIONAL_PENDING'
   | 'EXTENDED'
   | 'STOPPED'
-  | 'COMPLETED';
+  | 'COMPLETED'
+  // NP-PILOT-FIRST-004 (C-03). WITHDRAWN, TERMINATED and COMPLETED are deliberately THREE
+  // states, not one: a pilot the participant left, a pilot an operator ended, and a pilot
+  // that finished are different facts, and collapsing them would destroy the difference.
+  | 'WITHDRAWN'
+  | 'TERMINATED';
 
 /** States only reachable through a recorded human decision — never by machine flow. */
 export const HUMAN_DECISION_STATES: readonly PilotState[] = [
@@ -20,6 +25,55 @@ export const HUMAN_DECISION_STATES: readonly PilotState[] = [
   'STOPPED',
   'COMPLETED',
 ];
+
+/**
+ * States after which the participation is over. No further pilot activity is accepted and
+ * the machine never advances out of one. Re-entry, if it is ever allowed, is a human policy
+ * decision — see PILOT_RE_ENROLLMENT_POLICY below.
+ */
+export const EXITED_STATES: readonly PilotState[] = ['WITHDRAWN', 'TERMINATED', 'COMPLETED'];
+
+/**
+ * Re-enrollment is NOT ALLOWED, and that is encoded rather than assumed: the UNIQUE
+ * constraint on pilot_enrollments.user_id has always made enrollment one-shot per account,
+ * and this seam did not change it. Whether it SHOULD be allowed is a human decision that has
+ * not been made (NP-PILOT-FIRST-004, HUMAN_DECISION_REQUIRED), so the existing behaviour is
+ * recorded here explicitly instead of being inferred from a database constraint.
+ */
+export const PILOT_RE_ENROLLMENT_POLICY = 'NOT_ALLOWED_PENDING_HUMAN_DECISION' as const;
+
+/** An authoritative, published terms object. Consent binds to one of these, never to a string. */
+export interface PilotTerms {
+  id: string;
+  version: string;
+  status: 'DRAFT' | 'PUBLISHED' | 'RETIRED';
+  digest: string;
+  contentReference: string;
+  publishedAt: string | null;
+}
+
+/** The pilot-wide control row. A stop is a PILOT state, never an infrastructure action. */
+export interface PilotControl {
+  stopped: boolean;
+  stopActorId: string | null;
+  stopReason: string | null;
+  stopAt: string | null;
+  /** NULL means the boundary is UNDECIDED — it does not mean unlimited. */
+  maxParticipants: number | null;
+}
+
+export interface PilotLifecycleEvent {
+  id: string;
+  /** NULL for pilot-wide events (STOP / RESUME), which belong to no single participation. */
+  enrollmentId: string | null;
+  subjectUserId: string | null;
+  actorUserId: string;
+  kind: 'WITHDRAWAL' | 'TERMINATION' | 'STOP' | 'RESUME';
+  previousState: PilotState;
+  newState: PilotState;
+  reason: string;
+  createdAt: string;
+}
 
 export const PILOT_EVENT_TYPES = [
   'session_started',
@@ -39,6 +93,10 @@ export interface ConsentRecord {
   userId: string;
   version: string;
   createdAt: string;
+  /** The terms object accepted. NULL on consents recorded before the registry existed. */
+  termsId: string | null;
+  /** The digest of the exact content accepted, stored beside the reference. */
+  termsDigest: string | null;
 }
 
 export interface PilotEnrollment {
@@ -76,7 +134,15 @@ export type PilotErrorCode =
   | 'not_enrolled'
   | 'invalid_event'
   | 'human_decision_required'
-  | 'invalid_decision';
+  | 'invalid_decision'
+  // NP-PILOT-FIRST-004
+  | 'terms_unknown'          // the named version is not in the registry
+  | 'terms_not_published'    // it exists but is DRAFT or RETIRED
+  | 'consent_not_bound'      // the consent predates the registry, or names no terms object
+  | 'pilot_stopped'          // the pilot as a whole is stopped
+  | 'enrollment_boundary_undecided' // no approved cap exists, so enrollment is withheld
+  | 'enrollment_full'        // the approved cap is reached
+  | 'already_exited';        // withdrawn / terminated / completed
 
 export class PilotError extends Error {
   constructor(

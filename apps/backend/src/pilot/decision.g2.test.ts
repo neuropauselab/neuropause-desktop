@@ -26,6 +26,7 @@ import { signAccessToken } from '../auth/jwt';
 import { requireAuth } from '../auth/requireAuth';
 import { errorHandler, notFoundHandler } from '../middleware/error';
 import { createMemoryPilotRepository } from './memoryRepository';
+import { seedPilotFixtures, TEST_TERMS_VERSION } from './testFixtures';
 import { createPilotRouter } from './router';
 import { enroll, recordConsent } from './service';
 import type { AuthorityEvaluator, DecisionContext } from './authority';
@@ -53,7 +54,8 @@ async function start(repo: ReturnType<typeof createMemoryPilotRepository>, autho
 
 async function enrolledRepo() {
   const repo = createMemoryPilotRepository();
-  await recordConsent({ repo }, PARTICIPANT, 'v1');
+  seedPilotFixtures(repo);
+  await recordConsent({ repo }, PARTICIPANT, TEST_TERMS_VERSION);
   await enroll({ repo }, PARTICIPANT);
   return repo;
 }

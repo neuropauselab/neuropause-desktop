@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMemoryPilotRepository } from './memoryRepository';
+import { seedPilotFixtures, TEST_TERMS_VERSION } from './testFixtures';
 import { advanceMachineStates, applyHumanDecision, day7Report, enroll, pilotDay, recordConsent, recordEvent, status } from './service';
 import { HUMAN_DECISION_STATES, PilotError } from './types';
 import { NO_AUTHORITY_CONFIGURED, ownAuthority, resolveAuthority } from './authority';
@@ -8,25 +9,31 @@ const U = 'user-1';
 
 describe('pilot lifecycle service', () => {
   it('refuses enrollment without consent', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
     await expect(enroll(deps, U)).rejects.toMatchObject({ code: 'consent_required' });
   });
 
   it('consent -> enroll -> status day 1, and duplicate enrollment is refused', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
-    await recordConsent(deps, U, 'pilot-terms-v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     const e = await enroll(deps, U);
     expect(e.state).toBe('PILOT_ACTIVE');
     await expect(enroll(deps, U)).rejects.toMatchObject({ code: 'already_enrolled' });
     const s = await status(deps, U);
     expect(s.day).toBe(1);
     expect(s.day7Ready).toBe(false);
-    expect(s.consentVersion).toBe('pilot-terms-v1');
+    expect(s.consentVersion).toBe(TEST_TERMS_VERSION);
   });
 
   it('records valid events, rejects unknown types, and events never change state', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
-    await recordConsent(deps, U, 'v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
     await recordEvent(deps, U, 'session_started', {});
     await recordEvent(deps, U, 'feedback_submitted', { satisfaction: 4, text: 'good' });
@@ -36,8 +43,10 @@ describe('pilot lifecycle service', () => {
   });
 
   it('day-7 report aggregates events and marks unmeasurable metrics NOT_MEASURABLE (never zero)', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
-    await recordConsent(deps, U, 'v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
     await recordEvent(deps, U, 'session_started', {});
     await recordEvent(deps, U, 'feedback_submitted', { satisfaction: 5 });
@@ -49,8 +58,10 @@ describe('pilot lifecycle service', () => {
   });
 
   it('GOVERNANCE: machine advancement can only reach DAY7_READY/DAY30_READY, never an outcome state', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
-    await recordConsent(deps, U, 'v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     const e = await enroll(deps, U);
     // simulate day 8 by back-dating startedAt
     const rec = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
@@ -67,8 +78,10 @@ describe('pilot lifecycle service', () => {
     // endpoint cannot be used as an oracle enumerating valid state names. This fixture
     // injects a development-only ALLOW to reach the domain check at all.
     // FIXTURE=TRUE ENVIRONMENT=DEVELOPMENT NON_PILOT=TRUE NON_AUTHORITY=TRUE
-    const deps = { repo: createMemoryPilotRepository(), authority: { evaluate: () => 'ALLOW' as const } };
-    await recordConsent(deps, U, 'v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo, authority: { evaluate: () => 'ALLOW' as const } };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
     await expect(applyHumanDecision(deps, 'actor-1', U, 'PILOT_ACTIVE', 'x', 'y')).rejects.toMatchObject({
       code: 'invalid_decision',
@@ -83,7 +96,6 @@ describe('pilot lifecycle service', () => {
     );
     expect(enrollment.state).toBe('PAID_PENDING_HUMAN_DECISION');
     expect(enrollment.decisionId).toBe(decision.id);
-    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
     expect(repo.decisions).toHaveLength(1);
     expect(repo.decisions[0]!.actorId).toBe('actor-1');
   });
@@ -91,8 +103,10 @@ describe('pilot lifecycle service', () => {
   // NP-ENF-015-022: oracle resistance. Without authority, an INVALID target state is
   // refused with the SAME code as a valid one — the endpoint leaks no membership signal.
   it('NP-ENF-015-022 refusal is indistinguishable for valid and invalid target states', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
-    await recordConsent(deps, U, 'v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
     const valid = await applyHumanDecision(deps, 'actor-A', U, 'CONTINUE', 'd', 'r').catch((e) => e);
     const invalid = await applyHumanDecision(deps, 'actor-A', U, 'NOT_A_STATE', 'd', 'r').catch((e) => e);
@@ -106,10 +120,11 @@ describe('pilot lifecycle service', () => {
     ['NP-ENF-015-003 actor === subject', U, U],
     ['NP-ENF-015-002 actor !== subject', 'actor-A', U],
   ])('%s — refused with zero side effects when authority is UNKNOWN', async (_label, actorId, subjectId) => {
-    const deps = { repo: createMemoryPilotRepository() };
-    await recordConsent(deps, U, 'v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
-    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
     const stateBefore = repo.enrollments.get(U)!.state;
     const decisionIdBefore = repo.enrollments.get(U)!.decisionId;
 
@@ -135,14 +150,15 @@ describe('pilot lifecycle service', () => {
     ['NP-ENF-015-009 claim exists unadopted', 'UNKNOWN' as const],
     ['NP-ENF-015-010 baseline exists undesignated', 'DENY' as const],
   ])('%s does not manufacture authority', async (_label, answer) => {
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
     const deps = {
-      repo: createMemoryPilotRepository(),
+      repo,
       // FIXTURE=TRUE ENVIRONMENT=DEVELOPMENT NON_PILOT=TRUE NON_AUTHORITY=TRUE
       authority: { evaluate: () => answer },
     };
-    await recordConsent(deps, U, 'v1');
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
-    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
 
     await expect(
       applyHumanDecision(deps, 'actor-A', U, 'CONTINUE', 'd', 'r'),
@@ -152,17 +168,18 @@ describe('pilot lifecycle service', () => {
 
   // NP-ENF-015-011: a string that merely LOOKS like a designation is not one.
   it('NP-ENF-015-011 a synthetic "MR-04:DESIGNATED:true" string has no authority semantics', async () => {
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
     const deps = {
-      repo: createMemoryPilotRepository(),
+      repo,
       authority: {
         evaluate: (ctx: { actorId: string }) =>
           // Deliberately inspects the tempting signal and still refuses.
           ctx.actorId.includes('MR-04:DESIGNATED:true') ? ('UNKNOWN' as const) : ('UNKNOWN' as const),
       },
     };
-    await recordConsent(deps, U, 'v1');
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
-    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
 
     await expect(
       applyHumanDecision(deps, 'MR-04:DESIGNATED:true', U, 'CONTINUE', 'd', 'r'),
@@ -205,10 +222,11 @@ describe('pilot lifecycle service', () => {
     const polluted = Object.prototype as unknown as { authority?: unknown };
     polluted.authority = { evaluate: () => 'ALLOW' };
     try {
-      const deps = { repo: createMemoryPilotRepository() };
-      await recordConsent(deps, U, 'v1');
+      const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+      await recordConsent(deps, U, TEST_TERMS_VERSION);
       await enroll(deps, U);
-      const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
 
       // The polluted property IS visible on a bare lookup...
       expect((deps as { authority?: unknown }).authority).toBeDefined();
@@ -229,13 +247,14 @@ describe('pilot lifecycle service', () => {
   // The ALLOW comes from a DEVELOPMENT-ONLY injected evaluator. Production supplies none.
   // FIXTURE=TRUE ENVIRONMENT=DEVELOPMENT NON_PILOT=TRUE NON_AUTHORITY=TRUE
   it('NP-ENF-015-027 positive control — an injected development ALLOW reaches the write', async () => {
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
     const deps = {
-      repo: createMemoryPilotRepository(),
+      repo,
       authority: { evaluate: () => 'ALLOW' as const },
     };
-    await recordConsent(deps, U, 'v1');
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
-    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
 
     const { decision, enrollment } = await applyHumanDecision(
       deps,
@@ -253,10 +272,11 @@ describe('pilot lifecycle service', () => {
   });
 
   it('GOVERNANCE: DAY7_READY does not auto-convert — state persists until a human decision', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
-    await recordConsent(deps, U, 'v1');
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
+    await recordConsent(deps, U, TEST_TERMS_VERSION);
     await enroll(deps, U);
-    const repo = deps.repo as ReturnType<typeof createMemoryPilotRepository>;
     repo.enrollments.get(U)!.startedAt = new Date(Date.now() - 10 * 86_400_000).toISOString();
     await advanceMachineStates(deps, U);
     await advanceMachineStates(deps, U); // repeated machine passes
@@ -264,7 +284,9 @@ describe('pilot lifecycle service', () => {
   });
 
   it('rejects events and day7 for non-enrolled users', async () => {
-    const deps = { repo: createMemoryPilotRepository() };
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo);
+    const deps = { repo };
     await expect(recordEvent(deps, U, 'session_started', {})).rejects.toMatchObject({ code: 'not_enrolled' });
     await expect(day7Report(deps, U)).rejects.toBeInstanceOf(PilotError);
   });
