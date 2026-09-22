@@ -92,14 +92,24 @@ describe('POST /pilot/decision — enforcement at the consequential consumer', (
     },
   );
 
-  // A DIFFERENT authenticated principal is refused identically, and this is the
-  // finding rather than a negative control: router.ts:108 supplies uid(req) as BOTH
-  // actor and subject, so actor !== subject is UNREACHABLE through the production
-  // route. Every caller is refused. That is the correct machine expression of an
-  // authority state that does not yet exist, and it must not be "fixed" back open.
-  // The service-level negative control (a separated actor reaching the write) lives
-  // in service.test.ts, where the two ids can actually differ.
-  it('refuses a different principal identically — actor !== subject is unreachable here', async () => {
+  // A DIFFERENT authenticated principal is refused identically.
+  //
+  // SUPERSEDED COMMENT, kept visible rather than deleted (§2 #21). This previously read:
+  //   "router.ts:108 supplies uid(req) as BOTH actor and subject, so actor !== subject is
+  //    UNREACHABLE through the production route ... it must not be 'fixed' back open."
+  // That was a deliberate decision, and it was correct for the authority state of the time.
+  // It is no longer TRUE as a statement about the route: NP-PILOT-FIRST-004 added an optional
+  // `subjectUserId`, so actor !== subject IS now reachable through the production API.
+  //
+  // WHAT THE COMMENT WAS PROTECTING IS UNCHANGED, AND THAT IS THE POINT. The refusal never
+  // came from the ids being equal — `applyHumanDecision` asks the AUTHORITY PREDICATE first,
+  // before any repository read, and production supplies no evaluator. So every caller is
+  // still refused with zero writes, separated or not. The route was "opened" in shape only;
+  // no authority was created, and none can be without a designated evaluator (MR-04).
+  //
+  // Every assertion below is the original. None was weakened to accommodate the new field —
+  // this case posts no subjectUserId, so it still exercises the actor == subject shape.
+  it('refuses a different principal identically — authority, not id equality, is the gate', async () => {
     const base = await start();
     const res = await postDecision(base, OTHER, 'CONTINUE');
 

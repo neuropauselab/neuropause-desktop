@@ -35,6 +35,20 @@ const DecisionBody = z.object({
   targetState: z.string().min(1).max(64),
   decision: z.string().min(1).max(500),
   reason: z.string().min(1).max(2000),
+  /**
+   * The participant the decision is ABOUT. Optional; absent means the caller.
+   *
+   * Before this field existed the route passed `uid(req)` as both actor and subject, so a
+   * decision about ANOTHER participant was unreachable through the production API — an
+   * operator could never record an outcome for anyone. NP-PILOT-FIRST-003 recorded that as
+   * C-02.
+   *
+   * THIS FIELD CREATES NO AUTHORITY. `applyHumanDecision` asks `resolveAuthority` BEFORE any
+   * repository read, production supplies no evaluator, so the answer is UNKNOWN and every
+   * caller is refused with zero writes — separated or not. Supplying a subject is a
+   * SEPARATION property; permission still requires a designated evaluator (MR-04).
+   */
+  subjectUserId: z.string().min(1).max(200).optional(),
 });
 
 function toHttp(err: unknown): never {
@@ -104,8 +118,13 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
     '/decision',
     validateBody(DecisionBody),
     h(async (req, res) => {
-      const { targetState, decision, reason } = req.body as z.infer<typeof DecisionBody>;
-      res.status(201).json(await applyHumanDecision(deps, uid(req), uid(req), targetState, decision, reason));
+      const { targetState, decision, reason, subjectUserId } = req.body as z.infer<typeof DecisionBody>;
+      // Actor and subject are now passed SEPARATELY. The subject defaults to the caller so
+      // that the pre-existing self-decision shape is unchanged; the authority predicate — not
+      // the shape of this call — decides whether anything is written.
+      const actor = uid(req);
+      const subject = subjectUserId ?? actor;
+      res.status(201).json(await applyHumanDecision(deps, actor, subject, targetState, decision, reason));
     }),
   );
 
