@@ -1,8 +1,8 @@
 {
   "program": "13C",
-  "certification_id": "CERT-fb65b74",
-  "frozen_at_utc": "2026-09-22T09:41:04Z",
-  "source": { "commit": "fb65b74c14f5a4b3a57498cdc7e4cec0ae1e9252", "branch": "main", "worktree_clean": true, "clean_excludes": ["certification/"] },
+  "certification_id": "CERT-45bbd4b",
+  "frozen_at_utc": "2026-09-22T10:06:08Z",
+  "source": { "commit": "45bbd4bba94dad106d9580e6ccaad4bc11a61f5f", "branch": "main", "worktree_clean": true, "clean_excludes": ["certification/"] },
   "versions": {
     "desktop": "1.0.0-rc.30", "backend": "0.1.0", "electron": "42.8.1",
     "node_running": "24.14.0", "node_pinned": "20", "npm": "11.9.0"
