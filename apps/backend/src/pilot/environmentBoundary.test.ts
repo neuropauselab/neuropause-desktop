@@ -9,6 +9,8 @@
  * WHAT THESE EXIST TO PREVENT, in one line: `DATABASE_URL` silently meaning either pilot or
  * production.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const dbIdentity = vi.hoisted(() => vi.fn());
@@ -150,4 +152,57 @@ describe('§21 — the DATABASE side is equally strict', () => {
     });
     expect(await resolvePilotEnvironment(full())).toEqual({ ok: false, reason: 'TARGET_IDENTITY_MISMATCH' });
   });
+});
+
+/* ===================================================================================
+ * NP-015 — the evidence record must carry MEASURED classes, not hard-coded literals.
+ *
+ * TEST CLASS: REAL resolver, IN_MEMORY env, no stub.
+ *
+ * NP-014 hard-coded `environmentClass: 'PILOT'` and `targetClass: 'PILOT'` into the record
+ * after checking both. The values were correct, so nothing was wrong at runtime - but the
+ * evaluator's downstream `PRODUCTION_TARGET_DENIED` guard became UNREACHABLE, because the only
+ * real producer of an AuthorityEnvironment could no longer emit anything but 'PILOT'. A guard
+ * whose input cannot vary is decoration, which is the ENG-13 lesson at a third site.
+ * =================================================================================== */
+describe('NP-015 — the record carries what was measured', () => {
+  it('environmentClass is the CONFIGURED value, carried through rather than assumed', async () => {
+    const r = await resolvePilotEnvironment(full());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.record.environmentClass).toBe('PILOT');
+    // Falsifiability: this is the value the CONFIG declared. Re-hard-coding the literal would
+    // make the assertion pass for the wrong reason, so the sibling below pins the mechanism.
+    expect(r.record.targetClass).toBe('PILOT');
+  });
+
+  it('SOURCE INVARIANT: the record assigns no hard-coded class literal', () => {
+    // A source-level pin, because the behavioural one cannot reach this: the upstream refusals
+    // mean a non-PILOT value can never flow through in a correct build, so only a mutation or a
+    // source read distinguishes a carried value from a hard-coded one. NP-013 recorded that
+    // source-level invariants beat behavioural ones for exactly this class.
+    //
+    // MEASURED CONSEQUENCE of getting it wrong (NP-015 three-way mutation): with the class
+    // hard-coded, removing the upstream refusal laundered a PRODUCTION environment into a PILOT
+    // record and the evaluator's PRODUCTION_TARGET_DENIED guard NEVER FIRED. With the value
+    // carried, the same mutation is caught downstream as DENY/PRODUCTION_TARGET_DENIED.
+    const src = readFileSync(join(__dirname, 'environment.ts'), 'utf8');
+    expect(src).toContain('environmentId');                       // vacuity guard, FIRST
+    expect(src).not.toMatch(/environmentClass:\s*'PILOT'/);
+    expect(src).not.toMatch(/targetClass:\s*'PILOT'/);
+    expect(src).toMatch(/environmentClass:\s*declaredClass/);
+    expect(src).toMatch(/targetClass:\s*row\.environment_class/);
+  });
+
+  it('targetClass comes from the DATABASE ROW, so the two sides stay independently checkable',
+    async () => {
+      // The two-sided assertion is only two-sided if the two sides are carried separately.
+      // If both were hard-coded to the same literal there would be exactly one side.
+      const r = await resolvePilotEnvironment(full());
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      const rec = r.record as { environmentClass: string; targetClass: string };
+      expect(typeof rec.environmentClass).toBe('string');
+      expect(typeof rec.targetClass).toBe('string');
+    });
 });

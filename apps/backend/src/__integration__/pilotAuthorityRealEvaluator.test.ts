@@ -22,6 +22,7 @@ import {
 } from '../pilot/authorityEvaluator';
 import { loadRoleBindings, loadAuthorityDecisions, loadProductionAuthoritySnapshot } from '../pilot/authorityStore';
 import { setPilotCap } from '../pilot/capGovernance';
+import { sqlPilotMonitor } from '../pilot/monitor';
 import { sqlPilotRepository } from '../pilot/repository';
 
 const TEST_SAURABH  = 'cccccccc-0000-4000-8000-000000000001';
@@ -322,12 +323,36 @@ describe('§29 — a plain INSERT manufactures authority the application layer c
   });
 
   it('and the forged ALLOW leaves NO trace, because the ledger records only refusals', async () => {
+    // NP-015 CORRECTION - THIS TEST COULD NOT FAIL. As NP-014 shipped it, it inserted the two
+    // rows and then asserted `pilot_monitor_events = 0` WITHOUT EVER CALLING THE EVALUATOR. No
+    // ALLOW was produced, so the count was zero because nothing had run - and the test would
+    // have passed unchanged even if the system emitted a monitor event on every single ALLOW.
+    // It was the programme's FOURTH guard-that-cannot-fail, and it sat inside the block NP-014
+    // presented as its key executable control. Found by the NP-015 fan-out re-measuring it.
     await query(
       `INSERT INTO pilot_role_bindings (subject_id, role, decision_ref)
        VALUES ($1, 'FIRST_PILOT_HUMAN_DECISION_AUTHORITY', $2)`, [TEST_SAURABH, INSTRUMENT]);
     await query(
       `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
        VALUES ($1, true, $2, 'PILOT', $3)`, [INSTRUMENT, [...PILOT_ACTIONS], PAST]);
+
+    // POSITIVE CONTROL: the ledger CAN be written in this context. Without this, "0 events"
+    // would again be consistent with a broken monitor rather than with a silent ALLOW.
+    await sqlPilotMonitor.record({
+      alertClass: 'UNAUTHORIZED_AUTHORITY', outcome: 'DENIED',
+      actorId: TEST_SAURABH, action: 'pilot.cap.set', reasonCode: 'NP015_POSITIVE_CONTROL',
+    });
+    const { rows: ctrl } = await query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pilot_monitor_events');
+    expect(ctrl[0].n).toBe(1);
+    await query('DELETE FROM pilot_monitor_events');
+
+    // NOW actually produce the forged ALLOW through the REAL loaders and the REAL predicate.
+    const after = await loadProductionAuthoritySnapshot(NOW);
+    const out = explainAuthority(after, ctx(TEST_SAURABH, 'pilot.cap.set'));
+    expect(out.decision).toBe('ALLOW');
+
+    // ...and only now is a zero meaningful: an ALLOW happened and left nothing behind.
     const { rows } = await query<{ n: number }>('SELECT count(*)::int AS n FROM pilot_monitor_events');
     expect(rows[0].n).toBe(0);
   });

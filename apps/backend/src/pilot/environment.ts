@@ -50,9 +50,17 @@ export type EnvironmentRefusal =
  * string, password, token or key. Everything here is printable in an evidence package.
  */
 export interface PilotEnvironmentRecord {
-  readonly environmentClass: 'PILOT';
+  /**
+   * The class the CONFIGURATION declared, and the class the DATABASE ROW asserts about itself,
+   * each carried as MEASURED rather than as the literal 'PILOT'. NP-013 fixed this shape once
+   * (ENG-13, a guard comparing a constant to itself) and NP-014 fixed it again at the type
+   * level on AuthorityDecisionArtifact. This is the same shape at a third site: hard-coding
+   * 'PILOT' here makes the evaluator's downstream `PRODUCTION_TARGET_DENIED` guard unreachable,
+   * because the only real producer of this record could then never emit anything else.
+   */
+  readonly environmentClass: string;
   readonly environmentId: string;
-  readonly targetClass: 'PILOT';
+  readonly targetClass: string;
   readonly targetId: string;
   readonly applicationVersion: string;
   readonly configurationDigest: string;
@@ -148,9 +156,9 @@ export async function resolvePilotEnvironment(
   return {
     ok: true,
     record: {
-      environmentClass: 'PILOT',
+      environmentClass: declaredClass,      // MEASURED from configuration, not assumed
       environmentId,
-      targetClass: 'PILOT',
+      targetClass: row.environment_class,   // the DATABASE's own assertion, carried through
       targetId,
       applicationVersion,
       configurationDigest: configurationDigest(env),
