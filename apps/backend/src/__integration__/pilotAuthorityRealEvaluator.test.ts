@@ -12,7 +12,7 @@
  * THE SUBJECTS BELOW ARE SYNTHETIC AND BIND NOBODY. They are fixed uuid literals that map to no
  * real account. A green run proves the MECHANISM; it proves nothing about any person's identity.
  */
-import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, it, expect } from 'vitest';
 import { closePool, query } from '../db/pool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
@@ -20,7 +20,7 @@ import {
   explainAuthority, createSnapshotEvaluator, PILOT_ACTIONS,
   type AuthoritySnapshot, type RoleBinding, type AuthorityDecisionArtifact,
 } from '../pilot/authorityEvaluator';
-import { loadRoleBindings, loadAuthorityDecisions } from '../pilot/authorityStore';
+import { loadRoleBindings, loadAuthorityDecisions, loadProductionAuthoritySnapshot } from '../pilot/authorityStore';
 import { setPilotCap } from '../pilot/capGovernance';
 import { sqlPilotRepository } from '../pilot/repository';
 
@@ -251,4 +251,118 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
          CHECK (environment_class = 'PILOT')`);
     }
   });
+});
+
+/* ===================================================================================
+ * §29 — KNOWN-GAP PIN: the database credential is the authority boundary
+ *
+ * NP-013 recorded, in prose, that seven application-layer privileges cannot produce an ALLOW
+ * but that an ordinary INSERT can. Prose is not a control. This block executes that path
+ * against the REAL loaders and the REAL predicate so the finding is a fact the suite asserts
+ * rather than a claim a report makes.
+ *
+ * THESE TESTS ASSERT THAT A HOLE IS OPEN. They are expected to FAIL - loudly, and by design -
+ * on the day a trigger, RLS policy, GRANT/REVOKE split or signature check closes it. That
+ * failure is the signal to update this block, and it is the only thing standing between a
+ * future session and a second "authority model verified" report written over an open door.
+ *
+ * Nothing here authorizes anything. The subjects are the synthetic uuids declared above, the
+ * instrument is TEST_ONLY-prefixed, and the database is a disposable container.
+ * =================================================================================== */
+describe('§29 — a plain INSERT manufactures authority the application layer cannot', () => {
+  // NP-014 NARROWS NP-013's CLAIM. A forged row alone is NOT sufficient: `loadAuthorityEnvironment`
+  // resolves from process configuration as well as from the database, so in a process with no
+  // PILOT_* configuration the snapshot denies on the ENVIRONMENT leg before any binding is read.
+  // The gap is therefore conditional, and the condition is the pilot's own normal operating state:
+  // a process configured as the pilot, which the pilot process is by definition. That is what is
+  // reproduced here - not "any database write from anywhere".
+  const PILOT_PROCESS_ENV = {
+    PILOT_ENVIRONMENT_CLASS: 'PILOT',
+    PILOT_ENVIRONMENT_ID: ENV_ID,
+    PILOT_TARGET_ID: ENV_ID,
+    PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
+    DATABASE_URL: 'postgres://prod@prod-host:5432/neuropause',
+  } as const;
+  const saved: Record<string, string | undefined> = {};
+
+  beforeEach(async () => {
+    await reset();
+    for (const [k, v] of Object.entries(PILOT_PROCESS_ENV)) { saved[k] = process.env[k]; process.env[k] = v; }
+    await query(
+      `INSERT INTO pilot_environment_identity (environment_class, environment_id, target_id, declared_by)
+       VALUES ('PILOT', $1, $1, 'np014-gap-pin')`, [ENV_ID]);
+  });
+  afterEach(() => {
+    for (const k of Object.keys(PILOT_PROCESS_ENV)) {
+      if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    }
+  });
+
+  it('POSITIVE CONTROL: configured as the pilot but with EMPTY authority tables, it still denies', async () => {
+    const before = await loadProductionAuthoritySnapshot(NOW);
+    expect(before.environment).not.toBeNull();     // the environment leg is satisfied...
+    const out = explainAuthority(before, ctx(TEST_SAURABH, 'pilot.cap.set'));
+    expect(out.decision).toBe('DENY');             // ...so this DENY is about AUTHORITY, not config
+    expect(out.reason).toBe('ROLE_NOT_BOUND');
+  });
+
+  it('an ordinary INSERT through the app pool turns that DENY into ALLOW', async () => {
+    await query(
+      `INSERT INTO pilot_role_bindings (subject_id, role, decision_ref)
+       VALUES ($1, 'FIRST_PILOT_HUMAN_DECISION_AUTHORITY', $2)`, [TEST_SAURABH, INSTRUMENT]);
+    // `authenticated` is the field that is supposed to mean "a human signature was verified".
+    // No code path sets it true. SQL sets it true.
+    await query(
+      `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
+       VALUES ($1, true, $2, 'PILOT', $3)`, [INSTRUMENT, [...PILOT_ACTIONS], PAST]);
+
+    const after = await loadProductionAuthoritySnapshot(NOW);
+    const out = explainAuthority(after, ctx(TEST_SAURABH, 'pilot.cap.set'));
+    expect(out.decision).toBe('ALLOW');          // <-- the gap, executed
+  });
+
+  it('and the forged ALLOW leaves NO trace, because the ledger records only refusals', async () => {
+    await query(
+      `INSERT INTO pilot_role_bindings (subject_id, role, decision_ref)
+       VALUES ($1, 'FIRST_PILOT_HUMAN_DECISION_AUTHORITY', $2)`, [TEST_SAURABH, INSTRUMENT]);
+    await query(
+      `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
+       VALUES ($1, true, $2, 'PILOT', $3)`, [INSTRUMENT, [...PILOT_ACTIONS], PAST]);
+    const { rows } = await query<{ n: number }>('SELECT count(*)::int AS n FROM pilot_monitor_events');
+    expect(rows[0].n).toBe(0);
+  });
+
+  it('no trigger, no RLS and no signature column defends either authority table', async () => {
+    const tables = ['pilot_role_bindings', 'pilot_authority_decisions'];
+    const { rows: trig } = await query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid
+       WHERE NOT t.tgisinternal AND c.relname = ANY($1)`, [tables]);
+    expect(trig[0].n).toBe(0);
+
+    const { rows: rls } = await query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pg_class WHERE relname = ANY($1) AND relrowsecurity`, [tables]);
+    expect(rls[0].n).toBe(0);
+
+    // Nothing in either table stores a verifiable signature over its own contents.
+    const { rows: sig } = await query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM information_schema.columns
+       WHERE table_schema='public' AND table_name = ANY($1)
+         AND column_name ~* '(signature|signed_by|pubkey|public_key|digest|checksum)'`, [tables]);
+    expect(sig[0].n).toBe(0);
+  });
+
+  it('the writing credential is also the migrating credential, so any control it gains it can drop',
+    async () => {
+      const { rows } = await query<{ su: boolean; cr: boolean }>(
+        `SELECT rolsuper AS su, rolcreatedb AS cr FROM pg_roles WHERE rolname = current_user`);
+      const { rows: ddl } = await query<{ can: boolean }>(
+        `SELECT has_table_privilege(current_user, 'pilot_role_bindings', 'INSERT') AS can`);
+      expect(ddl[0].can).toBe(true);
+      // The same connection that inserts the row owns the table it inserts into.
+      const { rows: owner } = await query<{ isowner: boolean }>(
+        `SELECT pg_get_userbyid(relowner) = current_user AS isowner
+         FROM pg_class WHERE relname = 'pilot_role_bindings'`);
+      expect(owner[0].isowner).toBe(true);
+      expect(rows.length).toBe(1);
+    });
 });
