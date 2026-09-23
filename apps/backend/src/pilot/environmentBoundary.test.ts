@@ -194,15 +194,32 @@ describe('NP-015 — the record carries what was measured', () => {
     expect(src).toMatch(/targetClass:\s*row\.environment_class/);
   });
 
-  it('targetClass comes from the DATABASE ROW, so the two sides stay independently checkable',
-    async () => {
-      // The two-sided assertion is only two-sided if the two sides are carried separately.
-      // If both were hard-coded to the same literal there would be exactly one side.
-      const r = await resolvePilotEnvironment(full());
-      expect(r.ok).toBe(true);
-      if (!r.ok) return;
-      const rec = r.record as { environmentClass: string; targetClass: string };
-      expect(typeof rec.environmentClass).toBe('string');
-      expect(typeof rec.targetClass).toBe('string');
-    });
+  it('targetClass provenance is NOT behaviourally observable, and here is why', async () => {
+    // NP-016 CORRECTION. This test previously asserted only
+    //     expect(typeof rec.environmentClass).toBe('string')
+    //     expect(typeof rec.targetClass).toBe('string')
+    // under the title "targetClass comes from the DATABASE ROW". A string LITERAL is also
+    // typeof 'string', so reverting environment.ts to the hard-coded 'PILOT' left every
+    // assertion true. It was a guard that could not fail, introduced by the very commit whose
+    // subject was removing guards that cannot fail. Found by the NP-016 fan-out.
+    //
+    // The honest statement is that this property CANNOT be pinned behaviourally:
+    //   0018_pilot_governance_controls.sql:27 declares
+    //     environment_class text NOT NULL CHECK (environment_class = 'PILOT')
+    //   so row.environment_class can only ever be 'PILOT' in any correctly migrated database,
+    //   and environment.ts's `row.environment_class !== 'PILOT'` refusal is unreachable against
+    //   one. That is the ENG-13 shape again - a guard masked by a CHECK the table owner can
+    //   drop - and it is recorded rather than papered over.
+    //
+    // Provenance is therefore pinned at SOURCE level by the sibling test above, which IS
+    // falsifiable (verified: re-hard-coding either field fails it). This test asserts only the
+    // fact that makes the source pin necessary.
+    const r = await resolvePilotEnvironment(full());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.record.targetClass).toBe('PILOT');   // the ONLY value the CHECK permits
+    const ddl = readFileSync(
+      join(__dirname, '..', 'db', 'migrations', '0018_pilot_governance_controls.sql'), 'utf8');
+    expect(ddl).toContain("environment_class text NOT NULL CHECK (environment_class = 'PILOT')");
+  });
 });

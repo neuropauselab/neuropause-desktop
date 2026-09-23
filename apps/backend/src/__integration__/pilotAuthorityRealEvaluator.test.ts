@@ -17,7 +17,7 @@ import { closePool, query } from '../db/pool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import {
-  explainAuthority, createSnapshotEvaluator, PILOT_ACTIONS,
+  explainAuthority, createSnapshotEvaluator, recordAuthorityRefusals, PILOT_ACTIONS,
   type AuthoritySnapshot, type RoleBinding, type AuthorityDecisionArtifact,
 } from '../pilot/authorityEvaluator';
 import { loadRoleBindings, loadAuthorityDecisions, loadProductionAuthoritySnapshot } from '../pilot/authorityStore';
@@ -347,14 +347,43 @@ describe('§29 — a plain INSERT manufactures authority the application layer c
     expect(ctrl[0].n).toBe(1);
     await query('DELETE FROM pilot_monitor_events');
 
-    // NOW actually produce the forged ALLOW through the REAL loaders and the REAL predicate.
+    // NP-016 SECOND CORRECTION. NP-015's repair was ALSO unfalsifiable, and for a subtler
+    // reason than the original. It produced the ALLOW by calling `explainAuthority` directly -
+    // but `explainAuthority` is a PURE function (its body contains no await, no async, no
+    // query(), no monitor reference), so it structurally cannot write a ledger row. The zero
+    // therefore moved from "guaranteed because nothing ran" to "guaranteed because a pure
+    // predicate ran". Deleting the filter at authorityEvaluator.ts
+    //     if (outcome.decision !== 'DENY') continue;
+    // is EXACTLY the mutation the previous commit message named - "emit a monitor event on every
+    // ALLOW" - and the repaired test would have stayed green, because it never invoked the
+    // recording layer at all.
+    //
+    // The recording layer is `recordAuthorityRefusals`, and it is what production calls
+    // (router.ts:159 and :163). The test now drives THAT, through the real evaluator, so the
+    // assertion is sensitive to the code that actually decides what gets written.
     const after = await loadProductionAuthoritySnapshot(NOW);
-    const out = explainAuthority(after, ctx(TEST_SAURABH, 'pilot.cap.set'));
-    expect(out.decision).toBe('ALLOW');
+    const evaluator = createSnapshotEvaluator(after);
+    const decision = evaluator.evaluate(ctx(TEST_SAURABH, 'pilot.cap.set'));
+    expect(decision).toBe('ALLOW');
+    expect(evaluator.outcomes).toHaveLength(1);       // vacuity guard: the outcome was captured
 
-    // ...and only now is a zero meaningful: an ALLOW happened and left nothing behind.
+    await recordAuthorityRefusals(sqlPilotMonitor, evaluator);
+
+    // ...and only NOW is a zero meaningful: an ALLOW was evaluated, handed to the recorder, and
+    // the recorder wrote nothing. Remove the DENY filter and this fails.
     const { rows } = await query<{ n: number }>('SELECT count(*)::int AS n FROM pilot_monitor_events');
     expect(rows[0].n).toBe(0);
+  });
+
+  it('CONTROL for the above: the SAME recorder DOES write when the outcome is a DENY', async () => {
+    // Without this, "the recorder wrote nothing" is equally consistent with a recorder that
+    // never writes anything at all - which is how the previous two versions of this test passed.
+    const empty = await loadProductionAuthoritySnapshot(NOW);   // no bindings -> DENY
+    const evaluator = createSnapshotEvaluator(empty);
+    expect(evaluator.evaluate(ctx(TEST_SAURABH, 'pilot.cap.set'))).toBe('DENY');
+    await recordAuthorityRefusals(sqlPilotMonitor, evaluator);
+    const { rows } = await query<{ n: number }>('SELECT count(*)::int AS n FROM pilot_monitor_events');
+    expect(rows[0].n).toBe(1);
   });
 
   it('no trigger, no RLS and no signature column defends either authority table', async () => {
