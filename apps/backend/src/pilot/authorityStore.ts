@@ -33,7 +33,25 @@ export async function loadAuthorityDecisions(): Promise<readonly AuthorityDecisi
     instrument: r.instrument as string,
     authenticated: r.authenticated as boolean,
     actions: (r.actions ?? []) as string[],
-    environmentClass: 'PILOT' as const,
+    /*
+     * ENG-13. This read the column and then threw it away, hard-coding 'PILOT'.
+     *
+     * The consequence was that `explainAuthority`'s DECISION_OUT_OF_SCOPE check —
+     * `if (artifact.environmentClass !== 'PILOT')` — compared 'PILOT' to 'PILOT' on every
+     * production call. The guard could not fail, so it was not a guard.
+     *
+     * It was masked, not harmless: the table carries CHECK (environment_class = 'PILOT'), so
+     * no offending row can exist today. But that makes the code-level check UNFALSIFIABLE
+     * rather than safe — and the programme has measured before that an unconsumed field is not
+     * a safe field, it is an unfalsifiable one. The mask is also removable: the runtime
+     * credential is the migration credential and holds DDL rights, so whoever can write these
+     * rows can also drop that CHECK, at which point a silently non-discriminating guard is the
+     * only thing between a non-pilot decision artifact and an ALLOW.
+     *
+     * Now the column decides. Two independent checks that must agree, which is the same shape
+     * as the ENV-02 two-sided environment assertion.
+     */
+    environmentClass: r.environment_class as 'PILOT',
     effectiveFrom: new Date(r.effective_from).toISOString(),
     expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
     revokedAt: r.revoked_at ? new Date(r.revoked_at).toISOString() : null,

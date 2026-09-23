@@ -202,3 +202,41 @@ describe('§28 — privilege does not confer pilot authority', () => {
     expect(out.reason).toBe('PRODUCTION_TARGET_DENIED');
   });
 });
+
+/* ===================================================================================
+ * ENG-13 — the environment guard must actually discriminate
+ * =================================================================================== */
+describe('ENG-13 — environment_class is read from the row, not assumed', () => {
+  beforeEach(() => reset());
+
+  it('the loader returns the COLUMN value, not a hard-coded constant', async () => {
+    await query(
+      `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
+       VALUES ($1, true, $2, 'PILOT', now())`, [INSTRUMENT, [...PILOT_ACTIONS]]);
+    const [d] = await loadAuthorityDecisions();
+    expect(d.environmentClass).toBe('PILOT');
+  });
+
+  it('WITH THE CHECK DROPPED, a non-PILOT artifact is refused DECISION_OUT_OF_SCOPE', async () => {
+    // The schema CHECK is what makes the bad row impossible today. Dropping it here models the
+    // one realistic way the mask comes off: the runtime credential also holds DDL rights.
+    // The code-level guard must stand on its own once the constraint is gone.
+    await query('ALTER TABLE pilot_authority_decisions DROP CONSTRAINT pilot_authority_decisions_environment_class_check');
+    try {
+      await query(
+        `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
+         VALUES ($1, true, $2, 'PRODUCTION', now())`, [INSTRUMENT, [...PILOT_ACTIONS]]);
+      const decisions = await loadAuthorityDecisions();
+      expect(decisions[0].environmentClass).toBe('PRODUCTION');   // the row, not a constant
+
+      const out = explainAuthority(
+        snap({ decisions: [...decisions] }), ctx(TEST_SAURABH, 'pilot.cap.set'));
+      expect(out.decision).toBe('DENY');
+      expect(out.reason).toBe('DECISION_OUT_OF_SCOPE');
+    } finally {
+      await query(
+        `ALTER TABLE pilot_authority_decisions ADD CONSTRAINT pilot_authority_decisions_environment_class_check
+         CHECK (environment_class = 'PILOT')`).catch(() => {});
+    }
+  });
+});
