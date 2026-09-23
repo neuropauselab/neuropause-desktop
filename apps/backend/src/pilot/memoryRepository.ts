@@ -61,25 +61,41 @@ export function createMemoryPilotRepository(): PilotRepository & {
     async createEnrollmentWithinBoundary(userId, consentId) {
       // The memory analogue of the SQL row lock: count and insert with NO await between
       // them, so no other caller can interleave inside the critical section.
+      if (control.stopped) return { ok: false as const, reason: 'pilot_stopped' as const };
       const cap = control.maxParticipants;
-      if (cap === null) return null;
+      if (cap === null) return { ok: false as const, reason: 'enrollment_boundary_undecided' as const };
       let active = 0;
       for (const e of enrollments.values())
         if (e.state !== 'WITHDRAWN' && e.state !== 'TERMINATED' && e.state !== 'COMPLETED') active += 1;
-      if (active >= cap) return null;
+      if (active >= cap) return { ok: false as const, reason: 'enrollment_full' as const };
       const e: PilotEnrollment = {
         id: randomUUID(), userId, state: 'PILOT_ACTIVE', consentId,
         decisionId: null, startedAt: now(), updatedAt: now(),
       };
       enrollments.set(userId, e);
-      return e;
+      return { ok: true as const, enrollment: e };
     },
     async getEnrollment(userId) {
       return enrollments.get(userId) ?? null;
     },
-    async setEnrollmentState(id, state, decisionId) {
-      for (const e of enrollments.values())
-        if (e.id === id) Object.assign(e, { state, decisionId: decisionId ?? e.decisionId, updatedAt: now() });
+    async advanceMachineStateIfRunning(id, fromStates, toState) {
+      if (control.stopped) return false;
+      for (const e of enrollments.values()) {
+        if (e.id !== id) continue;
+        if (!(fromStates as readonly string[]).includes(e.state)) return false;
+        Object.assign(e, { state: toState, updatedAt: now() });
+        return true;
+      }
+      return false;
+    },
+    async applyDecisionStateIfActive(id, toState, decisionId) {
+      for (const e of enrollments.values()) {
+        if (e.id !== id) continue;
+        if (e.state === 'WITHDRAWN' || e.state === 'TERMINATED' || e.state === 'COMPLETED') return false;
+        Object.assign(e, { state: toState, decisionId, updatedAt: now() });
+        return true;
+      }
+      return false;
     },
     async exitEnrollmentIfActive(id, state, decisionId) {
       // No `await` between the test and the assignment: the memory analogue of putting the
@@ -91,6 +107,13 @@ export function createMemoryPilotRepository(): PilotRepository & {
         return true;
       }
       return false;
+    },
+    async insertEventIfActive(userId, enrollmentId, eventType, metadata) {
+      if (control.stopped) return null;
+      const e = enrollments.get(userId);
+      if (!e || e.id !== enrollmentId) return null;
+      if (e.state === 'WITHDRAWN' || e.state === 'TERMINATED' || e.state === 'COMPLETED') return null;
+      return this.insertEvent(userId, enrollmentId, eventType, metadata);
     },
     async insertEvent(userId, enrollmentId, eventType, metadata) {
       const ev: PilotEvent = { id: randomUUID(), userId, enrollmentId, eventType, metadata, createdAt: now() };

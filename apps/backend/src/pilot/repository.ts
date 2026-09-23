@@ -1,7 +1,7 @@
 /** SQL repository for the pilot lifecycle (mirrors devices/repository style). */
 import { query, withTransaction } from '../db/pool';
 import type {
-  ConsentRecord, HumanDecision, PilotControl, PilotEnrollment, PilotEvent, PilotEventType,
+  ConsentRecord, EnrollmentAdmission, HumanDecision, PilotControl, PilotEnrollment, PilotEvent, PilotEventType,
   PilotLifecycleEvent, PilotState, PilotTerms,
 } from './types';
 
@@ -30,9 +30,33 @@ export interface PilotRepository {
    * boundary is the thing a human approves, so "approximately the approved number" is not a
    * boundary at all.
    */
-  createEnrollmentWithinBoundary(userId: string, consentId: string): Promise<PilotEnrollment | null>;
+  createEnrollmentWithinBoundary(userId: string, consentId: string): Promise<EnrollmentAdmission>;
   getEnrollment(userId: string): Promise<PilotEnrollment | null>;
-  setEnrollmentState(id: string, state: PilotState, decisionId: string | null): Promise<void>;
+  /**
+   * Machine advancement, with BOTH preconditions inside the statement.
+   *
+   * NP-PILOT-FIRST-007 measured why this must exist. `advanceMachineStates` checked
+   * `control.stopped` and `EXITED_STATES.includes(e.state)` and then called an UNCONDITIONAL
+   * update. Both guards read values fetched BEFORE the `await`, so a withdrawal or a STOP that
+   * committed in between was invisible to the write: over real HTTP, a participant's own
+   * `GET /pilot/status` racing their `POST /pilot/withdraw` put them BACK IN THE PILOT in
+   * 36-39% of trials, and a committed STOP did not bind advancement already in flight.
+   *
+   * Returns false when this caller lost the race - the row had exited, or the pilot stopped.
+   */
+  advanceMachineStateIfRunning(
+    id: string,
+    fromStates: readonly PilotState[],
+    toState: PilotState,
+  ): Promise<boolean>;
+  /**
+   * Record a human decision's state change ONLY IF the participation has not exited.
+   *
+   * Same defect class as above: `applyHumanDecision` guarded on a state read before the
+   * decision row was written, so a decision racing a withdrawal overwrote the exit in 100/100
+   * trials. The guard is now the UPDATE's own predicate.
+   */
+  applyDecisionStateIfActive(id: string, toState: PilotState, decisionId: string): Promise<boolean>;
   /**
    * Move a participation to an EXITED state ONLY IF it has not already exited, atomically.
    * Returns false when the row had already exited — i.e. when this caller lost the race.
@@ -50,6 +74,17 @@ export interface PilotRepository {
    */
   exitEnrollmentIfActive(id: string, state: PilotState, decisionId: string | null): Promise<boolean>;
   insertEvent(userId: string, enrollmentId: string, type: PilotEventType, metadata: Record<string, unknown>): Promise<PilotEvent>;
+  /**
+   * Insert an event ONLY IF the participation is still active and the pilot is running.
+   * The two guards in `recordEvent` read state before the insert; a STOP committing in the
+   * gap did not bind the write. One statement closes it.
+   */
+  insertEventIfActive(
+    userId: string,
+    enrollmentId: string,
+    eventType: PilotEventType,
+    metadata: Record<string, unknown>,
+  ): Promise<PilotEvent | null>;
   listEvents(enrollmentId: string): Promise<PilotEvent[]>;
   insertDecision(d: Omit<HumanDecision, 'id' | 'createdAt'>): Promise<HumanDecision>;
   /**
@@ -137,26 +172,49 @@ export const sqlPilotRepository: PilotRepository = {
     return withTransaction(async (client) => {
       // Lock the singleton control row FIRST. Every concurrent enrollment serializes here, so
       // the count below is taken while no other enrollment can be committing.
-      const control = await client.query('SELECT max_participants FROM pilot_control FOR UPDATE');
-      const cap: number | null = control.rows[0]?.max_participants ?? null;
-      if (cap === null) return null; // UNDECIDED boundary — never treated as unlimited.
+      const control = await client.query('SELECT max_participants, stopped FROM pilot_control FOR UPDATE');
+      // NP-007: `enroll` read `stopped` BEFORE this transaction, so a STOP committing in the
+      // gap did not bind the insert. `stopped` is now read under the same FOR UPDATE lock that
+      // serializes the cap, so a committed STOP is visible to every enrollment behind it.
+      // A MISSING singleton refuses, matching getControl's fail-closed default.
+      if (control.rows[0] === undefined || control.rows[0].stopped === true)
+        return { ok: false, reason: 'pilot_stopped' as const };
+      const cap: number | null = control.rows[0].max_participants ?? null;
+      if (cap === null) return { ok: false, reason: 'enrollment_boundary_undecided' as const };
       const counted = await client.query(
         "SELECT count(*)::int AS n FROM pilot_enrollments WHERE state NOT IN ('WITHDRAWN','TERMINATED','COMPLETED')",
       );
-      if (counted.rows[0].n >= cap) return null;
+      if (counted.rows[0].n >= cap) return { ok: false, reason: 'enrollment_full' as const };
       const { rows } = await client.query(
         "INSERT INTO pilot_enrollments (user_id, state, consent_id) VALUES ($1,'PILOT_ACTIVE',$2) RETURNING *",
         [userId, consentId],
       );
-      return enrollRow(rows[0]);
+      return { ok: true as const, enrollment: enrollRow(rows[0]) };
     });
   },
   async getEnrollment(userId) {
     const { rows } = await query('SELECT * FROM pilot_enrollments WHERE user_id=$1', [userId]);
     return rows[0] ? enrollRow(rows[0]) : null;
   },
-  async setEnrollmentState(id, state, decisionId) {
-    await query('UPDATE pilot_enrollments SET state=$2, decision_id=COALESCE($3, decision_id), updated_at=now() WHERE id=$1', [id, state, decisionId]);
+  async advanceMachineStateIfRunning(id, fromStates, toState) {
+    // `EXISTS (... stopped = false)` and NOT `NOT EXISTS (... stopped)`: a MISSING control row
+    // must refuse the write, matching getControl's fail-closed `stopped: true`. The negated
+    // form would let an absent singleton wave every advancement through.
+    const { rowCount } = await query(
+      `UPDATE pilot_enrollments SET state=$3, updated_at=now()
+       WHERE id=$1 AND state = ANY($2::text[])
+         AND EXISTS (SELECT 1 FROM pilot_control WHERE id = true AND stopped = false)`,
+      [id, fromStates as unknown as string[], toState],
+    );
+    return (rowCount ?? 0) > 0;
+  },
+  async applyDecisionStateIfActive(id, toState, decisionId) {
+    const { rowCount } = await query(
+      `UPDATE pilot_enrollments SET state=$2, decision_id=$3, updated_at=now()
+       WHERE id=$1 AND state NOT IN ('WITHDRAWN','TERMINATED','COMPLETED')`,
+      [id, toState, decisionId],
+    );
+    return (rowCount ?? 0) > 0;
   },
   async exitEnrollmentIfActive(id, state, decisionId) {
     // One statement: the state precondition is IN the UPDATE, so two concurrent callers
@@ -167,6 +225,19 @@ export const sqlPilotRepository: PilotRepository = {
       [id, state, decisionId],
     );
     return (rowCount ?? 0) > 0;
+  },
+  async insertEventIfActive(userId, enrollmentId, eventType, metadata) {
+    const { rows } = await query(
+      `INSERT INTO pilot_events (user_id, enrollment_id, event_type, metadata)
+       SELECT $1,$2,$3,$4
+       WHERE EXISTS (
+               SELECT 1 FROM pilot_enrollments
+               WHERE id=$2 AND user_id=$1 AND state NOT IN ('WITHDRAWN','TERMINATED','COMPLETED'))
+         AND EXISTS (SELECT 1 FROM pilot_control WHERE id = true AND stopped = false)
+       RETURNING *`,
+      [userId, enrollmentId, eventType, metadata],
+    );
+    return rows[0] ? eventRow(rows[0]) : null;
   },
   async insertEvent(userId, enrollmentId, type, metadata) {
     const { rows } = await query(

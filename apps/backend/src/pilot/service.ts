@@ -116,10 +116,21 @@ export async function enroll(deps: PilotServiceDeps, userId: string): Promise<Pi
   // THE BOUNDARY IS ENFORCED BY THE WRITE, NOT BY A PRECEDING READ. Counting first and
   // inserting second is read-then-write: two enrollments that begin before either finishes
   // both see room and both are admitted. A cap of one admitted two until this was atomic.
-  const enrolled = await deps.repo.createEnrollmentWithinBoundary(userId, consent.id);
-  if (!enrolled)
+  const admission = await deps.repo.createEnrollmentWithinBoundary(userId, consent.id);
+  if (!admission.ok) {
+    // The REASON comes from inside the transaction, not from the `control` read at the top of
+    // this function. NP-007: a STOP committing between that read and this write was admitted,
+    // and then reported as `enrollment_full` — a refusal that named the wrong cause.
+    if (admission.reason === 'pilot_stopped')
+      throw new PilotError('pilot_stopped', 'The pilot is stopped; new enrollment is not accepted.');
+    if (admission.reason === 'enrollment_boundary_undecided')
+      throw new PilotError(
+        'enrollment_boundary_undecided',
+        'No approved enrollment boundary exists for this pilot, so enrollment is withheld.',
+      );
     throw new PilotError('enrollment_full', 'The approved enrollment boundary for this pilot has been reached.');
-  return enrolled;
+  }
+  return admission.enrollment;
 }
 
 export async function recordEvent(
@@ -137,7 +148,15 @@ export async function recordEvent(
   const control = await deps.repo.getControl();
   if (control.stopped)
     throw new PilotError('pilot_stopped', 'The pilot is stopped; no further pilot activity is accepted.');
-  return deps.repo.insertEvent(userId, e.id, eventType as PilotEventType, metadata);
+  // The two guards above read state; this write re-asserts both. A STOP or a withdrawal
+  // committing in the gap loses nothing here — the insert simply does not happen.
+  const ev = await deps.repo.insertEventIfActive(userId, e.id, eventType as PilotEventType, metadata);
+  if (!ev)
+    throw new PilotError(
+      'already_exited',
+      'This participation is no longer accepting activity; it has exited or the pilot is stopped.',
+    );
+  return ev;
 }
 
 export interface PilotStatus {
@@ -267,13 +286,20 @@ export async function applyHumanDecision(
     decision: `${targetState}: ${decision}`,
     reason,
   });
-  // Captured BEFORE the write. `setEnrollmentState` mutates the row in place in the in-memory
+  // Captured BEFORE the write. `applyDecisionStateIfActive` mutates the row in place in the in-memory
   // repository, so reading `e.state` afterwards would report the NEW state as the previous
   // one — which is how this was caught. Relying on a repository not to alias its rows is a
   // property no interface here promises.
   const stateBeforeDecision = e.state;
 
-  await deps.repo.setEnrollmentState(e.id, targetState as PilotState, rec.id);
+  // NP-007 DEFECT-3: this was an unconditional write guarded by a state read taken before the
+  // decision row was inserted, so a decision racing a withdrawal overwrote the exit in 100/100
+  // trials. The exited-state predicate now lives in the UPDATE.
+  if (!(await deps.repo.applyDecisionStateIfActive(e.id, targetState as PilotState, rec.id)))
+    throw new PilotError(
+      'already_exited',
+      'This participation exited before the decision could be recorded; no outcome was applied.',
+    );
 
   /*
    * A COMPLETION IS AN EXIT, AND THE LEDGER OF EXITS MUST CONTAIN IT.
@@ -352,9 +378,23 @@ export async function advanceMachineStates(deps: PilotServiceDeps, userId: strin
   // An exited participation is terminal: the machine never advances out of WITHDRAWN,
   // TERMINATED or COMPLETED, so a withdrawn participant cannot be returned to the clock.
   if ((EXITED_STATES as readonly string[]).includes(e.state)) return e;
-  const machineAdvanceable = e.state === 'PILOT_ACTIVE' || e.state === 'DAY7_READY';
-  if (machineAdvanceable && day >= 30) await deps.repo.setEnrollmentState(e.id, 'DAY30_READY', null);
-  else if (e.state === 'PILOT_ACTIVE' && day >= 7) await deps.repo.setEnrollmentState(e.id, 'DAY7_READY', null);
+  /*
+   * THE TWO GUARDS ABOVE ARE FAST PATHS, NOT THE ENFORCEMENT.
+   *
+   * NP-PILOT-FIRST-007 measured the difference over real HTTP. Both guards test values read
+   * before an `await`; the write that followed asserted neither. A participant's own
+   * `GET /pilot/status` racing their `POST /pilot/withdraw` revived them in 36-39% of 100
+   * trials — 201 "withdrawn", then back in the pilot and able to submit data again — and a
+   * committed STOP did not bind an advancement already in flight.
+   *
+   * The enforcement is now the UPDATE's own predicate: it names the states it may move FROM
+   * and requires the pilot to be running, so a withdrawal or STOP that commits in the gap
+   * makes the write match zero rows. Losing that race is not an error — it means someone
+   * else's decision arrived first, which is precisely the outcome the machine must respect.
+   */
+  if (day >= 30)
+    await deps.repo.advanceMachineStateIfRunning(e.id, ['PILOT_ACTIVE', 'DAY7_READY'], 'DAY30_READY');
+  else if (day >= 7) await deps.repo.advanceMachineStateIfRunning(e.id, ['PILOT_ACTIVE'], 'DAY7_READY');
   return deps.repo.getEnrollment(userId);
 }
 

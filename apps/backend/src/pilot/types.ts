@@ -169,3 +169,15 @@ export class PilotError extends Error {
     super(message);
   }
 }
+
+/**
+ * The result of an enrollment attempt, decided INSIDE the cap transaction.
+ *
+ * A bare `PilotEnrollment | null` conflated three different refusals, so the service had to
+ * re-derive the reason from state it had read earlier — which is exactly how NP-007's
+ * stop-race survived: `enroll` read `stopped` before the transaction and mapped every null to
+ * `enrollment_full`. The reason is now decided where the lock is held and carried out.
+ */
+export type EnrollmentAdmission =
+  | { ok: true; enrollment: PilotEnrollment }
+  | { ok: false; reason: 'pilot_stopped' | 'enrollment_boundary_undecided' | 'enrollment_full' };

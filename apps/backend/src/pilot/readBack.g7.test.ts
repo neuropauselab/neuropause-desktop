@@ -59,7 +59,9 @@ function detached(repo: Repo): PilotRepository {
     recordConsent: refuse('recordConsent') as PilotRepository['recordConsent'],
     createEnrollment: refuse('createEnrollment') as PilotRepository['createEnrollment'],
     createEnrollmentWithinBoundary: refuse('createEnrollmentWithinBoundary') as PilotRepository['createEnrollmentWithinBoundary'],
-    setEnrollmentState: refuse('setEnrollmentState') as PilotRepository['setEnrollmentState'],
+    advanceMachineStateIfRunning: refuse('advanceMachineStateIfRunning') as PilotRepository['advanceMachineStateIfRunning'],
+    applyDecisionStateIfActive: refuse('applyDecisionStateIfActive') as PilotRepository['applyDecisionStateIfActive'],
+    insertEventIfActive: refuse('insertEventIfActive') as PilotRepository['insertEventIfActive'],
     exitEnrollmentIfActive: refuse('exitEnrollmentIfActive') as PilotRepository['exitEnrollmentIfActive'],
     insertEvent: refuse('insertEvent') as PilotRepository['insertEvent'],
     insertDecision: refuse('insertDecision') as PilotRepository['insertDecision'],
@@ -114,7 +116,11 @@ describe('G7 — a complete participation reconstructs from evidence alone', () 
 
     await readBackParticipation(view, P); // must not touch a single writer
 
-    for (const name of ['createEnrollment', 'createEnrollmentWithinBoundary', 'setEnrollmentState', 'insertEvent', 'insertDecision', 'setStopped', 'insertLifecycleEvent'] as const) {
+    // EVERY writer on the interface, including the three NP-007 added. A writer missing from
+    // this list is a writer the read-back could call with nothing failing.
+    for (const name of ['createEnrollment', 'createEnrollmentWithinBoundary', 'advanceMachineStateIfRunning',
+      'applyDecisionStateIfActive', 'exitEnrollmentIfActive', 'insertEvent', 'insertEventIfActive',
+      'insertDecision', 'setStopped', 'insertLifecycleEvent'] as const) {
       expect(() => (view[name] as (...a: never[]) => unknown)()).toThrow(/read-back attempted a write/);
     }
   });
