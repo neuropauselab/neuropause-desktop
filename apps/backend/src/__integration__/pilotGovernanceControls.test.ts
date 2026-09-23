@@ -25,6 +25,10 @@ const ENV_OK = {
   PILOT_ENVIRONMENT_CLASS: 'PILOT',
   PILOT_ENVIRONMENT_ID: ENV_ID,
   PILOT_TARGET_ID: TARGET_ID,
+  // ENV-04 (NP-014): a pilot environment now requires a DECLARED, DISTINCT pilot store.
+  // Without it resolution refuses PILOT_STORE_NOT_DECLARED, which is the point of the control.
+  PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
+  DATABASE_URL: 'postgres://prod@prod-host:5432/neuropause',
 } as NodeJS.ProcessEnv;
 
 beforeAll(async () => { await runMigrations(); });
@@ -114,18 +118,53 @@ describe('ENV-02 — the DATABASE must assert its own identity', () => {
 describe('§40 — the environment evidence record carries no secret', () => {
   it('no connection string, password, token or key appears anywhere in it', async () => {
     await reset();
-    const r = await resolvePilotEnvironment({ ...ENV_OK, DATABASE_URL: 'postgres://u:SUPERSECRET@h/db' });
+    const r = await resolvePilotEnvironment({
+      ...ENV_OK,
+      DATABASE_URL: 'postgres://u:SUPERSECRET@h/db',
+      PILOT_DATABASE_URL: 'postgres://u:PILOTSECRET@ph/pdb',   // ENV-04: the new string must not leak either
+    });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const serialized = JSON.stringify(r.record);
-    for (const forbidden of ['SUPERSECRET', 'postgres://', 'password', 'token', 'secret'])
+    for (const forbidden of ['SUPERSECRET', 'PILOTSECRET', 'postgres://', 'password', 'token', 'secret'])
       expect(serialized.toLowerCase()).not.toContain(forbidden.toLowerCase());
   });
   it('the configuration digest reflects presence, never the value of DATABASE_URL', () => {
     const a = configurationDigest({ ...ENV_OK, DATABASE_URL: 'postgres://a:1@h/db' });
     const b = configurationDigest({ ...ENV_OK, DATABASE_URL: 'postgres://b:2@other/db' });
     expect(a).toBe(b);                                   // the VALUE does not leak into the digest
-    expect(configurationDigest(ENV_OK)).not.toBe(a);     // but PRESENCE does change it
+    // ENV_OK now DECLARES DATABASE_URL, because ENV-04 needs it present to test separation.
+    // The absent case must therefore be built EXPLICITLY. Leaving this as
+    // `configurationDigest(ENV_OK)` compared a digest to itself and passed for no reason.
+    const absent: NodeJS.ProcessEnv = { ...ENV_OK };
+    delete absent.DATABASE_URL;
+    expect(configurationDigest(absent)).not.toBe(a);     // but PRESENCE does change it
+  });
+
+  it('the digest reflects PILOT store presence and SEPARATION, never the value', () => {
+    const shared = 'postgres://prod@prod-host:5432/neuropause';
+    const p1 = configurationDigest({ ...ENV_OK, DATABASE_URL: shared, PILOT_DATABASE_URL: 'postgres://x:1@ph/p' });
+    const p2 = configurationDigest({ ...ENV_OK, DATABASE_URL: shared, PILOT_DATABASE_URL: 'postgres://y:2@qh/q' });
+    expect(p1).toBe(p2);                                 // two different pilot stores, same digest
+
+    const absent: NodeJS.ProcessEnv = { ...ENV_OK, DATABASE_URL: shared };
+    delete absent.PILOT_DATABASE_URL;
+    expect(configurationDigest(absent)).not.toBe(p1);    // declaring a pilot store changes it
+
+    // The separation bit must move on its own: same presence, same two keys, but pointed at
+    // the product store. If this digest equalled p1 the evidence record could not distinguish
+    // a separated pilot from one running inside production.
+    const notSeparated = configurationDigest({ ...ENV_OK, DATABASE_URL: shared, PILOT_DATABASE_URL: shared });
+    expect(notSeparated).not.toBe(p1);
+
+    // ...and the PRESENCE bit must carry its own weight. Both of the states below yield
+    // PILOT_STORE_SEPARATED=false, so separation alone cannot tell them apart:
+    //   (a) no pilot store was declared at all        - an OMISSION
+    //   (b) a pilot store was declared as the product store - a CONTAMINATION
+    // Those are different governance facts and the evidence record must distinguish them.
+    // Found by mutation M4: deleting PILOT_DATABASE_URL_PRESENT from the digest survived the
+    // whole suite until this assertion existed.
+    expect(configurationDigest(absent)).not.toBe(notSeparated);
   });
 });
 

@@ -40,7 +40,10 @@ export type EnvironmentRefusal =
   | 'TARGET_ID_NOT_DECLARED'
   | 'TARGET_IDENTITY_ABSENT'
   | 'TARGET_IDENTITY_MISMATCH'
-  | 'TARGET_CLASS_NOT_PILOT';
+  | 'TARGET_CLASS_NOT_PILOT'
+  // ENV-04, added NP-PILOT-FIRST-014.
+  | 'PILOT_STORE_NOT_DECLARED'
+  | 'PILOT_STORE_NOT_SEPARATED';
 
 /**
  * The safe evidence record. §40: it carries identities and digests and NEVER a connection
@@ -74,6 +77,11 @@ export function configurationDigest(env: NodeJS.ProcessEnv): string {
     PILOT_TARGET_ID: env.PILOT_TARGET_ID ?? null,
     NODE_ENV: env.NODE_ENV ?? null,
     DATABASE_URL_PRESENT: env.DATABASE_URL !== undefined,
+    // ENV-04. PRESENCE and SEPARATION only - never either connection string, for the same
+    // reason DATABASE_URL is reduced to a boolean: a digest of a secret is derived from it.
+    PILOT_DATABASE_URL_PRESENT: env.PILOT_DATABASE_URL !== undefined,
+    PILOT_STORE_SEPARATED:
+      env.PILOT_DATABASE_URL !== undefined && env.PILOT_DATABASE_URL !== env.DATABASE_URL,
   };
   return createHash('sha256').update(JSON.stringify(shape)).digest('hex');
 }
@@ -98,6 +106,34 @@ export async function resolvePilotEnvironment(
 
   const targetId = env.PILOT_TARGET_ID?.trim();
   if (!targetId) return { ok: false, reason: 'TARGET_ID_NOT_DECLARED' };
+
+  /*
+   * ENV-04 — D10 REQUIRES A **PILOT-DEDICATED** DATA STORE, AND THE CODE NOW REFUSES WITHOUT ONE.
+   *
+   * MEASURED at NP-PILOT-FIRST-014: the product database holds 52 tables, of which 16 are the
+   * pilot's and 36 are the product's - `users`, `auth_sessions`, `auth_tokens`, `audit_log`,
+   * `subscriptions`, `organizations`, `devices` and the rest. There is ONE `new Pool`, ONE
+   * `DATABASE_URL`, no `PILOT_DATABASE_URL`, and no separate schema. So "PILOT-DEDICATED" was
+   * not merely unproven, it was architecturally absent.
+   *
+   * THIS CODE CANNOT PROVISION A DATABASE. What it can do - and now does - is refuse to
+   * recognise a pilot environment until a distinct store has been declared, so that
+   * "the pilot store is the product store" becomes a REFUSED, NAMED condition rather than an
+   * invisible default.
+   *
+   * §20 IS WHY THE COMPARISON EXISTS: `DATABASE_URL` must never silently mean either pilot or
+   * production. Declaring `PILOT_DATABASE_URL` equal to `DATABASE_URL` is the exact shape of
+   * that ambiguity, so it is refused as PILOT_STORE_NOT_SEPARATED rather than accepted as
+   * technically-two-variables.
+   *
+   * The comparison is on the declared VALUES; it is not a proof that two distinct strings
+   * reach two distinct servers. That stronger property is a deployment fact, and the evidence
+   * package says so rather than implying this check establishes it.
+   */
+  const pilotStore = env.PILOT_DATABASE_URL?.trim();
+  if (!pilotStore) return { ok: false, reason: 'PILOT_STORE_NOT_DECLARED' };
+  if (pilotStore === env.DATABASE_URL?.trim())
+    return { ok: false, reason: 'PILOT_STORE_NOT_SEPARATED' };
 
   // THE SECOND, INDEPENDENT ASSERTION. The database answers for itself.
   const { rows } = await query(

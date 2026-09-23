@@ -221,6 +221,12 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
     // The schema CHECK is what makes the bad row impossible today. Dropping it here models the
     // one realistic way the mask comes off: the runtime credential also holds DDL rights.
     // The code-level guard must stand on its own once the constraint is gone.
+    // Positive control: the mask must be ON before we take it off. Without this the test
+    // reports an obscure 42704 instead of "this database is already unconstrained".
+    const { rows: [{ present }] } = await query<{ present: boolean }>(
+      `SELECT count(*)::int > 0 AS present FROM pg_constraint WHERE conname = $1`,
+      ['pilot_authority_decisions_environment_class_check']);
+    expect(present).toBe(true);
     await query('ALTER TABLE pilot_authority_decisions DROP CONSTRAINT pilot_authority_decisions_environment_class_check');
     try {
       await query(
@@ -234,9 +240,15 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
       expect(out.decision).toBe('DENY');
       expect(out.reason).toBe('DECISION_OUT_OF_SCOPE');
     } finally {
+      // The PRODUCTION row inserted above would itself violate the CHECK, so it has to go
+      // before the constraint can come back. The previous `.catch(() => {})` swallowed exactly
+      // that failure, leaving the database PERMANENTLY unconstrained: the test passed once per
+      // container and errored on every later run. A repair step that can fail silently is not
+      // a repair step.
+      await query(`DELETE FROM pilot_authority_decisions WHERE environment_class <> 'PILOT'`);
       await query(
         `ALTER TABLE pilot_authority_decisions ADD CONSTRAINT pilot_authority_decisions_environment_class_check
-         CHECK (environment_class = 'PILOT')`).catch(() => {});
+         CHECK (environment_class = 'PILOT')`);
     }
   });
 });

@@ -308,7 +308,11 @@ describe('§18 — the two-sided environment assertion, all four cases', () => {
   beforeEach(() => reset());
 
   const cfg = (over: Record<string, string> = {}) => ({
-    PILOT_ENVIRONMENT_CLASS: 'PILOT', PILOT_ENVIRONMENT_ID: ENV_ID, PILOT_TARGET_ID: TARGET_ID, ...over,
+    PILOT_ENVIRONMENT_CLASS: 'PILOT', PILOT_ENVIRONMENT_ID: ENV_ID, PILOT_TARGET_ID: TARGET_ID,
+    // ENV-04 (NP-014): declared and distinct from the product store, or resolution refuses.
+    PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
+    DATABASE_URL: 'postgres://prod@prod-host:5432/neuropause',
+    ...over,
   } as NodeJS.ProcessEnv);
 
   it('config=PILOT db=PRODUCTION -> DENY', async () => {
@@ -386,8 +390,11 @@ describe('§6/§21 — the pilot alert sink is DEMONSTRABLY separate from produc
     }
     // DATABASE_URL appears only as `env.DATABASE_URL !== undefined` — presence, never value.
     expect([...reads].sort()).toEqual([
+      // DATABASE_URL appears only as a PRESENCE check and as the value PILOT_DATABASE_URL is
+      // compared against for separation — never as a connection the pilot opens.
       'DATABASE_URL', 'NODE_ENV', 'PILOT_ALERT_DIR', 'PILOT_ALERT_SINK',
-      'PILOT_ENVIRONMENT_CLASS', 'PILOT_ENVIRONMENT_ID', 'PILOT_MODULE_ENABLED', 'PILOT_TARGET_ID',
+      'PILOT_DATABASE_URL', 'PILOT_ENVIRONMENT_CLASS', 'PILOT_ENVIRONMENT_ID',
+      'PILOT_MODULE_ENABLED', 'PILOT_TARGET_ID',
     ]);
   });
 });
