@@ -91,10 +91,29 @@ describe('§5 — retention must not record work it did not perform', () => {
     expect(rows[0].n).toBe(1);
   });
 
-  it('DELETED class: pilot_events is actually removed', async () => {
+  /*
+   * SUPERSEDED BY D13-C (§2 #26 - the work was not wrong, the decision moved).
+   * This test previously read `DELETED class: pilot_events is actually removed` and asserted
+   * `count(*) === 0`. That matched the method NP-008's implementer chose; NP-018 measured that
+   * the choice had never been put to a decision-maker, and D13-C decided the opposite.
+   *
+   * The replacement is deliberately STRONGER than a flipped number. Asserting only that no row
+   * names the subject would go green if the rows were deleted instead - the two methods are
+   * indistinguishable from that side. Requiring the row to SURVIVE under the pseudonym is what
+   * actually separates P1 from destruction.
+   */
+  it('PSEUDONYMIZED class: pilot_events survives, under a pseudonym, not the subject', async () => {
     await executeRetention(new Date());
-    const { rows } = await query<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
-    expect(rows[0].n).toBe(0);
+    const total = await query<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
+    expect(total.rows[0].n).toBe(1);                       // the row was NOT destroyed
+    const bySubject = await query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pilot_events WHERE user_id = $1', [SUBJECT]);
+    expect(bySubject.rows[0].n).toBe(0);                   // it no longer names the participant
+    const byPseudonym = await query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pilot_events e
+       JOIN pilot_subject_pseudonyms p ON p.pseudonym_user_id = e.user_id
+       WHERE p.subject_user_id = $1`, [SUBJECT]);
+    expect(byPseudonym.rows[0].n).toBe(1);                 // it names THIS subject's pseudonym
   });
 
   it('THE DEFECT: no completion record may exist for a class whose data was never mutated', async () => {
@@ -145,10 +164,21 @@ describe('§12 §13 — failure, retry and idempotency', () => {
     await executeRetention(new Date());
     const claimed = (await logRows()).map((r) => r.data_class).sort();
     expect(claimed).toEqual([...EXECUTABLE_CLASSES].sort());
-    // The four unexecutable classes must have NO record at all - absence is the non-completion,
-    // because pilot_retention_log has no status column to express FAILED.
+    /*
+     * SUPERSEDED. This previously asserted that consents / pilot_enrollments /
+     * pilot_lifecycle_events / human_decisions are NEVER claimed, because NP-017 measured their
+     * NOT NULL subject FKs as un-severable. D13-D selected P1 - REPLACE, not sever - and
+     * `pilot_subject_pseudonyms` supplies a real row to point at, so all four are now executable
+     * with every one of those constraints still enforced.
+     *
+     * The inverted assertion is the load-bearing one: each must now be claimed AND, per §12, the
+     * claim must correspond to a mutation that actually happened.
+     */
     for (const cls of ['consents', 'pilot_enrollments', 'pilot_lifecycle_events', 'human_decisions'])
-      expect(claimed).not.toContain(cls);
+      expect(claimed).toContain(cls);
+    // Every claim records the method D13-C decided, not whatever the executor felt like doing.
+    const byClass = new Map((await logRows()).map((r) => [r.data_class, r.method]));
+    for (const c of RETENTION_CLASSES) expect(byClass.get(c.name)).toBe(c.method);
   });
 
   it('§12 a forced mutation failure leaves NO completion record and NO mutation', async () => {
@@ -172,7 +202,8 @@ describe('§12 §13 — failure, retry and idempotency', () => {
     await query(`UPDATE pilot_retention_holds SET released_at = now()`);
     const second = await executeRetention(new Date());
     expect(second.map((i) => i.dataClass).sort()).toEqual([...EXECUTABLE_CLASSES].sort());
-    const { rows } = await query<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
+    const { rows } = await query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pilot_events WHERE user_id = $1', [SUBJECT]);
     expect(rows[0].n).toBe(0);                      // the retry actually did the work
   });
 
@@ -197,19 +228,45 @@ describe('§12 §13 — failure, retry and idempotency', () => {
       expect(byClass.size).toBe(log.length);
     });
 
-  it('§21 EXPORT: after retention the export exposes no deleted rows and no severed subject', async () => {
-    await executeRetention(new Date());
-    const exported = await exportParticipantPilotData(sqlPilotRepository, SUBJECT);
-    const blob = JSON.stringify(exported);
-    expect(blob).not.toContain('session_started');   // pilot_events was DELETED
-    // pseudonymized monitor rows must no longer link to the subject
-    const { rows } = await query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM pilot_monitor_events
-       WHERE actor_id = $1 OR subject_user_id = $1`, [SUBJECT]);
-    expect(rows[0].n).toBe(0);
-    // ...but the governance evidence itself survives
-    expect(await countCanary('pilot_monitor_events', 'reason_code')).toBe(1);
-  });
+  /*
+   * SUPERSEDED, AND THE SUPERSESSION IS THE POINT WORTH RECORDING.
+   *
+   * This test used to assert that the monitor ledger's `reason_code` canary SURVIVES - NP-017
+   * argued the refusal record is governance evidence an audit would need after the pilot ends.
+   * D13-C decided `pilot_monitor_events -> DELETE`. That is a decision-maker's call about their
+   * own pilot, and the implementation follows it; but the consequence is real and is recorded
+   * here rather than left for someone to discover: AFTER RETENTION RUNS, THE MONITOR-EVENT
+   * REFUSAL LEDGER FOR THAT PARTICIPANT NO LONGER EXISTS.
+   *
+   * The evidence that the pilot was governed now rests on pilot_lifecycle_events and
+   * human_decisions, both of which D13-C retains under pseudonyms.
+   */
+  it('§21 EXPORT: the subject link is gone from every class, and D13-C\'s deletions are real',
+    async () => {
+      await executeRetention(new Date());
+      const exported = await exportParticipantPilotData(sqlPilotRepository, SUBJECT);
+      const blob = JSON.stringify(exported);
+      // The export is subject-keyed, so after pseudonymization it can reach nothing.
+      expect(blob).not.toContain('session_started');
+      // DELETE means destroyed, not merely unlinked: the canary is gone from the whole table.
+      expect(await countCanary('pilot_monitor_events', 'reason_code')).toBe(0);
+      // ...while the classes D13-C told us to KEEP still hold their evidence.
+      expect(await countCanary('pilot_lifecycle_events', 'reason')).toBe(1);
+      expect(await countCanary('human_decisions', 'reason')).toBe(1);
+      expect(await countCanary('consents', 'terms_digest')).toBe(1);
+      // and no surviving row names the participant, in any class
+      for (const [t, cols] of Object.entries({
+        pilot_events: ['user_id'], consents: ['user_id'], pilot_enrollments: ['user_id'],
+        pilot_lifecycle_events: ['actor_user_id', 'subject_user_id'],
+        human_decisions: ['actor_id'],
+        pilot_monitor_events: ['actor_id', 'subject_user_id'],
+      })) {
+        const pred = cols.map((c) => `${c} = $1`).join(' OR ');
+        const { rows } = await query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM ${t} WHERE ${pred}`, [SUBJECT]);
+        expect({ table: t, naming: rows[0].n }).toEqual({ table: t, naming: 0 });
+      }
+    });
 });
 
 describe('NP-017 second correction — a NULL subject must not verify vacuously', () => {
@@ -252,9 +309,12 @@ describe('NP-019 §14 §15 §16 — transactional atomicity, observed from a SEP
   it('§15 SUCCESS is atomic: mutation AND completion record are both visible externally', async () => {
     const applied = await executeRetention(new Date());
     expect(applied.map((i) => i.dataClass).sort()).toEqual([...EXECUTABLE_CLASSES].sort());
-    const events = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
+    const named = await observe<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pilot_events WHERE user_id = $1', [SUBJECT]);
+    const surviving = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
     const log = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_retention_log');
-    expect(events[0].n).toBe(0);                       // the DELETE committed
+    expect(named[0].n).toBe(0);                        // the UPDATE committed
+    expect(surviving[0].n).toBe(1);                    // ...as a pseudonymization, not a delete
     expect(log[0].n).toBe(EXECUTABLE_CLASSES.length);  // the claim committed
   });
 

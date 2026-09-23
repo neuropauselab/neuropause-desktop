@@ -39,24 +39,37 @@ export interface RetentionDataClass {
  * 1. THE EVIDENCE CLASSES ARE NEVER DELETED. Lifecycle events, human decisions, stop/resume
  *    history and the monitor ledger are the record that the pilot was governed. Deleting them
  *    at day 90 would destroy the proof that withdrawal was honoured, at exactly the moment
- *    someone might ask. They are pseudonymized - the subject link is severed, the governance
- *    fact survives.
+ *    someone might ask. They are PSEUDONYMIZED under D13-D (P1): the direct subject identifier
+ *    is REPLACED WITH A STABLE PSEUDONYM and the authorized longitudinal association is
+ *    preserved. The subject link is NOT severed - that was P2, an earlier implementation
+ *    reading, and the human decision selected the opposite. The result is pseudonymized and
+ *    must never be described as anonymization.
  * 2. NOTHING HERE TOUCHES A TABLE OUTSIDE THE PILOT. `users`, auth, billing and store rows are
  *    absent by construction, not by a filter someone could widen.
  */
+/*
+ * D13-C — THE HUMAN DECISION, NOT AN IMPLEMENTATION HYPOTHESIS.
+ *
+ * Every method below was supplied by the D13 completion decision. The previous values were
+ * authored by the implementer in NP-008 and NP-018 measured that they had never been put to a
+ * decision-maker. TWO OF THE SIX ARE NOW INVERTED relative to that hypothesis:
+ *   pilot_events          DELETED       -> PSEUDONYMIZED
+ *   pilot_monitor_events  PSEUDONYMIZED -> DELETED
+ * The `rationale` strings are the decision's stated purpose, not engineering justification.
+ */
 export const RETENTION_CLASSES: readonly RetentionDataClass[] = [
-  { name: 'pilot_events', method: 'DELETED',
-    rationale: 'participant activity, including free-text feedback; no governance value after closure' },
+  { name: 'pilot_events', method: 'PSEUDONYMIZED',
+    rationale: 'D13-C: participant activity is retained under a stable pseudonym, not destroyed' },
   { name: 'consents', method: 'PSEUDONYMIZED',
-    rationale: 'the fact that consent was given and to which terms digest is the evidence; the subject link is not' },
+    rationale: 'D13-C: consent evidence survives; the direct subject identifier is replaced' },
   { name: 'pilot_enrollments', method: 'PSEUDONYMIZED',
-    rationale: 'lifecycle shape is evidence the pilot was governed; the participant identity is not' },
+    rationale: 'D13-C: lifecycle shape is evidence; the participant identifier is replaced' },
   { name: 'pilot_lifecycle_events', method: 'PSEUDONYMIZED',
-    rationale: 'the ledger that proves a withdrawal was honoured must outlive the participant record' },
+    rationale: 'D13-C: the ledger proving a withdrawal was honoured outlives the participant record' },
   { name: 'human_decisions', method: 'PSEUDONYMIZED',
-    rationale: 'who decided what, and on what basis, is governance evidence' },
-  { name: 'pilot_monitor_events', method: 'PSEUDONYMIZED',
-    rationale: 'the refusal ledger is evidence; an audit needs it after the pilot ends' },
+    rationale: 'D13-C: who decided what, and on what basis, is governance evidence' },
+  { name: 'pilot_monitor_events', method: 'DELETED',
+    rationale: 'D13-C: monitoring-event data is removed once its operational purpose has expired' },
 ];
 
 export interface RetentionPlanItem {
@@ -111,7 +124,25 @@ export async function planRetention(now: Date = new Date()): Promise<RetentionPl
   );
   const done = new Set(processed.rows.map((r) => `${r.data_class}::${r.subject_user_id ?? 'ALL'}`));
 
-  const subjects = await query('SELECT DISTINCT user_id FROM pilot_enrollments');
+  /*
+   * A PSEUDONYM IS NOT A PARTICIPANT. Without the exclusion below, retention is not a fixpoint:
+   * D13-C pseudonymizes `pilot_enrollments`, so after one run that table's `user_id` holds the
+   * PSEUDONYM, the next run enumerates it as a brand-new subject with no ledger history, and
+   * pseudonymizes the pseudonym. Measured before this guard existed: a second `executeRetention`
+   * re-offered all six classes as ELIGIBLE under a fresh random subject id.
+   *
+   * The consequences were not cosmetic. It produces an UNBOUNDED CHAIN P(P(P(X))), minting a new
+   * `users` row each run, and it destroys the one property D13-D actually requires - that the
+   * pseudonym be STABLE, so the authorized longitudinal association survives.
+   *
+   * This is the read-then-write shape again, one level up: the plan reads the subject list from a
+   * table the execution is about to rewrite.
+   */
+  const subjects = await query(
+    `SELECT DISTINCT e.user_id FROM pilot_enrollments e
+     WHERE NOT EXISTS (SELECT 1 FROM pilot_subject_pseudonyms p
+                       WHERE p.pseudonym_user_id = e.user_id)`,
+  );
   const subjectIds: (string | null)[] = subjects.rows.length
     ? subjects.rows.map((r) => r.user_id as string)
     : [null];
@@ -168,22 +199,110 @@ export interface RetentionInterleave {
  * permits. Where the two disagree the item is NOT claimed - a completion record for work the
  * schema forbids is precisely the defect under repair.
  *
- * WHY FOUR CLASSES ARE NOT EXECUTABLE, measured from the schema rather than assumed:
- *   consents.user_id           NOT NULL REFERENCES users(id)          - cannot be severed in place
- *   pilot_enrollments.user_id  NOT NULL UNIQUE REFERENCES users(id)   - same
- *   human_decisions.actor_id   NOT NULL REFERENCES users(id)          - same
- *   pilot_lifecycle_events     subject_user_id IS nullable, but CONSTRAINT pilot_lifecycle_scope
- *                              REQUIRES it NOT NULL for WITHDRAWAL/TERMINATION rows
- *
- * Severing those needs a design choice - a tombstone subject, relaxing NOT NULL, or deleting
- * rows and losing the governance fact D13 says to preserve. That is a HUMAN DECISION (§23), so
- * this seam refuses to guess. The classes are left UNEXECUTABLE and, crucially, UNCLAIMED, so
- * the ledger stops asserting work nobody performed.
+ * ALL SIX CLASSES ARE NOW EXECUTABLE, and the reason is a schema addition, not a relaxation.
+ * NP-017 measured four classes BLOCKED because their subject columns are NOT NULL FKs to
+ * `users`, so a P2 "sever the link by nulling" could not be carried out in place. D13-D selected
+ * P1 instead - REPLACE the identifier with a stable pseudonym - and a replacement needs a real
+ * `users` row to point at, which `0024_pilot_subject_pseudonyms.sql` supplies. NOT ONE
+ * CONSTRAINT WAS DROPPED OR WEAKENED to reach this: every NOT NULL and every FK named in
+ * NP-017 is still enforced, and the UPDATE satisfies them rather than evading them.
  */
 type ApplyOutcome = 'VERIFIED' | 'NOT_EXECUTABLE';
 
+/**
+ * The DIRECT SUBJECT IDENTIFIER columns, per class, measured from `information_schema` against a
+ * migrated database rather than recalled. These are the columns D13-D speaks about: the places a
+ * participant's own `users.id` appears.
+ *
+ * `pilot_lifecycle_events.actor_user_id` and `human_decisions.actor_id` are included because when
+ * the participant is the actor - a self-withdrawal, a self-recorded decision - that column holds
+ * the participant's direct identifier just as plainly as a subject column does. Rows whose actor
+ * is somebody else do not match the predicate and are left alone.
+ *
+ * This map is also the definition of EXECUTABLE: a class with no entry here cannot be carried
+ * out, and `retentionContract.test.ts` fails if RETENTION_CLASSES and this map ever disagree.
+ *
+ * A misspelled column here cannot produce a silent false completion: Postgres raises
+ * `column "..." does not exist`, the transaction rolls back, and nothing is claimed. That is
+ * deliberate - it is the NP-016 vacuous-verification path closed structurally rather than by
+ * a check that would itself need proving.
+ */
+const SUBJECT_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  pilot_events: ['user_id'],
+  consents: ['user_id'],
+  pilot_enrollments: ['user_id'],
+  pilot_lifecycle_events: ['actor_user_id', 'subject_user_id'],
+  human_decisions: ['actor_id'],
+  pilot_monitor_events: ['actor_id', 'subject_user_id'],
+};
+
 /** The classes whose declared method this implementation can carry out and verify today. */
-export const EXECUTABLE_CLASSES: readonly string[] = ['pilot_events', 'pilot_monitor_events'];
+export const EXECUTABLE_CLASSES: readonly string[] = Object.keys(SUBJECT_COLUMNS);
+
+/** `(col = $1 OR col2 = $1)` - the predicate that finds every row naming one subject. */
+const subjectPredicate = (cols: readonly string[]): string =>
+  cols.map((c) => `${c} = $1`).join(' OR ');
+
+async function countMatching(
+  client: PoolClient, table: string, cols: readonly string[], id: string,
+): Promise<number> {
+  const r = await client.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM ${table} WHERE ${subjectPredicate(cols)}`, [id]);
+  return r.rows[0].n;
+}
+
+/**
+ * D13-D, the pseudonym itself. ONE stable pseudonym per participant, minted once and reused by
+ * every class thereafter - which is what "preserving the authorized longitudinal association"
+ * means in practice: after retention runs, a pilot_event and a consent that belonged to the same
+ * participant still point at the same row, so the record remains internally coherent.
+ *
+ * THE PSEUDONYM IS RANDOM, NOT DERIVED. NP-018 measured that the pre-existing
+ * `deleted_${users.id}@...` form leaves the original id recoverable from the address alone, so
+ * nothing about the subject - not the id, not the email, not a hash of either - is an input here.
+ * `gen_random_uuid()` is the only source. No secret is involved, so there is no mapping secret to
+ * protect or to leak; the mapping's confidentiality rests entirely on access to
+ * `pilot_subject_pseudonyms`.
+ *
+ * AND THAT TABLE IS WHY THIS IS PSEUDONYMIZATION AND NOT ANONYMIZATION. A re-identification path
+ * exists by design - D13-D requires the authorized association to survive. D13 forbids describing
+ * the result as anonymization, and the mapping table is the measured reason that prohibition is
+ * correct rather than merely cautious.
+ */
+async function pseudonymFor(client: PoolClient, subjectUserId: string): Promise<string> {
+  const found = await client.query<{ pseudonym_user_id: string }>(
+    'SELECT pseudonym_user_id FROM pilot_subject_pseudonyms WHERE subject_user_id = $1',
+    [subjectUserId],
+  );
+  if (found.rows[0]) return found.rows[0].pseudonym_user_id;
+
+  // `.invalid` is reserved by RFC 2606 and cannot resolve; the local part is a fresh random
+  // uuid, unrelated to both the subject and the pseudonym id.
+  const minted = await client.query<{ id: string }>(
+    `INSERT INTO users (email)
+     VALUES ('pseudonym-' || gen_random_uuid()::text || '@pseudonymous.invalid')
+     RETURNING id`,
+  );
+  const pseudonymUserId = minted.rows[0].id;
+
+  const claimed = await client.query<{ pseudonym_user_id: string }>(
+    `INSERT INTO pilot_subject_pseudonyms (subject_user_id, pseudonym_user_id)
+     VALUES ($1, $2) ON CONFLICT (subject_user_id) DO NOTHING
+     RETURNING pseudonym_user_id`,
+    [subjectUserId, pseudonymUserId],
+  );
+  if (claimed.rows[0]) return claimed.rows[0].pseudonym_user_id;
+
+  // A concurrent run minted first. Drop the row we just created - it is referenced by nothing -
+  // and adopt the winner, so the pseudonym stays ONE per subject however many runs race.
+  await client.query('DELETE FROM users WHERE id = $1', [pseudonymUserId]);
+  const winner = await client.query<{ pseudonym_user_id: string }>(
+    'SELECT pseudonym_user_id FROM pilot_subject_pseudonyms WHERE subject_user_id = $1',
+    [subjectUserId],
+  );
+  if (!winner.rows[0]) throw new Error('pseudonym allocation lost a race with no winner');
+  return winner.rows[0].pseudonym_user_id;
+}
 
 async function applyAndVerify(
   client: PoolClient,
@@ -191,11 +310,11 @@ async function applyAndVerify(
 ): Promise<ApplyOutcome> {
   // NP-017, SECOND CORRECTION - found by the fan-out re-measuring this seam's OWN repair.
   //
-  // Both executable classes are SUBJECT-SCOPED: they match on `user_id = $1` /
-  // `subject_user_id = $1`. With a NULL subject those predicates match NOTHING - and so does
-  // the verification that follows them. `DELETE ... WHERE user_id = NULL` removes no rows while
-  // rows survive, and `SELECT count(*) ... WHERE user_id = NULL` then returns 0, so the check
-  // reports success VACUOUSLY and a completion record is written for work that did not happen.
+  // Every class here is SUBJECT-SCOPED: it matches on a column equal to $1. With a NULL subject
+  // those predicates match NOTHING - and so does the verification that follows them. A mutation
+  // `WHERE user_id = NULL` changes no rows while rows survive, and `count(*) WHERE user_id = NULL`
+  // then returns 0, so the check reports success VACUOUSLY and a completion record is written for
+  // work that did not happen.
   //
   // That is the exact defect this seam repaired, reintroduced one case down inside the repair
   // itself: a check that looks right and measures the wrong thing. planRetention emits a NULL
@@ -206,23 +325,44 @@ async function applyAndVerify(
   // and therefore never claimed.
   if (item.subjectUserId === null) return 'NOT_EXECUTABLE';
 
-  if (item.dataClass === 'pilot_events' && item.method === 'DELETED') {
-    await client.query('DELETE FROM pilot_events WHERE user_id = $1', [item.subjectUserId]);
-    const check = await client.query<{ n: number }>(
-      'SELECT count(*)::int AS n FROM pilot_events WHERE user_id = $1', [item.subjectUserId]);
-    return check.rows[0].n === 0 ? 'VERIFIED' : 'NOT_EXECUTABLE';
+  const cols = SUBJECT_COLUMNS[item.dataClass];
+  if (!cols) return 'NOT_EXECUTABLE';
+  const subjectId = item.subjectUserId;
+
+  // Counted BEFORE the mutation, because the post-state alone cannot tell "the rows moved" from
+  // "there were never any rows". Both are acceptable end states, but only the first is work, and
+  // the difference is exactly what NP-016 found the old implementation unable to see.
+  const before = await countMatching(client, item.dataClass, cols, subjectId);
+
+  if (item.method === 'DELETED') {
+    await client.query(
+      `DELETE FROM ${item.dataClass} WHERE ${subjectPredicate(cols)}`, [subjectId]);
+    const remaining = await countMatching(client, item.dataClass, cols, subjectId);
+    return remaining === 0 ? 'VERIFIED' : 'NOT_EXECUTABLE';
   }
 
-  if (item.dataClass === 'pilot_monitor_events' && item.method === 'PSEUDONYMIZED') {
-    // Both subject columns here are nullable, so the link can genuinely be severed in place
-    // while the refusal record - which is the governance evidence - survives intact.
-    await client.query(
-      `UPDATE pilot_monitor_events SET actor_id = NULL, subject_user_id = NULL
-       WHERE actor_id = $1 OR subject_user_id = $1`, [item.subjectUserId]);
-    const check = await client.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM pilot_monitor_events
-       WHERE actor_id = $1 OR subject_user_id = $1`, [item.subjectUserId]);
-    return check.rows[0].n === 0 ? 'VERIFIED' : 'NOT_EXECUTABLE';
+  if (item.method === 'PSEUDONYMIZED') {
+    // Nothing of this class names the subject, so the end state D13-D requires already holds and
+    // no pseudonym is minted. This is a MEASURED zero, not an assumed one: `before` was read from
+    // the same predicate the mutation would have used.
+    if (before === 0) return 'VERIFIED';
+
+    const pseudonymUserId = await pseudonymFor(client, subjectId);
+    for (const col of cols) {
+      await client.query(
+        `UPDATE ${item.dataClass} SET ${col} = $2 WHERE ${col} = $1`,
+        [subjectId, pseudonymUserId],
+      );
+    }
+
+    // TWO conditions, and the second is the one that makes the claim falsifiable. "No row names
+    // the subject" is satisfied just as well by deleting every row, so on its own it cannot tell
+    // P1 from destruction. Requiring the rows to REAPPEAR under the pseudonym is what proves the
+    // governance record survived the operation - which is the entire point of D13-C choosing
+    // PSEUDONYMIZE over DELETE for these five classes.
+    const remaining = await countMatching(client, item.dataClass, cols, subjectId);
+    const carried = await countMatching(client, item.dataClass, cols, pseudonymUserId);
+    return remaining === 0 && carried >= before ? 'VERIFIED' : 'NOT_EXECUTABLE';
   }
 
   return 'NOT_EXECUTABLE';

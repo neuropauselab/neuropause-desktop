@@ -17,24 +17,46 @@ import { join } from 'node:path';
 import { RETENTION_CLASSES, EXECUTABLE_CLASSES } from './retention';
 
 describe('NP-017 — retention claims only what it can execute and verify', () => {
-  it('the declared class table is unchanged — D13 was not reinterpreted', () => {
-    // §23: this seam implements the engineering interpretation of already-submitted retention
-    // requirements. It does not change which classes exist or what method each is assigned.
+  /*
+   * SUPERSEDED BY THE COMPLETED D13 DECISION (§2 #26).
+   *
+   * This test previously read `the declared class table is unchanged — D13 was not
+   * reinterpreted` and pinned the six methods NP-008's implementer had chosen. That was the
+   * correct pin at the time: NP-017 was forbidden from reinterpreting a submitted decision.
+   *
+   * NP-018 then measured that D13 had never actually said what PSEUDONYMIZED does, and that the
+   * definition driving ten seams was the implementer's own code comment. The decision-maker
+   * completed D13, and D13-C INVERTED two of the six. So the table did change - not by
+   * reinterpretation, which this test rightly forbade, but by decision, which it cannot forbid.
+   *
+   * The pin's PURPOSE is unchanged and is why it is kept rather than deleted: no method may move
+   * without a decision. The literals below are the decision's, quoted.
+   */
+  it('the declared class table is exactly D13-C, quoted', () => {
     expect(RETENTION_CLASSES.map((c) => `${c.name}:${c.method}`)).toEqual([
-      'pilot_events:DELETED',
+      'pilot_events:PSEUDONYMIZED',          // D13-C inverted this from DELETED
       'consents:PSEUDONYMIZED',
       'pilot_enrollments:PSEUDONYMIZED',
       'pilot_lifecycle_events:PSEUDONYMIZED',
       'human_decisions:PSEUDONYMIZED',
-      'pilot_monitor_events:PSEUDONYMIZED',
+      'pilot_monitor_events:DELETED',        // D13-C inverted this from PSEUDONYMIZED
     ]);
   });
 
-  it('EXECUTABLE_CLASSES is a strict subset, and names exactly what the schema permits', () => {
-    expect(EXECUTABLE_CLASSES).toEqual(['pilot_events', 'pilot_monitor_events']);
-    const declared = new Set(RETENTION_CLASSES.map((c) => c.name));
-    for (const e of EXECUTABLE_CLASSES) expect(declared.has(e)).toBe(true);
-    expect(EXECUTABLE_CLASSES.length).toBeLessThan(RETENTION_CLASSES.length);
+  /*
+   * SUPERSEDED. The old form asserted a STRICT SUBSET - two of six - because NP-017 measured the
+   * other four as blocked by NOT NULL subject FKs that a P2 "sever by nulling" cannot satisfy.
+   * D13-D selected P1 instead, and `pilot_subject_pseudonyms` gives the FK a real row to point
+   * at, so all six are executable WITH EVERY ONE OF THOSE CONSTRAINTS STILL ENFORCED. The
+   * integration suite measures that directly against information_schema.
+   *
+   * The replacement is deliberately not `EXECUTABLE_CLASSES.length === 6`, which would be a
+   * constant compared with itself. It asserts the two sets AGREE - so declaring a seventh class
+   * without giving it an executable mapping fails here. Mutation M7 (drop `consents` from the
+   * column map) was measured against this: 6 tests red.
+   */
+  it('EXECUTABLE_CLASSES and the declared classes agree — nothing is declared then skipped', () => {
+    expect([...EXECUTABLE_CLASSES].sort()).toEqual(RETENTION_CLASSES.map((c) => c.name).sort());
   });
 
   it('SOURCE INVARIANT: the completion record is written AFTER the verified mutation', () => {
@@ -54,18 +76,31 @@ describe('NP-017 — retention claims only what it can execute and verify', () =
 
   it('every executable path VERIFIES its own effect before returning VERIFIED', () => {
     const src = readFileSync(join(__dirname, 'retention.ts'), 'utf8');
+    expect(src).toContain('applyAndVerify');                    // vacuity guard, FIRST
     // Each branch must re-read the database and compare, not merely assume the write worked.
-    const checks = src.match(/SELECT count\(\*\)::int AS n FROM/g) ?? [];
-    expect(checks.length).toBeGreaterThanOrEqual(EXECUTABLE_CLASSES.length);
-    expect(src).toMatch(/check\.rows\[0\]\.n === 0 \? 'VERIFIED' : 'NOT_EXECUTABLE'/);
+    expect(src).toMatch(/SELECT count\(\*\)::int AS n FROM/);
+    // DELETE: nothing may still name the subject.
+    expect(src).toMatch(/return remaining === 0 \? 'VERIFIED' : 'NOT_EXECUTABLE';/);
+    // PSEUDONYMIZE: nothing names the subject AND the rows arrived under the pseudonym. The
+    // second limb is what distinguishes D13-D's REPLACE from a deletion.
+    expect(src).toMatch(/remaining === 0 && carried >= before \? 'VERIFIED' : 'NOT_EXECUTABLE';/);
   });
 
-  it('the four unexecutable classes are documented with the schema reason, not silently dropped',
+  /*
+   * SUPERSEDED, AND IT WAS STILL PASSING - which is the reason it is rewritten rather than left
+   * alone. Its title spoke of "the four unexecutable classes"; there are none. It stayed green
+   * only because the class names still appear in the file and the string 'HUMAN DECISION' now
+   * occurs inside an unrelated D13-C comment. A test that passes for a reason its title does not
+   * describe is worse than no test (NP-020 #9), so the assertion is re-aimed at what actually
+   * matters now: every class carries an executable column mapping, and none was quietly dropped.
+   */
+  it('every declared class has a subject-column mapping in the source, none silently dropped',
     () => {
       const src = readFileSync(join(__dirname, 'retention.ts'), 'utf8');
-      for (const cls of ['consents', 'pilot_enrollments', 'human_decisions', 'pilot_lifecycle_events'])
-        expect(src).toContain(cls);
-      expect(src).toContain('HUMAN DECISION');
+      expect(src).toContain('SUBJECT_COLUMNS');                 // vacuity guard, FIRST
+      const map = src.slice(src.indexOf('const SUBJECT_COLUMNS'),
+                            src.indexOf('export const EXECUTABLE_CLASSES'));
+      for (const c of RETENTION_CLASSES) expect(map).toContain(`${c.name}:`);
     });
 
   it('NP-019 SOURCE INVARIANT: every "not applied" signal inside the transaction is a THROW', () => {
