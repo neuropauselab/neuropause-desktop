@@ -159,7 +159,11 @@ export type PilotErrorCode =
   | 'already_exited'
   // NP-PILOT-FIRST-005 — the bound terms are re-read at enrollment, not merely copied at consent.
   | 'terms_digest_mismatch'
-  | 'terms_no_longer_published';        // withdrawn / terminated / completed
+  | 'terms_no_longer_published'         // withdrawn / terminated / completed
+  // NP-PILOT-FIRST-009 — the governed cap path (ENG-10) and the governance read-back (ENG-08).
+  | 'cap_value_invalid'                 // 0, negative or non-integer; never defaulted
+  | 'cap_environment_invalid'           // the pilot environment is not established
+  | 'not_authorized';                   // no designated authority permits this action
 
 export class PilotError extends Error {
   constructor(

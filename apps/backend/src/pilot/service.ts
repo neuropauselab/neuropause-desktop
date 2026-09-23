@@ -22,6 +22,12 @@ export interface PilotServiceDeps {
    * Supplying one that returns ALLOW is a DESIGNATION and requires MR-04.
    */
   authority?: AuthorityEvaluator;
+  /**
+   * The instrument a cap decision is recorded against (ENG-10). Never defaulted to a real
+   * instrument name: an unset value records NOT_ESTABLISHED, which is honest, rather than
+   * silently attributing the decision to a document nobody cited.
+   */
+  capInstrument?: string;
 }
 
 const DAY_MS = 86_400_000;

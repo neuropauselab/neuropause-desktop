@@ -38,6 +38,9 @@ import { sqlPilotRepository } from './repository';
 import { createSnapshotEvaluator, recordAuthorityRefusals } from './authorityEvaluator';
 import { loadProductionAuthoritySnapshot } from './authorityStore';
 import { sqlPilotMonitor } from './monitor';
+import { loadAuthorityEnvironment } from './authorityStore';
+import { governanceReadBack } from './governanceReadBack';
+import { setPilotCap } from './capGovernance';
 import type { PilotServiceDeps } from './service';
 import {
   advanceMachineStates, applyHumanDecision, day7Report, enroll, pilotControl, recordConsent,
@@ -61,9 +64,25 @@ const STATUS: Record<PilotErrorCode, number> = {
   already_exited: 409,
   terms_digest_mismatch: 409,
   terms_no_longer_published: 409,
+  // NP-PILOT-FIRST-009. `not_authorized` is 403 and deliberately NOT 404: the resource exists
+  // and the caller may not act on it. A 404 here would be a different lie, and the enumeration
+  // concern that motivates 404-for-unauthorized is already answered by the authority predicate
+  // running BEFORE any repository read.
+  cap_value_invalid: 400,
+  cap_environment_invalid: 409,
+  not_authorized: 403,
 };
 
 const ConsentBody = z.object({ version: z.string().min(1).max(64) });
+/*
+ * §15 — the cap is validated at the EDGE as well as in the service and the schema. `int()`
+ * and `positive()` reject 0, negatives and non-integers before anything else runs, and there
+ * is NO `.default()`: an omitted cap is a rejected request, never an assumed one.
+ */
+const CapBody = z.object({
+  maxParticipants: z.number().int().positive().max(100000),
+  reason: z.string().min(1).max(500),
+});
 const EventBody = z.object({ eventType: z.string().min(1).max(64), metadata: z.record(z.unknown()).optional() });
 const DecisionBody = z.object({
   targetState: z.string().min(1).max(64),
@@ -253,6 +272,36 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   // answers `[]` and an honest surface offers no consent button. A surface that hard-codes a
   // version instead of reading this is presenting a placeholder as operative consent.
   router.get('/terms', h(deps, async (_req, res, d) => { res.json({ terms: await publishedTerms(d) }); }));
+
+  /*
+   * ENG-08 — the governance read-back. READ-ONLY, and gated by the SAME authority predicate as
+   * every other consequential route. All three designated roles carry `pilot.control.read`;
+   * the independent verifier carries ONLY it, which is precisely the caller this exists for.
+   */
+  router.get(
+    '/governance',
+    h(deps, async (req, res, d) => {
+      res.json({ governance: await governanceReadBack({ ...d, environment: loadAuthorityEnvironment, monitor: sqlPilotMonitor }, uid(req)) });
+    }),
+  );
+
+  /*
+   * ENG-10 — the governed cap write path. This is the ONLY route in the pilot that can make
+   * enrollment possible, and it refuses for everyone until a human identity is bound.
+   */
+  router.post(
+    '/cap',
+    validateBody(CapBody),
+    h(deps, async (req, res, d) => {
+      const { maxParticipants, reason } = req.body as z.infer<typeof CapBody>;
+      res.status(201).json({
+        capDecision: await setPilotCap(
+          { ...d, environment: loadAuthorityEnvironment, monitor: sqlPilotMonitor },
+          uid(req), maxParticipants, reason,
+        ),
+      });
+    }),
+  );
 
   return router;
 }

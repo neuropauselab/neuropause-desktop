@@ -8,6 +8,7 @@ import { requestId } from './middleware/requestId';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import { createAuthRouter } from './auth/router';
 import { createPilotRouter } from './pilot/router';
+import { createPilotMountGate } from './pilot/mount';
 import { createStoreRouter } from './store/router';
 import { createOrganizationsRouter } from './organizations/router';
 import { createPgOrgRepository } from './organizations/repository';
@@ -40,6 +41,8 @@ import { pingDatabase, pool } from './db/pool';
 import { pingRedis } from './cache/redis';
 import { recordHttpRequest, renderMetrics } from './observability/metrics';
 import { reportHealthSnapshot } from './observability/healthAlerts';
+
+const pilotMountGate = createPilotMountGate();
 
 export function createApp(): Express {
   const app = express();
@@ -119,7 +122,14 @@ export function createApp(): Express {
   });
 
   app.use('/auth', createAuthRouter());
-  app.use('/pilot', requireAuth, createPilotRouter());
+  /*
+   * ENG-09 — the pilot surface is CONDITIONAL. `pilotMountGate` requires an explicit
+   * PILOT_MODULE_ENABLED opt-in, a configured PILOT environment class, and a matching identity
+   * row asserted BY THE DATABASE ITSELF. A production deployment cannot satisfy the third by
+   * setting a string, because its database carries no such row. On refusal the gate abandons
+   * this stack before requireAuth runs and the ordinary 404 answers.
+   */
+  app.use('/pilot', pilotMountGate, requireAuth, createPilotRouter());
   // NP-GLOBAL-PUBLIC-LAUNCH-001 §6 — the AI gateway. Provider credentials live
   // ONLY in this process's environment; clients hold a session bearer. Per-IP
   // limiter here, per-user limiter inside the router. Proposals, never execution.
