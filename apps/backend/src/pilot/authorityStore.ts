@@ -5,10 +5,11 @@
  * "designated but not bound": D05 named three people, `pilot_role_bindings` has no rows, and
  * so every consequential route answers DENY with `ROLE_NOT_BOUND`.
  */
-import { query } from '../db/pool';
+import { query, withTransaction } from '../db/pool';
 import { resolvePilotEnvironment } from './environment';
 import { verifyAuthorityRow, type SignableAuthorityRow, type VerifyFailure } from './authoritySignature';
 import { loadPilotTrust } from './authorityTrust';
+import { evaluateBootstrap, type BootstrapRequest, type BootstrapOutcome } from './authorityBootstrap';
 import type { AuthorityDecisionArtifact, AuthorityEnvironment, RoleBinding, PilotRole } from './authorityEvaluator';
 import { loadAuthoritySnapshot } from './authorityEvaluator';
 
@@ -139,4 +140,66 @@ export const sqlAuthorityLoaders = {
 
 export function loadProductionAuthoritySnapshot(now: Date = new Date()) {
   return loadAuthoritySnapshot(sqlAuthorityLoaders, now);
+}
+
+
+/* ==========================================================================================
+ * ENG-11 — THE WRITE PATH ITSELF.
+ *
+ * `evaluateBootstrap` is the decision; this is the only thing in the codebase that acts on it.
+ * Before this function, `INSERT INTO pilot_role_bindings` had ZERO non-test occurrences, so no
+ * role could ever be bound and every consequential pilot route answered ROLE_NOT_BOUND.
+ * ========================================================================================== */
+
+/** Every bootstrap attempt this process has seen, decision included. Diagnostics. */
+const attempts: { at: string; actorId: string; subjectId: string; role: string; result: string }[] = [];
+export const bootstrapAttempts = (): readonly (typeof attempts)[number][] => attempts;
+
+export type BootstrapResult = BootstrapOutcome & { readonly bindingId?: string };
+
+/**
+ * Materialises a previously-decided human authority relationship. It does NOT create one:
+ * every path here requires an admitted, signed instrument that NAMES the subject and role,
+ * and `evaluateBootstrap` refuses anything else. There is deliberately no "first user is
+ * authority", no "admin is authority", and no "database owner is authority" branch.
+ */
+export async function bootstrapRoleBinding(
+  req: BootstrapRequest,
+  now: Date = new Date(),
+): Promise<BootstrapResult> {
+  const admitted = await loadAuthorityDecisions();   // already H13-anchored + signature-verified
+  const existing = await loadRoleBindings();
+  const outcome = evaluateBootstrap(req, admitted, existing, now);
+
+  const note = (result: string): void => {
+    attempts.push({ at: now.toISOString(), actorId: req.actorId, subjectId: req.subjectId, role: req.role, result });
+  };
+
+  if (!outcome.ok) {
+    note(outcome.reason);
+    return outcome;
+  }
+
+  /*
+   * THE BINDING AND ITS AUDIT ROW ARE ONE TRANSACTION. A binding without a ledger entry is an
+   * authority whose creation cannot be reconstructed, which is the same "work with no evidence"
+   * shape the retention defect had. `withTransaction` ROLLBACKs only on a throw, so the ledger
+   * insert must be allowed to throw rather than being swallowed.
+   */
+  return withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO pilot_role_bindings (subject_id, role, decision_ref)
+       VALUES ($1, $2, $3) RETURNING id`,
+      [req.subjectId, req.role, req.instrument],
+    );
+    const bindingId = rows[0].id as string;
+    await client.query(
+      `INSERT INTO pilot_lifecycle_events
+         (enrollment_id, subject_user_id, actor_user_id, kind, previous_state, new_state, reason)
+       VALUES (NULL, $1, $2, 'ROLE_BINDING', 'UNBOUND', $3, $4)`,
+      [req.subjectId, req.actorId, req.role, `instrument=${req.instrument}`],
+    );
+    note('BOUND');
+    return { ok: true as const, bindingId };
+  });
 }
