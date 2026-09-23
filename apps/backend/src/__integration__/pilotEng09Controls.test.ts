@@ -15,7 +15,7 @@ import { governanceReadBack } from '../pilot/governanceReadBack';
 import { setPilotCap } from '../pilot/capGovernance';
 import { sqlPilotRepository } from '../pilot/repository';
 import { PilotError } from '../pilot/types';
-import { resolvePilotEnvironment } from '../pilot/environment';
+import { resolvePilotEnvironment, configurationDigest } from '../pilot/environment';
 
 const ACTOR = '66666666-6666-4666-8666-000000000001';
 const ENV_ID = 'NP009-PILOT-ENV';
@@ -396,5 +396,55 @@ describe('§6/§21 — the pilot alert sink is DEMONSTRABLY separate from produc
       'PILOT_DATABASE_URL', 'PILOT_ENVIRONMENT_CLASS', 'PILOT_ENVIRONMENT_ID',
       'PILOT_MODULE_ENABLED', 'PILOT_TARGET_ID',
     ]);
+  });
+});
+
+/* ===================================================================================
+ * §35 (environment) — the two cases nothing covered: the declared pilot store is
+ * UNREACHABLE, and REACHABLE BUT WITH WRONG CREDENTIALS.
+ *
+ * These document a GAP, and they are written to fail the day it closes. ENV-04 (NP-014) makes
+ * the pilot refuse unless a pilot store is DECLARED and DISTINCT from the product store. It
+ * does not make anything connect to it: `src/db/pool.ts:8` builds the single pool from
+ * `DATABASE_URL`, `pilot/repository.ts` imports `query` from that pool, and outside
+ * `environment.ts` there is no non-test read of PILOT_DATABASE_URL anywhere in src/.
+ *
+ * So a pilot store that does not exist, is switched off, or rejects its own password resolves
+ * EXACTLY as well as a healthy one. The §18 canary measured the same thing from the other
+ * side: configured with a separate pilot store, the application reported
+ * current_database()=np014 - the PRODUCT store - and every statement landed there.
+ * =================================================================================== */
+describe('§35 — a declared pilot store is never contacted, so its health is unmeasured', () => {
+  beforeEach(() => reset());
+  const base = {
+    PILOT_ENVIRONMENT_CLASS: 'PILOT', PILOT_ENVIRONMENT_ID: ENV_ID, PILOT_TARGET_ID: TARGET_ID,
+    DATABASE_URL: 'postgres://prod@prod-host:5432/neuropause',
+  };
+  // Port 1 is reserved and nothing listens there; these never resolve to a live server.
+  const UNREACHABLE = 'postgres://pilot@127.0.0.1:1/neuropause_pilot';
+  const WRONG_CREDS = 'postgres://pilot:definitely-not-the-password@127.0.0.1:55443/neuropause_pilot';
+
+  it('POSITIVE CONTROL: a well-formed, separated pilot store resolves', async () => {
+    const r = await resolvePilotEnvironment({
+      ...base, PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
+    } as NodeJS.ProcessEnv);
+    expect(r.ok).toBe(true);
+  });
+
+  it('an UNREACHABLE pilot store resolves identically — nothing dials it', async () => {
+    const r = await resolvePilotEnvironment({ ...base, PILOT_DATABASE_URL: UNREACHABLE } as NodeJS.ProcessEnv);
+    expect(r.ok).toBe(true);          // <-- the gap: unreachable is indistinguishable from healthy
+  });
+
+  it('WRONG CREDENTIALS for the pilot store resolve identically — nothing authenticates', async () => {
+    const r = await resolvePilotEnvironment({ ...base, PILOT_DATABASE_URL: WRONG_CREDS } as NodeJS.ProcessEnv);
+    expect(r.ok).toBe(true);          // <-- same gap, second shape
+  });
+
+  it('and the two failure modes are not even distinguishable from each other in the digest', () => {
+    // The digest records PRESENCE and SEPARATION. Both strings are present and both differ from
+    // DATABASE_URL, so a dead store and a mis-credentialled one produce the SAME evidence value.
+    expect(configurationDigest({ ...base, PILOT_DATABASE_URL: UNREACHABLE } as NodeJS.ProcessEnv))
+      .toBe(configurationDigest({ ...base, PILOT_DATABASE_URL: WRONG_CREDS } as NodeJS.ProcessEnv));
   });
 });
