@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore -- plain ESM tool, deliberately not TypeScript: it must run in a bare CI step.
-import { scan, mountPaths } from '../../tools/np034-artifact-pilot-scan.mjs';
+import { scan, mountPaths, PILOT_TABLES } from '../../tools/np034-artifact-pilot-scan.mjs';
 
 /* ==========================================================================================
  * NP-034 — THE PILOT NON-EXPOSURE INVARIANT, AND THE CONTROLS THAT MAKE ITS ZERO MEAN SOMETHING.
@@ -114,4 +114,72 @@ describe('NP-034 pilot non-exposure invariant', () => {
       expect(scan('/definitely/not/here').scannable).toBe(false);
     });
   });
+
+  /* ----------------------------------------------------------------------------------------
+   * NP-034-DECISION §4 enumerates SEVEN things a production artifact must remain without.
+   * R1/R2/M1/M2 covered items 1-2 and part of 4-5. These pin 3, 5, 6, 7 and close 4.
+   * -------------------------------------------------------------------------------------- */
+  describe('§4 item 3 — pilot-only execution surfaces', () => {
+    it('detects a pilot execution symbol with no route and no migration present', () => {
+      const r = scan(artifact({
+        'index.js': `${CLEAN_BUNDLE}\nasync function stopPilot(d, a, reason) { return null; }`,
+        'migrations/0001_init.sql': CLEAN_SQL,
+      }));
+      expect(r.verdict).toBe('PILOT_PRESENT');
+      expect(r.findings.S1_pilot_execution_symbols).toEqual(['stopPilot']);
+      expect(r.findings.R1_pilot_route_mounted).toEqual([]); // fired on S1 alone
+    });
+    it('does NOT fire on generic names shared with product code', () => {
+      const r = scan(artifact({
+        'index.js': `${CLEAN_BUNDLE}\nfunction enroll(){} function status(){} function withdraw(){}`,
+        'migrations/0001_init.sql': CLEAN_SQL,
+      }));
+      expect(r.verdict).toBe('PILOT_FREE');
+    });
+  });
+
+  describe('§4 items 4,5,7 — participant / authority state and data stores in RUNTIME SQL', () => {
+    it('detects a pilot table queried by the bundle even with no migration shipped', () => {
+      const r = scan(artifact({
+        'index.js': `${CLEAN_BUNDLE}\nvar q = "SELECT * FROM pilot_role_bindings WHERE subject_id=$1";`,
+        'migrations/0001_init.sql': CLEAN_SQL,
+      }));
+      expect(r.verdict).toBe('PILOT_PRESENT');
+      expect(r.findings.Q1_pilot_table_references).toEqual(['pilot_role_bindings']);
+      expect(r.findings.M2_pilot_tables_created).toEqual([]); // no DDL — Q1 alone caught it
+    });
+    it('detects the UNPREFIXED pilot tables a `pilot_` classifier would miss', () => {
+      // NP-015 measured this: `pilot_%` moves 14 tables and strands consents + human_decisions.
+      expect(PILOT_TABLES).toContain('consents');
+      expect(PILOT_TABLES).toContain('human_decisions');
+      const r = scan(artifact({
+        'index.js': `${CLEAN_BUNDLE}\nvar q = "INSERT INTO human_decisions (actor_id) VALUES ($1)";`,
+        'migrations/0001_init.sql': CLEAN_SQL,
+      }));
+      expect(r.findings.Q1_pilot_table_references).toEqual(['human_decisions']);
+    });
+    it('does NOT list account_deletion_requests — 0015 is not a pilot migration', () => {
+      expect(PILOT_TABLES).not.toContain('account_deletion_requests');
+    });
+  });
+
+  describe('§4 item 6 — pilot credentials', () => {
+    it('detects a pilot env key reference', () => {
+      const r = scan(artifact({
+        'index.js': `${CLEAN_BUNDLE}\nvar u = process.env.PILOT_DATABASE_URL;`,
+        'migrations/0001_init.sql': CLEAN_SQL,
+      }));
+      expect(r.verdict).toBe('PILOT_PRESENT');
+      expect(r.findings.E1_pilot_env_keys).toEqual(['PILOT_DATABASE_URL']);
+    });
+  });
+
+  describe('coverage is published, not asserted', () => {
+    it('maps every one of the seven §4 items to at least one check', () => {
+      const covers = scan(clean()).positiveControls.covers;
+      expect(Object.keys(covers)).toHaveLength(7);
+      for (const checks of Object.values(covers)) expect((checks as string[]).length).toBeGreaterThan(0);
+    });
+  });
+
 });
