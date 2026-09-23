@@ -13,7 +13,7 @@ import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import { resolvePilotEnvironment, assertPilotEnvironment, PilotEnvironmentError, configurationDigest } from '../pilot/environment';
 import { sqlPilotMonitor, ALERT_SEVERITY, resetMonitorWriteFailureCount, monitorWriteFailureCount } from '../pilot/monitor';
-import { planRetention, executeRetention, RETENTION_CLASSES, RETENTION_DAYS_AFTER_CLOSURE } from '../pilot/retention';
+import { planRetention, executeRetention, RETENTION_CLASSES, RETENTION_DAYS_AFTER_CLOSURE, EXECUTABLE_CLASSES } from '../pilot/retention';
 import { loadRoleBindings, loadAuthorityDecisions } from '../pilot/authorityStore';
 
 const U1 = '55555555-5555-4555-8555-000000000001';
@@ -310,12 +310,19 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
   it('§26 execution is IDEMPOTENT — a second run is a no-op', async () => {
     await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
                  VALUES (now() - interval '200 days', $1, 'test')`, [OP]);
+    // NP-017 CORRECTION. This asserted first.length === RETENTION_CLASSES.length - that ALL SIX
+    // classes were claimed on the first run. THAT EXPECTATION ENCODED THE DEFECT: five of the
+    // six were claimed with zero rows modified, and this test passed BECAUSE the implementation
+    // falsely claimed them. A suite that asserts the bug cannot catch the bug.
+    //
+    // Corrected invariant: only classes whose declared method the schema actually permits are
+    // executed, verified and claimed. The rest stay unclaimed pending a human decision (§23).
     const first = await executeRetention();
-    expect(first.length).toBe(RETENTION_CLASSES.length);
+    expect(first.map((i) => i.dataClass).sort()).toEqual([...EXECUTABLE_CLASSES].sort());
     const second = await executeRetention();
     expect(second).toEqual([]);
     const { rows } = await query('SELECT count(*)::int AS n FROM pilot_retention_log');
-    expect(rows[0].n).toBe(RETENTION_CLASSES.length);
+    expect(rows[0].n).toBe(EXECUTABLE_CLASSES.length);
   });
 
   it('§24 it touches NO table outside the pilot', async () => {
@@ -355,10 +362,14 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
     await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
                  VALUES (now() - interval '200 days', $1, 'test')`, [OP]);
     const [a, b] = await Promise.all([executeRetention(), executeRetention()]);
-    // The claim row is what serialises them; without it both runs would process every item.
-    expect(a.length + b.length).toBe(RETENTION_CLASSES.length);
+    // NP-017: the claim row still serialises them - it moved AFTER the verified mutation, so
+    // the UNIQUE constraint now guarantees exactly one AUTHOR per item rather than exactly one
+    // attempt. Both mutations are idempotent (a DELETE of nothing; an UPDATE to NULL of columns
+    // already NULL), so a concurrent double-apply is harmless. What must not happen is two
+    // completion records, or a completion record without a verified mutation.
+    expect(a.length + b.length).toBe(EXECUTABLE_CLASSES.length);
     const { rows } = await query('SELECT count(*)::int AS n FROM pilot_retention_log');
-    expect(rows[0].n).toBe(RETENTION_CLASSES.length);
+    expect(rows[0].n).toBe(EXECUTABLE_CLASSES.length);
   });
 
   it('the evidence classes are preserved, not deleted', () => {

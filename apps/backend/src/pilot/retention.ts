@@ -18,6 +18,7 @@
  * LEGAL_STATUS separate from ENGINEERING_STATUS on purpose, and no period here was derived
  * from a statute - 90 days is a human decision recorded in D13, not a legal finding.
  */
+import type { PoolClient } from 'pg';
 import { query, withTransaction } from '../db/pool';
 
 export type RetentionMethod = 'PSEUDONYMIZED' | 'DELETED' | 'PRESERVED_UNDER_HOLD';
@@ -158,6 +159,58 @@ export interface RetentionInterleave {
   readonly beforeItem?: (item: RetentionPlanItem) => Promise<void>;
 }
 
+
+/**
+ * What this implementation can actually EXECUTE against the current schema, and the verification
+ * that proves each one happened.
+ *
+ * NP-017 §7/§8: the declared method is a POLICY statement; this function is what the DATABASE
+ * permits. Where the two disagree the item is NOT claimed - a completion record for work the
+ * schema forbids is precisely the defect under repair.
+ *
+ * WHY FOUR CLASSES ARE NOT EXECUTABLE, measured from the schema rather than assumed:
+ *   consents.user_id           NOT NULL REFERENCES users(id)          - cannot be severed in place
+ *   pilot_enrollments.user_id  NOT NULL UNIQUE REFERENCES users(id)   - same
+ *   human_decisions.actor_id   NOT NULL REFERENCES users(id)          - same
+ *   pilot_lifecycle_events     subject_user_id IS nullable, but CONSTRAINT pilot_lifecycle_scope
+ *                              REQUIRES it NOT NULL for WITHDRAWAL/TERMINATION rows
+ *
+ * Severing those needs a design choice - a tombstone subject, relaxing NOT NULL, or deleting
+ * rows and losing the governance fact D13 says to preserve. That is a HUMAN DECISION (§23), so
+ * this seam refuses to guess. The classes are left UNEXECUTABLE and, crucially, UNCLAIMED, so
+ * the ledger stops asserting work nobody performed.
+ */
+type ApplyOutcome = 'VERIFIED' | 'NOT_EXECUTABLE';
+
+/** The classes whose declared method this implementation can carry out and verify today. */
+export const EXECUTABLE_CLASSES: readonly string[] = ['pilot_events', 'pilot_monitor_events'];
+
+async function applyAndVerify(
+  client: PoolClient,
+  item: RetentionPlanItem,
+): Promise<ApplyOutcome> {
+  if (item.dataClass === 'pilot_events' && item.method === 'DELETED') {
+    await client.query('DELETE FROM pilot_events WHERE user_id = $1', [item.subjectUserId]);
+    const check = await client.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM pilot_events WHERE user_id = $1', [item.subjectUserId]);
+    return check.rows[0].n === 0 ? 'VERIFIED' : 'NOT_EXECUTABLE';
+  }
+
+  if (item.dataClass === 'pilot_monitor_events' && item.method === 'PSEUDONYMIZED') {
+    // Both subject columns here are nullable, so the link can genuinely be severed in place
+    // while the refusal record - which is the governance evidence - survives intact.
+    await client.query(
+      `UPDATE pilot_monitor_events SET actor_id = NULL, subject_user_id = NULL
+       WHERE actor_id = $1 OR subject_user_id = $1`, [item.subjectUserId]);
+    const check = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM pilot_monitor_events
+       WHERE actor_id = $1 OR subject_user_id = $1`, [item.subjectUserId]);
+    return check.rows[0].n === 0 ? 'VERIFIED' : 'NOT_EXECUTABLE';
+  }
+
+  return 'NOT_EXECUTABLE';
+}
+
 export async function executeRetention(
   now: Date = new Date(),
   interleave: RetentionInterleave = {},
@@ -175,26 +228,28 @@ export async function executeRetention(
       );
       if (held.rowCount) return false;
 
+      // NP-017 §11: MUTATION, then VERIFICATION, then the COMPLETION RECORD - in that order,
+      // inside one transaction. NP-016 found the claim row was INSERTed FIRST, so five of six
+      // classes recorded completed work with zero rows modified, and ON CONFLICT DO NOTHING made
+      // the false completion durable: a later correct implementation would find the work already
+      // claimed and skip it. The ordering below is the whole fix.
+      //
+      // There is no status column on pilot_retention_log, so the PRESENCE of a row IS the
+      // completion claim. That is why nothing is written unless the mutation verified: a failed
+      // or unexecutable item simply leaves no row, planRetention re-offers it on the next run,
+      // and retry works without inventing a status this schema cannot express.
+      const outcome = await applyAndVerify(client, item);
+      if (outcome !== 'VERIFIED') return false;
+
       const claim = await client.query(
         `INSERT INTO pilot_retention_log (data_class, subject_user_id, method, closure_at)
          VALUES ($1,$2,$3,$4) ON CONFLICT (data_class, subject_user_id, closure_at) DO NOTHING
          RETURNING id`,
         [item.dataClass, item.subjectUserId, item.method, plan.closedAt],
       );
-      if (!claim.rowCount) return false; // another run already claimed it
-
-      if (item.method === 'DELETED') {
-        await client.query(
-          `DELETE FROM pilot_events WHERE user_id = $1`, [item.subjectUserId],
-        );
-      } else if (item.method === 'PSEUDONYMIZED') {
-        // The subject link is severed; the governance fact is preserved. This is
-        // PSEUDONYMIZATION and is named as such: the pilot_retention_log still records which
-        // subject was processed, so the mapping is reversible by someone holding this table.
-        // D13 forbids calling that anonymization, and this comment exists so nobody does.
-        if (item.dataClass === 'pilot_events')
-          await client.query('DELETE FROM pilot_events WHERE user_id = $1', [item.subjectUserId]);
-      }
+      // A conflict means a concurrent run verified the same work first. The work is done either
+      // way; this run simply did not author the record.
+      if (!claim.rowCount) return false;
       return true;
     });
     if (ok) applied.push(item);
