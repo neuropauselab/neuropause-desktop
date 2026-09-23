@@ -34,6 +34,27 @@ const INSTRUMENT = 'TEST_ONLY-NP-PILOT-FIRST-APPOINTMENT-001';
 const NOW = new Date('2026-09-23T12:00:00.000Z');
 const PAST = '2026-01-01T00:00:00.000Z';
 
+/**
+ * NP-020 — every temporal fixture is expressed RELATIVE TO `NOW`, the one instant this suite
+ * evaluates at. No fixture may read a clock the assertion does not control.
+ *
+ * The defect this replaces: ENG-13 inserted `effective_from = now()` — the DATABASE wall clock —
+ * and then evaluated the loaded row against the hard-coded `NOW` above. Before 12:00:00Z on
+ * 2026-09-23 the row was already in force and the test passed; after it, `effectiveFrom > now`
+ * fired at authorityEvaluator.ts:241 and DECISION_INVALID preempted the DECISION_OUT_OF_SCOPE
+ * the test exists to prove. Measured at reproduction: effective_from landed 6,142 s after the
+ * evaluation instant. The test was a wall-clock time bomb, not a broken guard.
+ *
+ * The evaluator was never the problem — it has always taken its instant by injection
+ * (`snapshot.now`) and reads no clock itself. The §29 block below already binds `effective_from`
+ * as a parameter. This is that same convention, applied where it was missing.
+ */
+const at = (msFromNow: number): string => new Date(NOW.getTime() + msFromNow).toISOString();
+const HOUR_MS = 3_600_000;
+const BEFORE_NOW = at(-HOUR_MS);   // in force at NOW
+const AFTER_NOW  = at(+HOUR_MS);   // not yet effective at NOW
+const AT_NOW     = at(0);          // the exact boundary
+
 const PILOT_ENV = async () => ({ environmentClass: 'PILOT', environmentId: ENV_ID });
 
 beforeAll(async () => { await runMigrations(); });
@@ -213,7 +234,7 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
   it('the loader returns the COLUMN value, not a hard-coded constant', async () => {
     await query(
       `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
-       VALUES ($1, true, $2, 'PILOT', now())`, [INSTRUMENT, [...PILOT_ACTIONS]]);
+       VALUES ($1, true, $2, 'PILOT', $3)`, [INSTRUMENT, [...PILOT_ACTIONS], BEFORE_NOW]);
     const [d] = await loadAuthorityDecisions();
     expect(d.environmentClass).toBe('PILOT');
   });
@@ -232,10 +253,14 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
     try {
       await query(
         `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
-         VALUES ($1, true, $2, 'PRODUCTION', now())`, [INSTRUMENT, [...PILOT_ACTIONS]]);
+         VALUES ($1, true, $2, 'PRODUCTION', $3)`, [INSTRUMENT, [...PILOT_ACTIONS], BEFORE_NOW]);
       const decisions = await loadAuthorityDecisions();
       expect(decisions[0].environmentClass).toBe('PRODUCTION');   // the row, not a constant
 
+      // NP-020 CASE D. This assertion is the whole point of ENG-13, and for the ninety minutes
+      // after 12:00:00Z it was unreachable: the artifact was not yet effective, so :241 refused
+      // it as DECISION_INVALID before :245 could refuse it for being PRODUCTION. `BEFORE_NOW`
+      // puts the artifact in force so the environment branch is the one under test.
       const out = explainAuthority(
         snap({ decisions: [...decisions] }), ctx(TEST_SAURABH, 'pilot.cap.set'));
       expect(out.decision).toBe('DENY');
@@ -251,6 +276,78 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
         `ALTER TABLE pilot_authority_decisions ADD CONSTRAINT pilot_authority_decisions_environment_class_check
          CHECK (environment_class = 'PILOT')`);
     }
+  });
+});
+
+/* ===================================================================================
+ * NP-020 — the temporal contract, pinned on BOTH sides of the boundary
+ *
+ * ENG-13 failed for ninety minutes a day, every day, from 2026-09-23T12:00:00Z onward, and
+ * nothing in the suite expressed the rule it tripped over. Repairing the fixture without
+ * pinning the rule would leave the next wall-clock assumption free to reintroduce it.
+ *
+ * The rule is READ FROM THE SOURCE, not chosen here:
+ *     authorityEvaluator.ts:241   refuse when  effectiveFrom >  now    (strict)
+ *     authorityEvaluator.ts:243   refuse when  expiresAt     <= now    (inclusive)
+ * so the window the evaluator implements is [effectiveFrom, expiresAt) and the lower bound is
+ * INCLUSIVE. CASE C asserts that as written; it does not decide it.
+ * =================================================================================== */
+describe('NP-020 — effective_from is evaluated against the snapshot instant, not the wall clock', () => {
+  beforeEach(() => reset());
+
+  /** Drives the REAL loader and the REAL evaluator - no stub, per §26. */
+  const evaluateWithEffectiveFrom = async (effectiveFrom: string) => {
+    await query(
+      `INSERT INTO pilot_authority_decisions (instrument, authenticated, actions, environment_class, effective_from)
+       VALUES ($1, true, $2, 'PILOT', $3)`, [INSTRUMENT, [...PILOT_ACTIONS], effectiveFrom]);
+    const decisions = await loadAuthorityDecisions();
+    expect(decisions).toHaveLength(1);            // vacuity guard: there IS a row to evaluate
+    return explainAuthority(snap({ decisions: [...decisions] }), ctx(TEST_SAURABH, 'pilot.cap.set'));
+  };
+
+  it('CASE A — effective_from BEFORE the reference instant is IN FORCE', async () => {
+    const out = await evaluateWithEffectiveFrom(BEFORE_NOW);
+    expect(out.decision).toBe('ALLOW');
+    expect(out.reason).toBe('ALLOWED');
+  });
+
+  it('CASE B — effective_from AFTER the reference instant is NOT YET EFFECTIVE', async () => {
+    const out = await evaluateWithEffectiveFrom(AFTER_NOW);
+    expect(out.decision).toBe('DENY');
+    expect(out.reason).toBe('DECISION_INVALID');
+  });
+
+  it('CASE C — effective_from EXACTLY AT the reference instant is IN FORCE (lower bound INCLUSIVE)', async () => {
+    // authorityEvaluator.ts:241 refuses on `>`, strictly, so equality is not refused. If that
+    // line is ever changed to `>=` this test fails - which is the point of asserting the
+    // boundary explicitly rather than testing a millisecond either side of it.
+    expect(new Date(AT_NOW).getTime()).toBe(NOW.getTime());     // the case really is the boundary
+    const out = await evaluateWithEffectiveFrom(AT_NOW);
+    expect(out.decision).toBe('ALLOW');
+    expect(out.reason).toBe('ALLOWED');
+  });
+
+  it('NEGATIVE CONTROL — the outcome tracks the INSTANT and nothing else', async () => {
+    // Without this pair, CASE A and CASE B could both pass against a fixture that is always in
+    // force (or always refused) for some reason having nothing to do with time. The two rows
+    // below are byte-identical but for effective_from, and they must disagree.
+    expect(new Date(BEFORE_NOW).getTime()).toBeLessThan(NOW.getTime());
+    expect(new Date(AFTER_NOW).getTime()).toBeGreaterThan(NOW.getTime());
+
+    const effective = await evaluateWithEffectiveFrom(BEFORE_NOW);
+    await query('TRUNCATE pilot_authority_decisions RESTART IDENTITY CASCADE');
+    const notYet = await evaluateWithEffectiveFrom(AFTER_NOW);
+
+    expect(effective.reason).not.toBe(notYet.reason);
+    expect([effective.reason, notYet.reason]).toEqual(['ALLOWED', 'DECISION_INVALID']);
+  });
+
+  it('NEGATIVE CONTROL — the fixtures do not depend on when this suite runs', async () => {
+    // The defect was that a fixture read a clock. Asserting the fixtures are pure constants is
+    // what stops it coming back: these three values are identical on every run, forever.
+    expect(BEFORE_NOW).toBe('2026-09-23T11:00:00.000Z');
+    expect(AT_NOW).toBe('2026-09-23T12:00:00.000Z');
+    expect(AFTER_NOW).toBe('2026-09-23T13:00:00.000Z');
   });
 });
 
