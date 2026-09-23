@@ -210,3 +210,30 @@ describe('§12 §13 — failure, retry and idempotency', () => {
     expect(await countCanary('pilot_monitor_events', 'reason_code')).toBe(1);
   });
 });
+
+describe('NP-017 second correction — a NULL subject must not verify vacuously', () => {
+  it('with NO enrolments the plan emits a NULL subject, and NOTHING is claimed', async () => {
+    // planRetention falls back to [null] when pilot_enrollments is empty. Both executable
+    // classes match on the subject, so with a NULL subject the mutation touches nothing AND the
+    // verification counts nothing - which read as success until this guard existed.
+    await query(`TRUNCATE pilot_retention_log, pilot_retention_holds, pilot_closure,
+                 pilot_monitor_events, pilot_lifecycle_events, pilot_events, human_decisions,
+                 pilot_enrollments, consents, pilot_terms RESTART IDENTITY CASCADE`);
+    await query(`INSERT INTO users (id, email, password_hash) VALUES ($1,$2,'x')
+                 ON CONFLICT (id) DO NOTHING`, [ACTOR, 'actor@np017.invalid']);
+    // A row that a NULL-subject DELETE would NOT remove - the vacuity witness.
+    await query(`INSERT INTO pilot_monitor_events (alert_class,severity,outcome,reason_code)
+                 VALUES ('UNAUTHORIZED_AUTHORITY','INFO','DENIED',$1)`, [CANARY]);
+    await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
+                 VALUES (now() - interval '91 days', $1, 'np017 null-subject')`, [ACTOR]);
+
+    const plan = await planRetention(new Date());
+    expect(plan.items.every((i) => i.subjectUserId === null)).toBe(true);   // vacuity guard
+    expect(plan.items.some((i) => i.eligible)).toBe(true);
+
+    const applied = await executeRetention(new Date());
+    expect(applied).toEqual([]);                    // nothing is applicable
+    expect(await logRows()).toEqual([]);            // and therefore NOTHING is claimed
+    expect(await countCanary('pilot_monitor_events', 'reason_code')).toBe(1);  // row untouched
+  });
+});

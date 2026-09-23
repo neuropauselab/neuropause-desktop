@@ -189,6 +189,23 @@ async function applyAndVerify(
   client: PoolClient,
   item: RetentionPlanItem,
 ): Promise<ApplyOutcome> {
+  // NP-017, SECOND CORRECTION - found by the fan-out re-measuring this seam's OWN repair.
+  //
+  // Both executable classes are SUBJECT-SCOPED: they match on `user_id = $1` /
+  // `subject_user_id = $1`. With a NULL subject those predicates match NOTHING - and so does
+  // the verification that follows them. `DELETE ... WHERE user_id = NULL` removes no rows while
+  // rows survive, and `SELECT count(*) ... WHERE user_id = NULL` then returns 0, so the check
+  // reports success VACUOUSLY and a completion record is written for work that did not happen.
+  //
+  // That is the exact defect this seam repaired, reintroduced one case down inside the repair
+  // itself: a check that looks right and measures the wrong thing. planRetention emits a NULL
+  // subject whenever there are no enrolments at all (`subjectIds = [null]`), so the path is
+  // reachable, not theoretical.
+  //
+  // A subject-scoped operation with no subject is not "done", it is INAPPLICABLE. It is refused,
+  // and therefore never claimed.
+  if (item.subjectUserId === null) return 'NOT_EXECUTABLE';
+
   if (item.dataClass === 'pilot_events' && item.method === 'DELETED') {
     await client.query('DELETE FROM pilot_events WHERE user_id = $1', [item.subjectUserId]);
     const check = await client.query<{ n: number }>(

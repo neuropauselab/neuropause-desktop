@@ -261,6 +261,34 @@ describe('ENG-06 — the monitor ledger', () => {
 /* ======================================================================================
  * ENG-05 — retention
  * ==================================================================================== */
+/**
+ * NP-017: seed a REAL enrolled subject before a retention run.
+ *
+ * §26 and §27 previously ran with pilot_enrollments EMPTY. planRetention falls back to
+ * `subjectIds = [null]` in that case, so both tests exercised the NULL-SUBJECT path - where the
+ * mutation predicates (`user_id = $1`) match nothing and the verification counts nothing. They
+ * passed because the old implementation wrote the claim regardless of effect, so a path on which
+ * no work was even possible looked identical to a successful one.
+ *
+ * With a real subject they test what their names say.
+ */
+async function seedRetentionSubject(): Promise<void> {
+  const { rows: [t] } = await query(
+    `INSERT INTO pilot_terms (version,status,digest,content_reference,published_at)
+     VALUES ('NP017-GOV','PUBLISHED','D','np017',now()) RETURNING *`);
+  const { rows: [c] } = await query(
+    `INSERT INTO consents (user_id, version, terms_id, terms_digest)
+     VALUES ($1,'NP017-GOV',$2,'D') RETURNING *`, [U1, t.id]);
+  const { rows: [e] } = await query(
+    `INSERT INTO pilot_enrollments (user_id, consent_id, state)
+     VALUES ($1,$2,'PILOT_ACTIVE') RETURNING *`, [U1, c.id]);
+  await query(`INSERT INTO pilot_events (user_id, enrollment_id, event_type, metadata)
+               VALUES ($1,$2,'session_started','{}'::jsonb)`, [U1, e.id]);
+  await query(`INSERT INTO pilot_monitor_events
+               (alert_class,severity,outcome,reason_code,actor_id,subject_user_id)
+               VALUES ('UNAUTHORIZED_AUTHORITY','INFO','DENIED','NP017',$1,$1)`, [U1]);
+}
+
 describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
   beforeEach(() => reset());
 
@@ -310,6 +338,7 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
   it('§26 execution is IDEMPOTENT — a second run is a no-op', async () => {
     await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
                  VALUES (now() - interval '200 days', $1, 'test')`, [OP]);
+    await seedRetentionSubject();
     // NP-017 CORRECTION. This asserted first.length === RETENTION_CLASSES.length - that ALL SIX
     // classes were claimed on the first run. THAT EXPECTATION ENCODED THE DEFECT: five of the
     // six were claimed with zero rows modified, and this test passed BECAUSE the implementation
@@ -361,6 +390,7 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
   it('§27 two concurrent runs process each item EXACTLY once', async () => {
     await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
                  VALUES (now() - interval '200 days', $1, 'test')`, [OP]);
+    await seedRetentionSubject();
     const [a, b] = await Promise.all([executeRetention(), executeRetention()]);
     // NP-017: the claim row still serialises them - it moved AFTER the verified mutation, so
     // the UNIQUE constraint now guarantees exactly one AUTHOR per item rather than exactly one
