@@ -127,3 +127,44 @@ describe('H13 — the trust file is only the root if the out-of-band digest says
     expect(createPublicKey(ATTACKER.pem)).toBeDefined();
   });
 });
+
+describe('H13 requirement 6 — a digest redefinition is OBSERVABLE, not silent', () => {
+  it('the anchor in force is reported on a successful load', () => {
+    const t = loadPilotTrust(write('t.json', LEGIT_BODY), LEGIT_DIGEST);
+    expect(t.anchorDigest).toBe(LEGIT_DIGEST);
+    expect(t.fileDigest).toBe(LEGIT_DIGEST);
+    expect(t.fileFailure).toBeNull();
+  });
+
+  it('a SUBSTITUTED anchor is visible: both digests are reported and they differ', () => {
+    // The scenario requirement 6 names: someone redefines the expected digest to match a file
+    // they wrote. The load succeeds — out-of-band-digest cannot prevent that — but the anchor
+    // now in force is reported, so the change is evidence rather than nothing.
+    const t = loadPilotTrust(write('t.json', ATTACKER_BODY), trustFileDigest(ATTACKER_BODY));
+    expect(t.fileFailure).toBeNull();
+    // Assert PRESENCE first. `expect(undefined).not.toBe(X)` passes, so a bare inequality
+    // would stay green if the anchor stopped being reported at all — the observable would be
+    // gone and the test would not notice. Same shape as the indexOf(-1) trap.
+    expect(t.anchorDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(t.anchorDigest).not.toBe(LEGIT_DIGEST);   // <- the observable
+    expect(t.anchorDigest).toBe(t.fileDigest);
+  });
+
+  it('a mismatch reports BOTH digests, so what was expected and what was found are both evidenced', () => {
+    const t = loadPilotTrust(write('t.json', ATTACKER_BODY), LEGIT_DIGEST);
+    expect(t.fileFailure).toBe('TRUST_DIGEST_MISMATCH');
+    expect(t.anchorDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(t.fileDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(t.anchorDigest).toBe(LEGIT_DIGEST);
+    expect(t.fileDigest).toBe(trustFileDigest(ATTACKER_BODY));
+    expect(t.anchorDigest).not.toBe(t.fileDigest);
+  });
+
+  it('no anchor is reported when the load never reached the digest check', () => {
+    const t = loadPilotTrust('/definitely/not/here', LEGIT_DIGEST);
+    expect(t.anchorDigest).toBeNull();      // null, not undefined — the field exists and is empty
+    expect(t.fileDigest).toBeNull();
+    expect('anchorDigest' in t).toBe(true);
+  });
+});
+

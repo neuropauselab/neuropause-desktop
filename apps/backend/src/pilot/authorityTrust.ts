@@ -35,9 +35,22 @@ export interface TrustLoadResult {
   /** Every key that was REFUSED, with why. Published so an empty trust map is explicable. */
   readonly rejected: readonly { keyId: string; reason: TrustLoadFailure }[];
   readonly fileFailure: TrustLoadFailure | null;
+  /*
+   * H13 requirement 6: the operator, runtime, database credential or authority subject must not
+   * be able to SILENTLY redefine the trusted digest. The word is *silently*. Out-of-band-digest
+   * cannot PREVENT a party who controls the environment from supplying a different expected
+   * value — preventing that needs a different mechanism than the one selected. What it can do,
+   * and what these two fields exist for, is make the substitution OBSERVABLE: the anchor in
+   * force is reported on every load, so a change appears in evidence instead of nowhere.
+   *
+   * Both are public digests. Neither is secret and neither is used for a decision here — the
+   * decision was already made in loadPilotTrust before these were populated.
+   */
+  readonly anchorDigest: string | null;
+  readonly fileDigest: string | null;
 }
 
-const EMPTY: TrustLoadResult = { keys: new Map(), rejected: [], fileFailure: null };
+const EMPTY: TrustLoadResult = { keys: new Map(), rejected: [], fileFailure: null, anchorDigest: null, fileDigest: null };
 
 /* ==========================================================================================
  * H13 — OUT-OF-BAND DIGEST TRUST ANCHOR.
@@ -135,7 +148,7 @@ export function parsePilotTrust(raw: string): TrustLoadResult {
     }
     keys.set(keyId, { keyId, publicKeyPem: pem, algorithm: 'ed25519' });
   }
-  return { keys, rejected, fileFailure: null };
+  return { keys, rejected, fileFailure: null, anchorDigest: null, fileDigest: null };
 }
 
 /** Reads the trust file named by PILOT_AUTHORITY_TRUST_FILE. Absence yields an EMPTY trust
@@ -160,9 +173,10 @@ export function loadPilotTrust(
    */
   if (!expectedDigest) return { ...EMPTY, fileFailure: 'TRUST_DIGEST_ABSENT' };
   if (!/^[0-9a-f]{64}$/.test(expectedDigest)) return { ...EMPTY, fileFailure: 'TRUST_DIGEST_MALFORMED' };
-  if (!digestMatches(trustFileDigest(raw), expectedDigest)) {
-    return { ...EMPTY, fileFailure: 'TRUST_DIGEST_MISMATCH' };
+  const actual = trustFileDigest(raw);
+  if (!digestMatches(actual, expectedDigest)) {
+    return { ...EMPTY, fileFailure: 'TRUST_DIGEST_MISMATCH', anchorDigest: expectedDigest, fileDigest: actual };
   }
 
-  return parsePilotTrust(raw);
+  return { ...parsePilotTrust(raw), anchorDigest: expectedDigest, fileDigest: actual };
 }

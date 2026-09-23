@@ -26,6 +26,15 @@ export async function loadRoleBindings(): Promise<readonly RoleBinding[]> {
   }));
 }
 
+/**
+ * The trust anchor in force on the last load — H13 requirement 6. Recorded so that a
+ * redefinition of the expected digest is OBSERVABLE rather than silent. Diagnostics only:
+ * never consulted by a decision, because the decision already happened in loadPilotTrust.
+ */
+let lastAnchor: { anchorDigest: string | null; fileDigest: string | null; failure: string | null } =
+  { anchorDigest: null, fileDigest: null, failure: null };
+export const lastTrustAnchor = (): Readonly<typeof lastAnchor> => lastAnchor;
+
 /** Why each row was refused on the last load. Diagnostics only — never consulted by a decision. */
 let lastRefusals: readonly { instrument: string; reason: VerifyFailure }[] = [];
 export const lastAuthorityVerificationRefusals = (): readonly { instrument: string; reason: VerifyFailure }[] =>
@@ -52,7 +61,10 @@ export async function loadAuthorityDecisions(): Promise<readonly AuthorityDecisi
             revoked_at, signature, signer_key_id
      FROM pilot_authority_decisions`,
   );
-  const trust = loadPilotTrust().keys;
+  const trustLoad = loadPilotTrust();
+  const trust = trustLoad.keys;
+  lastAnchor = { anchorDigest: trustLoad.anchorDigest, fileDigest: trustLoad.fileDigest,
+    failure: trustLoad.fileFailure };
   const refusals: { instrument: string; reason: VerifyFailure }[] = [];
 
   const admitted = rows.filter((r) => {
