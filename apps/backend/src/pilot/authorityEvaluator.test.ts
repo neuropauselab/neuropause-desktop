@@ -165,11 +165,28 @@ describe('the evaluator satisfies the existing fail-closed resolver', () => {
     expect(monitor.events[0].escalated).toBe(true);
     expect(monitor.events[0].outcome).toBe('DENIED');
   });
-  it('an ALLOW records nothing — the ledger is a refusal ledger, not a trace', async () => {
+  /*
+   * SUPERSEDED BY WORK ITEM 3, AND THE OLD ASSERTION IS RECORDED RATHER THAN DELETED QUIETLY.
+   *
+   * This test used to read "an ALLOW records nothing — the ledger is a refusal ledger, not a
+   * trace" and asserted `toHaveLength(0)`. It was a faithful description of the contract at
+   * the time and it encoded the defect NP-015 measured: with no ALLOW in the Outcome union an
+   * authorized action was structurally unrepresentable, so "records nothing" was the only
+   * behaviour available. A suite that asserts the defect cannot catch the defect — NP-017
+   * recorded that lesson about §26/§27 of the governance-controls suite.
+   *
+   * The contract is now: a refusal is recorded AND a permission is recorded, distinctly.
+   */
+  it('an ALLOW is recorded as ALLOW, distinctly from a refusal', async () => {
     const monitor = createMemoryPilotMonitor();
     const ev = createSnapshotEvaluator(snap());
     ev.evaluate(ctx(TEST_SAURABH, 'pilot.stop'));
     await recordAuthorityRefusals(monitor, ev);
-    expect(monitor.events).toHaveLength(0);
+    expect(monitor.events).toHaveLength(1);
+    expect(monitor.events[0].outcome).toBe('ALLOW');
+    expect(monitor.events[0].alertClass).toBe('AUTHORIZED_ACTION');
+    // An authorized action is not an alert: it must NOT escalate like a refusal does.
+    expect(monitor.events[0].severity).toBe('INFO');
+    expect(monitor.events[0].escalated).toBe(false);
   });
 });

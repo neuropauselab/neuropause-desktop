@@ -34,10 +34,23 @@ export type AlertClass =
   | 'PRODUCTION_CREDENTIAL_ATTEMPT'
   | 'DATA_INTEGRITY_FAILURE'
   | 'EVIDENCE_INTEGRITY_FAILURE'
-  | 'SECURITY_INCIDENT';
+  | 'SECURITY_INCIDENT'
+  /*
+   * Not an alert. An AUTHORIZED action is the one thing this ledger could not say, and NP-015
+   * measured why that matters: "an authorized action is structurally unrepresentable in the
+   * ledger, not merely unlogged by habit", so any reconstruction of what the pilot DID had to
+   * rest on other tables. This class exists so the ledger can record permission, not only refusal.
+   */
+  | 'AUTHORIZED_ACTION';
 
 export type Severity = 'INFO' | 'WARNING' | 'CRITICAL';
-export type Outcome = 'BLOCKED' | 'DENIED' | 'RECORDED';
+/**
+ * ALLOW is the AUTHORIZATION result, not the EXECUTION result. It states that the request
+ * passed every authorization control and was permitted to proceed. Whether the consequential
+ * operation then succeeded is a separate fact, carried by the lifecycle tables; conflating the
+ * two would make this ledger claim outcomes it never observed.
+ */
+export type Outcome = 'BLOCKED' | 'DENIED' | 'RECORDED' | 'ALLOW';
 
 /**
  * THE SEVERITY OF EACH CLASS IS A TABLE, NOT A PARAMETER.
@@ -48,6 +61,13 @@ export type Outcome = 'BLOCKED' | 'DENIED' | 'RECORDED';
  * can lower one.
  */
 export const ALERT_SEVERITY: Readonly<Record<AlertClass, Severity>> = {
+  /*
+   * INFO, and this is the first non-CRITICAL entry in the map. NP-015 measured that every one
+   * of the 13 classes mapped to CRITICAL, which made `escalates()` a predicate that could not
+   * return false — a guard that cannot fail. An authorized action is not an alert, so this
+   * entry is both semantically right and the first thing that makes escalates() falsifiable.
+   */
+  AUTHORIZED_ACTION: 'INFO',
   UNAUTHORIZED_ACCESS: 'CRITICAL',
   UNAUTHORIZED_DECISION: 'CRITICAL',
   UNAUTHORIZED_AUTHORITY: 'CRITICAL',

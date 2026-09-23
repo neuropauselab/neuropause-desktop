@@ -292,6 +292,27 @@ export async function recordAuthorityRefusals(
   for (let i = 0; i < evaluator.outcomes.length; i += 1) {
     const outcome = evaluator.outcomes[i];
     const context = evaluator.contexts[i];
+    /*
+     * AN AUTHORIZED ACTION IS RECORDED, NOT SKIPPED.
+     *
+     * This loop previously did `if (outcome.decision !== 'DENY') continue`, so an ALLOW left no
+     * trace at all. NP-016 measured that TWO barriers stood in the way, which is why deleting
+     * the `continue` alone changed nothing: ALLOW carries reason 'ALLOWED', and
+     * ALERT_FOR_REASON is a Partial<Record> of REFUSALS only, so the alert-class lookup below
+     * would have dropped it a second time. Both are handled here.
+     */
+    if (outcome.decision === 'ALLOW') {
+      await monitor.record({
+        alertClass: 'AUTHORIZED_ACTION',
+        outcome: 'ALLOW',
+        reasonCode: outcome.reason,
+        actorId: context.actorId,
+        subjectUserId: context.subjectId,
+        action: context.action,
+        detail: { role: outcome.role ?? 'NONE', instrument: outcome.instrument ?? 'NONE' },
+      });
+      continue;
+    }
     if (outcome.decision !== 'DENY') continue;
     const alertClass = ALERT_FOR_REASON[outcome.reason];
     if (!alertClass) continue;
