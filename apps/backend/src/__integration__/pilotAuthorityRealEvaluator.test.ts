@@ -351,18 +351,49 @@ describe('§29 — a plain INSERT manufactures authority the application layer c
     expect(sig[0].n).toBe(0);
   });
 
-  it('the writing credential is also the migrating credential, so any control it gains it can drop',
+  it('forging ability is EXACTLY the granted privilege - a deployment choice, not a law of the system',
     async () => {
-      const { rows } = await query<{ su: boolean; cr: boolean }>(
-        `SELECT rolsuper AS su, rolcreatedb AS cr FROM pg_roles WHERE rolname = current_user`);
-      const { rows: ddl } = await query<{ can: boolean }>(
+      // NP-015 CORRECTION. This test previously asserted
+      //     expect(owner[0].isowner).toBe(true)
+      // i.e. "the writing credential owns the table it writes to". That was true of NP-014's
+      // disposable instance, which had ONE role owning everything - so it was a property of that
+      // SETUP, asserted as though it were a property of the system. NP-015 built an instance with
+      // three distinct SQL identities (migrate / app / dba) and the assertion went red, correctly:
+      // the tables were owned by the migration role while the connection was a different role.
+      //
+      // The invariant that actually holds, and that is worth pinning, is narrower and stronger:
+      // WHETHER THIS CONNECTION CAN MANUFACTURE A BINDING IS DECIDED SOLELY BY ITS GRANTED
+      // PRIVILEGE. Nothing else - no trigger, no RLS policy, no signature check, no provenance
+      // test - stands between privilege and a forged row.
+      //
+      // So this test fails the day any such control is added, which is the signal to update it.
+      const { rows: priv } = await query<{ can: boolean }>(
         `SELECT has_table_privilege(current_user, 'pilot_role_bindings', 'INSERT') AS can`);
-      expect(ddl[0].can).toBe(true);
-      // The same connection that inserts the row owns the table it inserts into.
-      const { rows: owner } = await query<{ isowner: boolean }>(
-        `SELECT pg_get_userbyid(relowner) = current_user AS isowner
-         FROM pg_class WHERE relname = 'pilot_role_bindings'`);
-      expect(owner[0].isowner).toBe(true);
-      expect(rows.length).toBe(1);
+      const canInsert = priv[0].can;
+
+      let inserted = false;
+      try {
+        await query(
+          `INSERT INTO pilot_role_bindings (subject_id, role, decision_ref)
+           VALUES ($1, 'FIRST_PILOT_HUMAN_DECISION_AUTHORITY', $2)`,
+          [TEST_SAURABH, 'TEST_ONLY-NP015-PRIVILEGE-PROBE']);
+        inserted = true;
+      } catch { inserted = false; }
+      await query(`DELETE FROM pilot_role_bindings WHERE decision_ref = $1`,
+        ['TEST_ONLY-NP015-PRIVILEGE-PROBE']).catch(() => undefined);
+
+      expect(inserted).toBe(canInsert);
+
+      // Recorded, not asserted: HOW this connection came to hold that privilege. Both routes
+      // appear in real deployments, and tools/np015-db-trust-boundary.sh measures all three
+      // identities. Superusers bypass RLS entirely; owners can ALTER ... NO FORCE ROW LEVEL
+      // SECURITY, so a control either of them "gains" is a control they can also drop.
+      const { rows: who } = await query<{ su: boolean; isowner: boolean }>(
+        `SELECT r.rolsuper AS su,
+                pg_get_userbyid(c.relowner) = current_user AS isowner
+         FROM pg_class c, pg_roles r
+         WHERE c.relname = 'pilot_role_bindings' AND r.rolname = current_user`);
+      expect(who).toHaveLength(1);
+      if (canInsert) expect(who[0].su || who[0].isowner).toBe(true);
     });
 });
