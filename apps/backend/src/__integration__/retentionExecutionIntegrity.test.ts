@@ -11,6 +11,7 @@
  * obvious on sight, so a passing assertion cannot be confused with an empty fixture.
  */
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
+import { Client, type QueryResultRow } from 'pg';
 import { closePool, query } from '../db/pool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
@@ -235,5 +236,86 @@ describe('NP-017 second correction — a NULL subject must not verify vacuously'
     expect(applied).toEqual([]);                    // nothing is applicable
     expect(await logRows()).toEqual([]);            // and therefore NOTHING is claimed
     expect(await countCanary('pilot_monitor_events', 'reason_code')).toBe(1);  // row untouched
+  });
+});
+
+describe('NP-019 §14 §15 §16 — transactional atomicity, observed from a SEPARATE connection', () => {
+  beforeEach(seedClosedPilotWithData);
+
+  /** A genuinely separate connection, so nothing is observed through the transaction's own client. */
+  async function observe<T extends QueryResultRow>(sql: string, params: unknown[] = []) {
+    const c = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+    await c.connect();
+    try { return (await c.query<T>(sql, params)).rows; } finally { await c.end(); }
+  }
+
+  it('§15 SUCCESS is atomic: mutation AND completion record are both visible externally', async () => {
+    const applied = await executeRetention(new Date());
+    expect(applied.map((i) => i.dataClass).sort()).toEqual([...EXECUTABLE_CLASSES].sort());
+    const events = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
+    const log = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_retention_log');
+    expect(events[0].n).toBe(0);                       // the DELETE committed
+    expect(log[0].n).toBe(EXECUTABLE_CLASSES.length);  // the claim committed
+  });
+
+  it('§14 THE CRITICAL TEST: a failure AFTER the mutation leaves NOTHING committed', async () => {
+    // A real post-mutation failure path, not an injected fault: the interleave inserts the claim
+    // row between planning and the transaction, so the mutation runs and the claim INSERT then
+    // conflicts (ON CONFLICT DO NOTHING -> rowCount 0). Before NP-019 that returned false and
+    // withTransaction COMMITTED the mutation anyway.
+    const before = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
+    expect(before[0].n).toBe(1);                       // positive control: there IS work to undo
+
+    const plan = await planRetention(new Date());
+    const closure = plan.closedAt;
+    let planted = false;
+    const applied = await executeRetention(new Date(), {
+      beforeItem: async (item) => {
+        if (planted || item.dataClass !== 'pilot_events') return;
+        planted = true;
+        await query(
+          `INSERT INTO pilot_retention_log (data_class, subject_user_id, method, closure_at)
+           VALUES ($1,$2,$3,$4)`, [item.dataClass, item.subjectUserId, item.method, closure]);
+      },
+    });
+
+    expect(applied.map((i) => i.dataClass)).not.toContain('pilot_events');
+    // THE ASSERTION THAT MATTERS: the DELETE must have been rolled back.
+    const after = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
+    expect(after[0].n).toBe(1);                        // original state preserved
+  });
+
+  it('§16 F-series: a hold landing mid-run leaves no mutation and no completion record', async () => {
+    let placed = false;
+    const applied = await executeRetention(new Date(), {
+      beforeItem: async () => {
+        if (placed) return;
+        placed = true;
+        await query(`INSERT INTO pilot_retention_holds (hold_class, reason, placed_by)
+                     VALUES ('LEGAL','np019 mid-run',$1)`, [ACTOR]);
+      },
+    });
+    expect(applied).toEqual([]);
+    const events = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_events');
+    const log = await observe<{ n: number }>('SELECT count(*)::int AS n FROM pilot_retention_log');
+    expect(events[0].n).toBe(1);                       // untouched
+    expect(log[0].n).toBe(0);                          // nothing claimed
+  });
+
+  it('§20 the null-subject guard must NOT bypass the hold control for a REAL subject', async () => {
+    // The NP-018 regression, pinned from the other side: with a real subject the item reaches
+    // the in-transaction hold re-check, so deleting that check is detectable.
+    const plan = await planRetention(new Date());
+    expect(plan.items.every((i) => i.subjectUserId !== null)).toBe(true);   // vacuity guard
+    let placed = false;
+    const applied = await executeRetention(new Date(), {
+      beforeItem: async () => {
+        if (placed) return;
+        placed = true;
+        await query(`INSERT INTO pilot_retention_holds (hold_class, reason, placed_by)
+                     VALUES ('LEGAL','np019 reaches the in-transaction guard',$1)`, [ACTOR]);
+      },
+    });
+    expect(applied).toEqual([]);
   });
 });

@@ -46,7 +46,10 @@ describe('NP-017 — retention claims only what it can execute and verify', () =
     expect(claim).toBeGreaterThan(-1);
     expect(verify).toBeLessThan(claim);      // mutation+verification precede the claim
     // and the claim is unreachable unless verification succeeded
-    expect(src).toMatch(/if \(outcome !== 'VERIFIED'\) return false;/);
+    // NP-019 updated this line: the not-applied signal became a THROW, so that
+    // withTransaction ROLLS BACK instead of committing a mutation it then reports as
+    // failed. The ordering this test exists to pin is unchanged.
+    expect(src).toMatch(/if \(outcome !== 'VERIFIED'\) throw new RetentionNotApplied\(outcome\);/);
   });
 
   it('every executable path VERIFIES its own effect before returning VERIFIED', () => {
@@ -64,4 +67,42 @@ describe('NP-017 — retention claims only what it can execute and verify', () =
         expect(src).toContain(cls);
       expect(src).toContain('HUMAN DECISION');
     });
+
+  it('NP-019 SOURCE INVARIANT: every "not applied" signal inside the transaction is a THROW', () => {
+    // withTransaction COMMITS on a normal return and ROLLS BACK only on a throw
+    // (db/pool.ts:27-40). A `return false` inside the transaction body therefore COMMITS
+    // whatever the body already did — which is exactly how a mutation came to be committed
+    // while the operation reported failure (NP-019 R2).
+    //
+    // This is pinned at SOURCE level deliberately. The behavioural path "a mutation ran and
+    // then its own verification failed" is NOT reachable by any test today: applyAndVerify
+    // returns NOT_EXECUTABLE only from the null-subject guard and the unknown-class
+    // fallthrough, and BOTH return before any mutation runs. So no behavioural test can catch
+    // a regression here, and only reading the source can.
+    const src = readFileSync(join(__dirname, 'retention.ts'), 'utf8');
+    expect(src).toContain('executeRetention');                  // vacuity guard, FIRST
+
+    const from = src.indexOf('const ok = await withTransaction');
+    // The slice must end at the boundary. The `.catch` that follows legitimately contains a
+    // `return false` — that is the conversion of the sentinel back into a skipped item, and it
+    // runs OUTSIDE the transaction. Including it here made this assertion fail against correct
+    // code, which is a test defect, not a source defect.
+    const to = src.indexOf('}).catch(');
+    expect(from).toBeGreaterThan(-1);
+    expect(to).toBeGreaterThan(from);
+    const body = src.slice(from, to);
+
+    // No bare `return false` may survive inside the transaction body.
+    expect(body).not.toMatch(/\breturn false;/);
+    // All three not-applied signals must be throws.
+    expect(body).toMatch(/throw new RetentionNotApplied\('ON_HOLD'\)/);
+    expect(body).toMatch(/throw new RetentionNotApplied\(outcome\)/);
+    expect(body).toMatch(/throw new RetentionNotApplied\('ALREADY_CLAIMED'\)/);
+    // ...and the BOUNDARY — which is outside the slice above, by construction — converts ONLY
+    // the sentinel, so a real database error still propagates rather than being reported as a
+    // quietly skipped item.
+    const boundary = src.slice(src.indexOf('}).catch('), src.indexOf('if (ok) applied.push(item);'));
+    expect(boundary).toMatch(/if \(e instanceof RetentionNotApplied\) return false;/);
+    expect(boundary).toMatch(/throw e;/);
+  });
 });

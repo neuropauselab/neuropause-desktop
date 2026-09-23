@@ -372,6 +372,12 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
   it('§27 a hold placed AFTER planning is still honoured (transaction-level guard)', async () => {
     await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
                  VALUES (now() - interval '200 days', $1, 'test')`, [OP]);
+    // NP-019 R1. This test did NOT seed a subject, so pilot_enrollments was empty,
+    // planRetention fell back to subjectIds = [null], and NP-017's null-subject guard returned
+    // NOT_EXECUTABLE before the in-transaction hold re-check could matter. Measured: deleting
+    // that hold check left the suite 33/33 GREEN — the control existed in source and no test
+    // could fail without it. A real subject is what makes this test reach the control it names.
+    await seedRetentionSubject();
     // The plan says ELIGIBLE. The hold lands between planning and the write - precisely the
     // window a read-then-write guard cannot see.
     let placed = false;
@@ -385,6 +391,15 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
     });
     expect(applied).toEqual([]);
     expect((await query('SELECT count(*)::int AS n FROM pilot_retention_log')).rows[0].n).toBe(0);
+  });
+
+  it('§9 NEGATIVE CONTROL: with NO hold, the same fixture DOES proceed', async () => {
+    // Without this, the test above is equally consistent with "retention always refuses".
+    await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
+                 VALUES (now() - interval '200 days', $1, 'test')`, [OP]);
+    await seedRetentionSubject();
+    const applied = await executeRetention(new Date());
+    expect(applied.map((i) => i.dataClass).sort()).toEqual([...EXECUTABLE_CLASSES].sort());
   });
 
   it('§27 two concurrent runs process each item EXACTLY once', async () => {

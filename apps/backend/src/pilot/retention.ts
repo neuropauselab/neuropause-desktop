@@ -228,6 +228,29 @@ async function applyAndVerify(
   return 'NOT_EXECUTABLE';
 }
 
+/**
+ * NP-019 R2. `withTransaction` COMMITS on a normal return and ROLLS BACK only on a throw
+ * (db/pool.ts:27-40). Retention's transaction body reported "not applied" by RETURNING FALSE —
+ * and one of those returns is reached AFTER a mutation may already have run, so the mutation
+ * committed while the operation reported failure. Measured against a disposable instance: a
+ * callback that mutates and returns false leaves the row MUTATED when read from a SEPARATE
+ * connection.
+ *
+ * `withTransaction` is NOT changed. Other callers may legitimately return a falsy value and
+ * expect a commit, and NP-019 §13 forbids changing it globally for retention's benefit.
+ * Retention gets its own contract instead: it signals "not applied" by THROWING this sentinel,
+ * which rolls the transaction back, and the loop converts it back to a false at the boundary so
+ * the remaining items still run.
+ *
+ *   SUCCESS -> COMMIT   ·   NOT APPLIED -> ROLLBACK   ·   REAL ERROR -> ROLLBACK and propagate
+ */
+class RetentionNotApplied extends Error {
+  constructor(readonly outcome: string) {
+    super(`retention item not applied: ${outcome}`);
+    this.name = 'RetentionNotApplied';
+  }
+}
+
 export async function executeRetention(
   now: Date = new Date(),
   interleave: RetentionInterleave = {},
@@ -243,7 +266,7 @@ export async function executeRetention(
          WHERE released_at IS NULL AND (subject_user_id IS NULL OR subject_user_id = $1)`,
         [item.subjectUserId],
       );
-      if (held.rowCount) return false;
+      if (held.rowCount) throw new RetentionNotApplied('ON_HOLD');
 
       // NP-017 §11: MUTATION, then VERIFICATION, then the COMPLETION RECORD - in that order,
       // inside one transaction. NP-016 found the claim row was INSERTed FIRST, so five of six
@@ -256,7 +279,7 @@ export async function executeRetention(
       // or unexecutable item simply leaves no row, planRetention re-offers it on the next run,
       // and retry works without inventing a status this schema cannot express.
       const outcome = await applyAndVerify(client, item);
-      if (outcome !== 'VERIFIED') return false;
+      if (outcome !== 'VERIFIED') throw new RetentionNotApplied(outcome);
 
       const claim = await client.query(
         `INSERT INTO pilot_retention_log (data_class, subject_user_id, method, closure_at)
@@ -266,8 +289,13 @@ export async function executeRetention(
       );
       // A conflict means a concurrent run verified the same work first. The work is done either
       // way; this run simply did not author the record.
-      if (!claim.rowCount) return false;
+      if (!claim.rowCount) throw new RetentionNotApplied('ALREADY_CLAIMED');
       return true;
+    }).catch((e: unknown) => {
+      // Only the sentinel becomes a false. A real database error still propagates: a
+      // failure must not be silently reported as "this item was skipped".
+      if (e instanceof RetentionNotApplied) return false;
+      throw e;
     });
     if (ok) applied.push(item);
   }
