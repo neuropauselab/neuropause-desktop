@@ -16,7 +16,7 @@ import { runMigrations } from '../db/migrate';
 import { sqlPilotRepository } from '../pilot/repository';
 import { readBackParticipation, readBackPilotControl } from '../pilot/readBack';
 import { exportParticipantPilotData } from '../pilot/export';
-import { enroll, recordEvent, withdraw, stopPilot } from '../pilot/service';
+import { enroll, recordEvent, withdraw, stopPilot, resumePilot, terminateParticipation } from '../pilot/service';
 
 const U = 'dddddddd-0000-4000-8000-000000000001';
 const OP = 'dddddddd-0000-4000-8000-000000000002';
@@ -59,13 +59,45 @@ describe('§17 ENV-05 — can the governance record be reconstructed?', () => {
     expect(rb.deviations).toEqual([]);
   });
 
-  it('after APPLICATION RESTART (pool state discarded) it still reconstructs', async () => {
-    // A fresh pool read is the closest in-process analogue of a restart: nothing is carried.
+  it('R1 (in-process half): reconstruction carries no in-memory state between reads', async () => {
+    // NP-014 CORRECTION. This test previously read:
+    //     await closePool.length;   // no-op guard; the next query re-reads
+    // `closePool.length` is the FUNCTION'S ARITY - zero. It discarded nothing, awaited nothing,
+    // and could not fail. The test was titled "after APPLICATION RESTART (pool state discarded)"
+    // while performing no restart and discarding no state.
+    //
+    // A module-level pool cannot be restarted from inside the process that holds it, so the
+    // honest split is: this test asserts only that reconstruction is a pure function of
+    // PERSISTED ROWS, and the genuine restart - a new OS process, and a real PostgreSQL
+    // restart - is exercised out of process by tools/np014-recovery.sh (R1, R2).
     const before = await reconstruct();
-    await closePool.length;                        // no-op guard; the next query re-reads
     const after = await reconstruct();
     expect(after.status).toBe(before.status);
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before));
     expect(after.deviations).toEqual([]);
+  });
+
+  it('R3: after STOP then RESUME the control history reconstructs BOTH episodes in order', async () => {
+    await stopPilot({ repo: sqlPilotRepository, authority: ALLOW }, OP, 'NP-014 R3 stop');
+    await resumePilot({ repo: sqlPilotRepository, authority: ALLOW }, OP, 'NP-014 R3 resume');
+    const ctrl = await readBackPilotControl(sqlPilotRepository);
+    expect(ctrl.stopped).toBe(false);
+    expect(ctrl.episodes.map((e) => e.kind)).toEqual(['STOP', 'RESUME']);
+    expect(ctrl.deviations).toEqual([]);
+  });
+
+  it('R5: after PILOT TERMINATION the participation reconstructs AS TERMINATED, not as lost', async () => {
+    await terminateParticipation(
+      { repo: sqlPilotRepository, authority: ALLOW }, OP, U, 'NP-014 R5 termination');
+    const rb = await reconstruct();
+    expect(rb.status).toBe('EXITED');
+    expect(rb.deviations).toEqual([]);
+    const { rows } = await query<{ kind: string }>(
+      "SELECT kind FROM pilot_lifecycle_events WHERE kind = 'TERMINATION'");
+    expect(rows).toHaveLength(1);
+    // termination and withdrawal must remain DISTINGUISHABLE in the reconstructed record
+    expect(rb.transitions.map((t) => t.kind)).toContain('TERMINATION');
+    expect(rb.transitions.map((t) => t.kind)).not.toContain('WITHDRAWAL');
   });
 
   it('after PARTICIPANT WITHDRAWAL the record reconstructs AS EXITED, not as lost', async () => {
