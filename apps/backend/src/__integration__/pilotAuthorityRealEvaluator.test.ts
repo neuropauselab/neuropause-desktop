@@ -280,7 +280,7 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
 });
 
 /* ===================================================================================
- * NP-020 — the temporal contract, pinned on BOTH sides of the boundary
+ * NP-020 — the LOWER bound of the temporal contract. The upper bound is NOT pinned here.
  *
  * ENG-13 failed for ninety minutes a day, every day, from 2026-09-23T12:00:00Z onward, and
  * nothing in the suite expressed the rule it tripped over. Repairing the fixture without
@@ -289,8 +289,29 @@ describe('ENG-13 — environment_class is read from the row, not assumed', () =>
  * The rule is READ FROM THE SOURCE, not chosen here:
  *     authorityEvaluator.ts:241   refuse when  effectiveFrom >  now    (strict)
  *     authorityEvaluator.ts:243   refuse when  expiresAt     <= now    (inclusive)
- * so the window the evaluator implements is [effectiveFrom, expiresAt) and the lower bound is
- * INCLUSIVE. CASE C asserts that as written; it does not decide it.
+ * so the window THIS EVALUATOR implements is [effectiveFrom, expiresAt). CASE C asserts the
+ * INCLUSIVE lower bound as written; it does not decide it.
+ *
+ * BE PRECISE ABOUT WHAT IS AND IS NOT PINNED. An earlier draft of this header claimed the
+ * contract was pinned "on BOTH sides". It is not, and the gap was measured across the whole
+ * corpus (798 unit + 29 integration tests):
+ *
+ *     :241  effectiveFrom >  now   (artifact)   CASE C is the ONLY assertion pinning it.
+ *                                               Delete CASE C and `>` -> `>=` survives.
+ *     :243  expiresAt     <= now   (artifact)   `<=` -> `<` SURVIVES the entire corpus
+ *     :239  revokedAt     <= now   (artifact)   `<=` -> `<` SURVIVES the entire corpus
+ *     :224  expiresAt     >  now   (binding)    `>`  -> `>=` SURVIVES the entire corpus
+ *     :220  revokedAt     <= now   (binding)    `<=` -> `<` SURVIVES the entire corpus
+ *
+ * Four of the five temporal guards have UNPINNED boundary semantics. They are reachable and
+ * production-mapped (authorityStore.ts:22-23, :56-57), but every fixture leaves expiresAt and
+ * revokedAt null, so `x !== null` short-circuits and the comparison is never evaluated. The
+ * sibling unit tests do exercise revoked/expired — only with `past` values, where `<=` and `<`
+ * are indistinguishable. This is a real coverage gap, recorded rather than quietly widened:
+ * closing it is a separate seam's work, not this one's (NP-020 §1, §5).
+ *
+ * What IS pinned, and measured: the INJECTION contract. Replace `const now = snapshot.now` in
+ * explainAuthority with `new Date()` and CASE B plus the instant-control both fail.
  * =================================================================================== */
 describe('NP-020 — effective_from is evaluated against the snapshot instant, not the wall clock', () => {
   beforeEach(() => reset());
