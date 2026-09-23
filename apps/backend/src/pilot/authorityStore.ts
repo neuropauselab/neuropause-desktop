@@ -51,7 +51,7 @@ export async function loadAuthorityDecisions(): Promise<readonly AuthorityDecisi
      * Now the column decides. Two independent checks that must agree, which is the same shape
      * as the ENV-02 two-sided environment assertion.
      */
-    environmentClass: r.environment_class as 'PILOT',
+    environmentClass: r.environment_class,
     effectiveFrom: new Date(r.effective_from).toISOString(),
     expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
     revokedAt: r.revoked_at ? new Date(r.revoked_at).toISOString() : null,

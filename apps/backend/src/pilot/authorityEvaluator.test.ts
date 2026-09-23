@@ -80,6 +80,17 @@ describe('§17 — every invalid case DENIES, with a stable reason', () => {
     ['environment not established', snap({ environment: null }), ctx(TEST_SAURABH, 'pilot.stop'), 'ENVIRONMENT_NOT_AUTHORIZED'],
     ['PRODUCTION environment', snap({ environment: { environmentClass: 'PRODUCTION', environmentId: 'prod' } }),
       ctx(TEST_SAURABH, 'pilot.stop'), 'PRODUCTION_TARGET_DENIED'],
+    // NP-014. THIS CASE COULD NOT BE WRITTEN BEFORE. `AuthorityDecisionArtifact.environmentClass`
+    // was declared as the literal type 'PILOT', so an artifact carrying any other class was not
+    // expressible and the guard `artifact.environmentClass !== 'PILOT'` was, statically, a
+    // comparison of a constant to itself with an unreachable deny branch - the ENG-13 defect
+    // surviving at the type level after its runtime form was fixed. Widening the field to
+    // `string` (which the sibling AuthorityEnvironment always used) is what makes this
+    // assertion compile, and the guard falsifiable by a test that needs no database.
+    ['PRODUCTION decision artifact', snap({ decisions: [artifact({ environmentClass: 'PRODUCTION' })] }),
+      ctx(TEST_SAURABH, 'pilot.stop'), 'DECISION_OUT_OF_SCOPE'],
+    ['empty-string decision class', snap({ decisions: [artifact({ environmentClass: '' })] }),
+      ctx(TEST_SAURABH, 'pilot.stop'), 'DECISION_OUT_OF_SCOPE'],
   ];
 
   for (const [name, s, c, reason] of cases) {

@@ -123,7 +123,15 @@ export interface AuthorityDecisionArtifact {
   /** FALSE until a human authentication process says otherwise. Never set by code. */
   readonly authenticated: boolean;
   readonly actions: readonly string[];
-  readonly environmentClass: 'PILOT';
+  /**
+   * The class the DECISION ARTIFACT declares, as stored. Typed `string`, not the literal
+   * 'PILOT', and deliberately so: ENG-13 was a guard comparing a constant to itself, and
+   * declaring this as the literal reinstates exactly that at the type level - it tells the
+   * compiler, every reader and every refactoring tool that the value cannot be anything else,
+   * so `environmentClass !== 'PILOT'` types as permanently false and its deny branch as unreachable.
+   * The sibling `AuthorityEnvironment` below has always used `string`. They now agree.
+   */
+  readonly environmentClass: string;
   readonly effectiveFrom: string;
   readonly expiresAt: string | null;
   readonly revokedAt: string | null;
