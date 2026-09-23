@@ -78,8 +78,13 @@ export async function exportParticipantPilotData(
   repo: PilotRepository,
   userId: string,
 ): Promise<ParticipantPilotExport> {
-  const consent = await repo.latestConsent(userId);
   const enrollment = await repo.getEnrollment(userId);
+  // The consent this participation is BOUND to, not merely the account's most recent one —
+  // see readBack.ts for why those are different questions. `latestConsent` still answers the
+  // no-enrollment case, where nothing is bound.
+  const consent = enrollment
+    ? await repo.findConsentById(enrollment.consentId)
+    : await repo.latestConsent(userId);
   const events = enrollment ? await repo.listEvents(enrollment.id) : [];
   const transitions = enrollment ? await repo.listLifecycleEvents(enrollment.id) : [];
   const decision = enrollment?.decisionId ? await repo.findDecision(enrollment.decisionId) : null;

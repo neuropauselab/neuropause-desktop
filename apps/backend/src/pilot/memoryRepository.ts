@@ -39,6 +39,9 @@ export function createMemoryPilotRepository(): PilotRepository & {
       consents.push(c);
       return c;
     },
+    async findConsentById(id) {
+      return consents.find((c) => c.id === id) ?? null;
+    },
     async latestConsent(userId) {
       return [...consents].reverse().find((c) => c.userId === userId) ?? null;
     },

@@ -8,6 +8,17 @@ import type {
 export interface PilotRepository {
   recordConsent(userId: string, version: string, terms?: PilotTerms | null): Promise<ConsentRecord>;
   latestConsent(userId: string): Promise<ConsentRecord | null>;
+  /**
+   * The consent a participation is BOUND to, by id.
+   *
+   * `pilot_enrollments.consent_id` was written and never read — the THIRD instance in this
+   * module of a column persisted with no reader, after `insertDecision` and `terms_id`. The
+   * consequence was not cosmetic: every reconstruction resolved consent with
+   * `latestConsent(userId)`, so a participant who consented again to a newer terms version had
+   * their whole participation retrospectively reported as resting on the NEWER document, in
+   * both the evidence read-back and their own data export.
+   */
+  findConsentById(id: string): Promise<ConsentRecord | null>;
   createEnrollment(userId: string, consentId: string): Promise<PilotEnrollment>;
   /**
    * Admit a participant ONLY IF the approved boundary still has room — counted and written
@@ -106,6 +117,10 @@ export const sqlPilotRepository: PilotRepository = {
       [userId, version, terms?.id ?? null, terms?.digest ?? null],
     );
     return consentRow(rows[0]);
+  },
+  async findConsentById(id) {
+    const { rows } = await query('SELECT * FROM consents WHERE id=$1', [id]);
+    return rows[0] ? consentRow(rows[0]) : null;
   },
   async latestConsent(userId) {
     const { rows } = await query('SELECT * FROM consents WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1', [userId]);

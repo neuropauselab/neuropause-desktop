@@ -45,6 +45,7 @@ function detached(repo: Repo): PilotRepository {
     // The consent rows are private to the memory repository, so they are read through its
     // own reader — the one read this view cannot copy. Everything else is detached.
     latestConsent: (userId) => repo.latestConsent(userId),
+    findConsentById: (id) => repo.findConsentById(id),
     getEnrollment: async (userId) => enrollments.find((e) => e.userId === userId) ?? null,
     listEvents: async (enrollmentId) => events.filter((e) => e.enrollmentId === enrollmentId),
     listLifecycleEvents: async (enrollmentId) => lifecycle.filter((e) => e.enrollmentId === enrollmentId),
@@ -284,4 +285,53 @@ describe('G13 - a COMPLETION is an exit, and appears in the ledger of exits', ()
       expect(rb.decision.recorded).toBe(true);
     },
   );
+});
+
+describe('W2 - the reconstruction reports the BOUND consent, not the latest one', () => {
+  /**
+   * `pilot_enrollments.consent_id` was written and never read - the THIRD column in this
+   * module persisted with no reader, after `insertDecision` and `terms_id`. Every
+   * reconstruction used `latestConsent(userId)` instead.
+   *
+   * MEASURED BEFORE THE FIX: a participant bound to terms v1 who later consented to v2 had
+   * their whole participation reported as resting on v2, with v2's DIGEST, in both the
+   * evidence read-back and their own data export. The participation had not changed; the
+   * reader had answered a different question.
+   */
+  const V2 = { ...TEST_TERMS, id: '00000000-0000-4000-8000-0000000000v2'.replace('v2', '0092'), version: 'TEST-FIXTURE-terms-v2', digest: 'DIGEST-V2' };
+
+  async function boundToV1ThenConsentedToV2() {
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo, { terms: [TEST_TERMS, V2] });
+    const deps = { repo };
+    const bound = await recordConsent(deps, P, TEST_TERMS_VERSION);
+    await enroll(deps, P);
+    await recordConsent(deps, P, V2.version); // a later, DIFFERENT agreement
+    return { repo, bound };
+  }
+
+  it('REGRESSION: a later consent does not retroactively rewrite the participation', async () => {
+    const { repo, bound } = await boundToV1ThenConsentedToV2();
+
+    const rb = await readBack(repo);
+
+    expect(rb.consent.version).toBe(TEST_TERMS_VERSION);
+    expect(rb.consent.digest).toBe(TEST_TERMS.digest);
+    expect(rb.consent.at).toBe(bound.createdAt);
+    expect(rb.consent.version).not.toBe(V2.version);
+    expect(rb.deviations).toEqual([]);
+  });
+
+  it('CONSENT_ONLY still resolves the latest, because nothing is bound yet', async () => {
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo, { terms: [TEST_TERMS, V2] });
+    const deps = { repo };
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    await recordConsent(deps, P, V2.version);
+
+    const rb = await readBack(repo);
+
+    expect(rb.status).toBe('CONSENT_ONLY');
+    expect(rb.consent.version).toBe(V2.version); // the account's current agreement
+  });
 });

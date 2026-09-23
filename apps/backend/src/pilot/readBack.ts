@@ -80,8 +80,23 @@ const STRUCTURALLY_NOT_RECORDED = [
 ] as const;
 
 export async function readBackParticipation(repo: PilotRepository, userId: string): Promise<ParticipationReadBack> {
-  const consent = await repo.latestConsent(userId);
   const enrollment = await repo.getEnrollment(userId);
+  /*
+   * RESOLVED BY THE BOUND ID WHEN A PARTICIPATION EXISTS.
+   *
+   * `latestConsent` answers "what did this account most recently agree to", which is a
+   * different question from "what does this participation rest on". A participant who
+   * consents again to a newer terms version does not retroactively change the document their
+   * enrollment was admitted under — and reporting the newer one would misattribute the whole
+   * participation. Measured before the fix: the read-back reported v2's version AND digest for
+   * a participation bound to v1.
+   *
+   * `latestConsent` remains correct for the CONSENT_ONLY case, where there is no enrollment
+   * and therefore no binding.
+   */
+  const consent = enrollment
+    ? await repo.findConsentById(enrollment.consentId)
+    : await repo.latestConsent(userId);
   const events = enrollment ? await repo.listEvents(enrollment.id) : [];
   const transitions = enrollment ? await repo.listLifecycleEvents(enrollment.id) : [];
   const decision = enrollment?.decisionId ? await repo.findDecision(enrollment.decisionId) : null;

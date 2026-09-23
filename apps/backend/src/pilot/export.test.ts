@@ -176,3 +176,22 @@ describe('§16 - the export is scoped to ONE participant', () => {
     expect(raw).not.toContain(OPERATOR);
   });
 });
+
+describe('W2 - the export reports the BOUND consent, not the latest one', () => {
+  it('REGRESSION: a later consent does not rewrite what the export says was agreed', async () => {
+    const V2 = { ...TEST_TERMS, id: '00000000-0000-4000-8000-000000000092', version: 'TEST-FIXTURE-terms-v2', digest: 'DIGEST-V2' };
+    const repo = createMemoryPilotRepository();
+    seedPilotFixtures(repo, { terms: [TEST_TERMS, V2] });
+    const deps = { repo };
+    await recordConsent(deps, P, TEST_TERMS_VERSION);
+    await enroll(deps, P);
+    await recordConsent(deps, P, V2.version);
+
+    const out = await exportParticipantPilotData(repo, P);
+
+    // A participant's export must say what THIS participation rests on.
+    expect(out.consent.version).toBe(TEST_TERMS_VERSION);
+    expect(out.consent.termsDigest).toBe(TEST_TERMS.digest);
+    expect(JSON.stringify(out)).not.toContain('DIGEST-V2');
+  });
+});

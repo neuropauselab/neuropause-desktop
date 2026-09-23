@@ -39,7 +39,7 @@ class RepositoryTouched extends Error {
 function unreachableRepository(): PilotRepository & { calls: string[] } {
   const calls: string[] = [];
   const METHODS = [
-    'recordConsent', 'latestConsent', 'createEnrollment', 'createEnrollmentWithinBoundary',
+    'recordConsent', 'latestConsent', 'findConsentById', 'createEnrollment', 'createEnrollmentWithinBoundary',
     'getEnrollment', 'setEnrollmentState', 'exitEnrollmentIfActive', 'insertEvent', 'listEvents', 'insertDecision',
     'findDecision', 'findTerms', 'findTermsById', 'listPublishedTerms', 'getControl', 'setStopped',
     'countActiveEnrollments', 'insertLifecycleEvent', 'listLifecycleEvents',
