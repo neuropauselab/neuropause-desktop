@@ -1,5 +1,5 @@
 /** SQL repository for the pilot lifecycle (mirrors devices/repository style). */
-import { query, withTransaction } from '../db/pool';
+import { query, withTransaction } from '../db/pilotPool';
 import type {
   ConsentRecord, EnrollmentAdmission, HumanDecision, PilotControl, PilotEnrollment, PilotEvent, PilotEventType,
   PilotLifecycleEvent, PilotState, PilotTerms,

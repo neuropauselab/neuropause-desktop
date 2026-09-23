@@ -14,7 +14,23 @@ import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const dbIdentity = vi.hoisted(() => vi.fn());
-vi.mock('../db/pool', () => ({ query: dbIdentity, withTransaction: vi.fn() }));
+vi.mock('../db/pilotPool', () => ({
+  query: dbIdentity,
+  withTransaction: vi.fn(),
+  // ENV04: resolvePilotEnvironment now asks BOTH pools what database they are actually
+  // connected to, so both must be stubbed. Distinct identities here mean the separation
+  // check passes and the test continues to exercise what it was written to exercise —
+  // the declaration boundary — rather than being denied upstream by the new check.
+  pilotPool: () => ({ tag: 'pilot' }),
+  // The two pools must be DISTINGUISHABLE, or identityOf returns one identity for both and
+  // the separation check correctly reports PILOT_STORE_SAME_DATABASE — denying upstream and
+  // masking the declaration behaviour these tests exist to measure.
+  identityOf: async (p: { tag?: string }) => ({
+    database: p?.tag === 'pilot' ? 'pilot_db' : 'product_db', user: 'u', host: '10.0.0.1', port: 5432,
+  }),
+  identityKey: (i: { host: string; port: number; database: string }) => `${i.host}:${i.port}/${i.database}`,
+}));
+vi.mock('../db/pool', () => ({ pool: { tag: 'product' }, query: vi.fn(), withTransaction: vi.fn() }));
 
 import { resolvePilotEnvironment, configurationDigest } from './environment';
 import { decidePilotMount } from './mount';

@@ -19,7 +19,7 @@
  * WHAT THIS DOES NOT ESTABLISH: that every real-world incident is detectable. This detects the
  * conditions D16/D17 enumerate, at the points where the code already refuses them.
  */
-import { query } from '../db/pool';
+import { query } from '../db/pilotPool';
 
 export type AlertClass =
   | 'UNAUTHORIZED_ACCESS'

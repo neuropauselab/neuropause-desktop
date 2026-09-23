@@ -5,7 +5,7 @@
  * "designated but not bound": D05 named three people, `pilot_role_bindings` has no rows, and
  * so every consequential route answers DENY with `ROLE_NOT_BOUND`.
  */
-import { query, withTransaction } from '../db/pool';
+import { query, withTransaction } from '../db/pilotPool';
 import { resolvePilotEnvironment } from './environment';
 import { verifyAuthorityRow, type SignableAuthorityRow, type VerifyFailure } from './authoritySignature';
 import { loadPilotTrust } from './authorityTrust';

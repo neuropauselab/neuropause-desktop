@@ -19,7 +19,7 @@
  * pipeline. `pilot_role_bindings` is empty, so in production every call to this refuses with
  * ROLE_NOT_BOUND, exactly like every other consequential route.
  */
-import { withTransaction } from '../db/pool';
+import { withTransaction } from '../db/pilotPool';
 import { PilotError } from './types';
 import { resolveAuthority, ownAuthority } from './authority';
 import type { PilotServiceDeps } from './service';

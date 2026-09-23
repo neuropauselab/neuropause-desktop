@@ -21,7 +21,7 @@
  * reason strings, NO email, NO raw error detail, NO credential and NO connection string.
  * Those exclusions are asserted, not described.
  */
-import { query } from '../db/pool';
+import { query } from '../db/pilotPool';
 import { PilotError } from './types';
 import { resolveAuthority, ownAuthority } from './authority';
 import type { PilotServiceDeps } from './service';

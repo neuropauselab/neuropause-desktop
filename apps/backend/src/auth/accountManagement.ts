@@ -32,6 +32,7 @@ import { revokeAllAccessTokensForUser } from './jwt';
 import { logger } from '../config/logger';
 import { sqlPilotRepository } from '../pilot/repository';
 import { exportParticipantPilotData, type ParticipantPilotExport } from '../pilot/export';
+import { PilotStoreNotConfigured } from '../db/pilotPool';
 
 /* Row types for the export queries — no `any` needed. */
 interface UserExportRow { id: string; email: string; display_name: string | null; email_verified: boolean; created_at: Date }
@@ -62,7 +63,12 @@ export interface UserExportData {
    * export forgot to look" — whereas an explicit `recorded: false` is a positive statement
    * that the pilot was asked and holds nothing.
    */
-  pilot: ParticipantPilotExport;
+  /**
+   * NULL means the deployment has NO PILOT STORE — structurally no pilot participation, not
+   * "we looked and found nothing". A store that exists but cannot be read throws instead, so
+   * this field never silently reports absence for a database that was simply unreachable.
+   */
+  pilot: ParticipantPilotExport | null;
   // NP-047 / B HIGH-2: `sync_state` is ORG-scoped (PRIMARY KEY (org_id,
   // entity_type, entity_id); no user_id column). It is organization data, not
   // per-user personal data, so it is NOT part of a user export. The previous
@@ -109,7 +115,24 @@ export async function exportUserData(userId: string): Promise<UserExportData> {
       // The pilot's own record, assembled by the pilot module so that knowledge of what the
       // pilot holds — and of what it withholds pending a human decision — lives with the
       // pilot rather than being re-derived here. Reads only, and runs concurrently.
-      exportParticipantPilotData(sqlPilotRepository, userId),
+      /*
+       * ENV04 — THE PILOT STORE IS A SEPARATE DATABASE, AND MAY NOT EXIST.
+       *
+       * When pilot data moved to its own connection this call began throwing
+       * PilotStoreNotConfigured on every deployment without a pilot store — including for
+       * users who do not exist, masking "User not found". A subject access request on a
+       * product-only deployment must not fail because a pilot the user was never in has no
+       * database.
+       *
+       * NOT-CONFIGURED is structural: there is no pilot, so there is no pilot record.
+       * A connection FAILURE is operational and still propagates — degrading that to an empty
+       * export would report "no pilot data" about a store that could not be read, which is a
+       * false statement to put in a subject access response.
+       */
+      exportParticipantPilotData(sqlPilotRepository, userId).catch((e: unknown) => {
+        if (e instanceof PilotStoreNotConfigured) return null;
+        throw e;
+      }),
     ]);
 
   const user = userRes.rows[0];

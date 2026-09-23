@@ -25,7 +25,7 @@
  */
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { query } from '../db/pool';
+import { query } from '../db/pilotPool';
 import type { Severity } from './monitor';
 
 export type AlertSinkName = 'ledger' | 'file';

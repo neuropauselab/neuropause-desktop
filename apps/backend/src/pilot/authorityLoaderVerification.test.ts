@@ -13,7 +13,7 @@ import { PILOT_TRUST_SCOPE, trustFileDigest } from './authorityTrust';
  * ========================================================================================== */
 
 const rows: Record<string, unknown>[] = [];
-vi.mock('../db/pool', () => ({
+vi.mock('../db/pilotPool', () => ({
   query: vi.fn(async () => ({ rows, rowCount: rows.length })),
   withTransaction: vi.fn(),
 }));

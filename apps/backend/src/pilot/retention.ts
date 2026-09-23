@@ -19,7 +19,7 @@
  * from a statute - 90 days is a human decision recorded in D13, not a legal finding.
  */
 import type { PoolClient } from 'pg';
-import { query, withTransaction } from '../db/pool';
+import { query, withTransaction } from '../db/pilotPool';
 
 export type RetentionMethod = 'PSEUDONYMIZED' | 'DELETED' | 'PRESERVED_UNDER_HOLD';
 export type HoldClass = 'LEGAL' | 'INCIDENT' | 'AUDIT';

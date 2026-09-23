@@ -29,7 +29,8 @@
  * an infrastructure fact and needs infrastructure evidence.
  */
 import { createHash } from 'node:crypto';
-import { query } from '../db/pool';
+import { query, pilotPool, identityOf, identityKey } from '../db/pilotPool';
+import { pool as productPool } from '../db/pool';
 
 export type EnvironmentClass = 'PILOT' | 'PRODUCTION' | 'DEVELOPMENT' | 'TEST';
 
@@ -43,7 +44,10 @@ export type EnvironmentRefusal =
   | 'TARGET_CLASS_NOT_PILOT'
   // ENV-04, added NP-PILOT-FIRST-014.
   | 'PILOT_STORE_NOT_DECLARED'
-  | 'PILOT_STORE_NOT_SEPARATED';
+  | 'PILOT_STORE_NOT_SEPARATED'
+  // ENV04 work item 2: the ACTUAL connected database, not the declared string.
+  | 'PILOT_STORE_SAME_DATABASE'
+  | 'PILOT_STORE_UNREACHABLE';
 
 /**
  * The safe evidence record. §40: it carries identities and digests and NEVER a connection
@@ -142,6 +146,34 @@ export async function resolvePilotEnvironment(
   if (!pilotStore) return { ok: false, reason: 'PILOT_STORE_NOT_DECLARED' };
   if (pilotStore === env.DATABASE_URL?.trim())
     return { ok: false, reason: 'PILOT_STORE_NOT_SEPARATED' };
+
+  /*
+   * THE ACTUAL CONNECTED DATABASE, NOT THE DECLARED STRING.
+   *
+   * The comparison above refuses two IDENTICAL strings. It cannot refuse two DIFFERENT strings
+   * that resolve to the same database — `localhost` vs `127.0.0.1`, a DNS alias, a pgbouncer
+   * route, a URL differing only in credentials. Until this seam, "isolation" was exactly that
+   * weak comparison, and NP-034 measured the consequence: the gate passed while every pilot
+   * write went through the product pool.
+   *
+   * So both pools are asked what they are actually connected to, and the answer comes from the
+   * SERVER (`current_database()`, `inet_server_addr()`, `inet_server_port()`), not from the
+   * configuration that was already in doubt.
+   *
+   * UNREACHABLE IS A REFUSAL, NOT A PASS. A pilot store that cannot be contacted has not been
+   * shown to be separate, and treating an error as separation would turn an outage into a
+   * green isolation check.
+   */
+  try {
+    const [pilotId, productId] = await Promise.all([
+      identityOf(pilotPool()),
+      identityOf(productPool),
+    ]);
+    if (identityKey(pilotId) === identityKey(productId))
+      return { ok: false, reason: 'PILOT_STORE_SAME_DATABASE' };
+  } catch {
+    return { ok: false, reason: 'PILOT_STORE_UNREACHABLE' };
+  }
 
   // THE SECOND, INDEPENDENT ASSERTION. The database answers for itself.
   const { rows } = await query(
