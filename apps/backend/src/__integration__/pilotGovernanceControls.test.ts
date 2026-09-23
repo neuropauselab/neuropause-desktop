@@ -372,11 +372,14 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
   it('§27 a hold placed AFTER planning is still honoured (transaction-level guard)', async () => {
     await query(`INSERT INTO pilot_closure (closed_at, closed_by, closure_reason)
                  VALUES (now() - interval '200 days', $1, 'test')`, [OP]);
-    // NP-019 R1. This test did NOT seed a subject, so pilot_enrollments was empty,
-    // planRetention fell back to subjectIds = [null], and NP-017's null-subject guard returned
-    // NOT_EXECUTABLE before the in-transaction hold re-check could matter. Measured: deleting
-    // that hold check left the suite 33/33 GREEN — the control existed in source and no test
-    // could fail without it. A real subject is what makes this test reach the control it names.
+    // NP-019 R1. This test did NOT seed a subject, so pilot_enrollments was empty and
+    // planRetention fell back to subjectIds = [null]. The in-transaction hold re-check RAN and
+    // FIRED even so: it is the first statement in the transaction, upstream of applyAndVerify,
+    // and a pilot-wide hold matches via `subject_user_id IS NULL` whatever $1 holds. What was
+    // missing was OBSERVABILITY, not reachability — with the check deleted, NP-017's DOWNSTREAM
+    // null-subject guard refused the same item and produced an identical observable, so the
+    // suite stayed 33/33 GREEN. Outcome-masking, not short-circuiting. Seeding a real subject
+    // removes the masking refusal, so the two routes diverge and M14 now fails 3 tests.
     await seedRetentionSubject();
     // The plan says ELIGIBLE. The hold lands between planning and the write - precisely the
     // window a read-then-write guard cannot see.
