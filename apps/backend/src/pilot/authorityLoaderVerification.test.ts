@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { canonicalBytes, keyIdFor, type SignableAuthorityRow } from './authoritySignature';
-import { PILOT_TRUST_SCOPE } from './authorityTrust';
+import { PILOT_TRUST_SCOPE, trustFileDigest } from './authorityTrust';
 
 /* ==========================================================================================
  * OPTION_B's THIRD NAMED CHANGE: "verify in `loadAuthorityDecisions` BEFORE the snapshot is
@@ -23,13 +23,21 @@ const PUB = publicKey.export({ type: 'spki', format: 'pem' }).toString();
 const KEY_ID = keyIdFor(PUB);
 
 const dirs: string[] = [];
+/*
+ * Writes the trust file AND sets its out-of-band digest (H13), because after the anchor landed
+ * a fixture that sets only the path yields an EMPTY key map for a DIGEST reason. Every
+ * denial-expecting test below would then still pass — for the wrong reason — and would no
+ * longer test the property named in its own title. Setting both keeps each test honest.
+ */
 const trustFile = (scope = PILOT_TRUST_SCOPE): string => {
   const d = mkdtempSync(join(tmpdir(), 'np036-trust-'));
   dirs.push(d);
   const p = join(d, 'trust.json');
-  writeFileSync(p, JSON.stringify({
+  const body = JSON.stringify({
     keys: [{ key_id: KEY_ID, algorithm: 'ed25519', scope, public_key_pem: PUB }],
-  }));
+  });
+  writeFileSync(p, body);
+  process.env.PILOT_AUTHORITY_TRUST_DIGEST = trustFileDigest(body);
   return p;
 };
 afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
@@ -56,8 +64,12 @@ const dbRow = (over: Partial<Record<string, unknown>> = {}, signed = true) => {
 };
 
 const ENV = process.env.PILOT_AUTHORITY_TRUST_FILE;
+const ENV_DIGEST = process.env.PILOT_AUTHORITY_TRUST_DIGEST;
 beforeEach(() => { rows.length = 0; vi.resetModules(); });
-afterEach(() => { process.env.PILOT_AUTHORITY_TRUST_FILE = ENV; });
+afterEach(() => {
+  process.env.PILOT_AUTHORITY_TRUST_FILE = ENV;
+  process.env.PILOT_AUTHORITY_TRUST_DIGEST = ENV_DIGEST;
+});
 
 const load = async () => (await import('./authorityStore')).loadAuthorityDecisions();
 const refusals = async () => (await import('./authorityStore')).lastAuthorityVerificationRefusals();
@@ -87,6 +99,7 @@ describe('loadAuthorityDecisions verifies BEFORE building artifacts', () => {
 
   it('WITH NO TRUST FILE the loader admits nothing — the no-ceremony posture', async () => {
     delete process.env.PILOT_AUTHORITY_TRUST_FILE;
+    delete process.env.PILOT_AUTHORITY_TRUST_DIGEST;
     rows.push(dbRow());
     expect(await load()).toEqual([]);
   });
