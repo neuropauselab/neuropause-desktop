@@ -7,6 +7,8 @@
  */
 import { query } from '../db/pool';
 import { resolvePilotEnvironment } from './environment';
+import { verifyAuthorityRow, type SignableAuthorityRow, type VerifyFailure } from './authoritySignature';
+import { loadPilotTrust } from './authorityTrust';
 import type { AuthorityDecisionArtifact, AuthorityEnvironment, RoleBinding, PilotRole } from './authorityEvaluator';
 import { loadAuthoritySnapshot } from './authorityEvaluator';
 
@@ -24,12 +26,57 @@ export async function loadRoleBindings(): Promise<readonly RoleBinding[]> {
   }));
 }
 
+/** Why each row was refused on the last load. Diagnostics only — never consulted by a decision. */
+let lastRefusals: readonly { instrument: string; reason: VerifyFailure }[] = [];
+export const lastAuthorityVerificationRefusals = (): readonly { instrument: string; reason: VerifyFailure }[] =>
+  lastRefusals;
+
+/*
+ * OPTION_B, THE THIRD NAMED CHANGE: "verify in `loadAuthorityDecisions` BEFORE the snapshot
+ * is built."
+ *
+ * The placement is the control. Verification here means an unsigned or badly-signed row never
+ * becomes an `AuthorityDecisionArtifact` at all, so no downstream consumer — evaluator,
+ * snapshot, or any future caller — can be handed one and forget to check. Verifying later, in
+ * `explainAuthority` say, would leave the artifact constructible and the check skippable by
+ * the next code path somebody adds.
+ *
+ * FAIL CLOSED BY CONSTRUCTION, NOT BY BRANCH. Rows are FILTERED, not flagged: there is no
+ * `verified: false` artifact to mishandle. With no trust file the map is empty, every row
+ * fails SIGNER_KEY_NOT_TRUSTED, and the loader returns [] — which denies everything. That is
+ * the correct posture for a pilot whose key ceremony has not happened.
+ */
 export async function loadAuthorityDecisions(): Promise<readonly AuthorityDecisionArtifact[]> {
   const { rows } = await query(
-    `SELECT instrument, authenticated, actions, environment_class, effective_from, expires_at, revoked_at
+    `SELECT instrument, authenticated, actions, environment_class, effective_from, expires_at,
+            revoked_at, signature, signer_key_id
      FROM pilot_authority_decisions`,
   );
-  return rows.map((r) => ({
+  const trust = loadPilotTrust().keys;
+  const refusals: { instrument: string; reason: VerifyFailure }[] = [];
+
+  const admitted = rows.filter((r) => {
+    /*
+     * The row is re-serialised from the DATABASE values, not from the artifact built below.
+     * Signing what you are about to construct rather than what you read would verify the
+     * parse, not the record — and the parse is under the control of whoever wrote the row.
+     */
+    const signable: SignableAuthorityRow = {
+      instrument: r.instrument as string,
+      authenticated: r.authenticated as boolean,
+      actions: (r.actions ?? []) as string[],
+      environment_class: r.environment_class as string,
+      effective_from: new Date(r.effective_from).toISOString(),
+      expires_at: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+      revoked_at: r.revoked_at ? new Date(r.revoked_at).toISOString() : null,
+    };
+    const v = verifyAuthorityRow(signable, r.signature ?? null, r.signer_key_id ?? null, trust);
+    if (!v.ok) refusals.push({ instrument: String(r.instrument), reason: v.reason });
+    return v.ok;
+  });
+  lastRefusals = refusals;
+
+  return admitted.map((r) => ({
     instrument: r.instrument as string,
     authenticated: r.authenticated as boolean,
     actions: (r.actions ?? []) as string[],
