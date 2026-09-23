@@ -35,6 +35,9 @@ import { validateBody } from '../middleware/validate';
 import { AppError, unauthorized } from '../middleware/error';
 import { PilotError, type PilotErrorCode } from './types';
 import { sqlPilotRepository } from './repository';
+import { createSnapshotEvaluator, recordAuthorityRefusals } from './authorityEvaluator';
+import { loadProductionAuthoritySnapshot } from './authorityStore';
+import { sqlPilotMonitor } from './monitor';
 import type { PilotServiceDeps } from './service';
 import {
   advanceMachineStates, applyHumanDecision, day7Report, enroll, pilotControl, recordConsent,
@@ -95,15 +98,50 @@ function toHttp(err: unknown): never {
   throw err;
 }
 
-type H = (req: Request, res: Response) => Promise<void>;
+type H = (req: Request, res: Response, deps: PilotServiceDeps) => Promise<void>;
+
+/**
+ * PER-REQUEST AUTHORITY (ENG-04).
+ *
+ * The authority snapshot is loaded ONCE per request and the evaluator is a pure function of
+ * it, so `resolveAuthority`'s synchronous contract is preserved exactly rather than weakened
+ * to accept a promise. Refusals are drained to the monitor AFTER the handler settles: an
+ * evidence write must never sit on the critical path of the refusal it describes.
+ *
+ * In production every lookup reads a table that ships EMPTY, so the evaluator denies with
+ * ROLE_NOT_BOUND and the observable behaviour is IDENTICAL to shipping no evaluator at all.
+ * That is why the pre-existing gate suite stays green unchanged. What is new is that the
+ * refusal now carries a reason code and leaves a durable trace.
+ *
+ * AN INJECTED EVALUATOR IS NEVER OVERRIDDEN: tests supply their own, and silently replacing it
+ * would make every authority test assert the production path instead of the one under test.
+ */
 const h =
-  (fn: H) =>
+  (base: PilotServiceDeps, fn: H) =>
   async (req: Request, res: Response): Promise<void> => {
-    try {
-      await fn(req, res);
-    } catch (err) {
-      toHttp(err);
+    let deps = base;
+    let evaluator: ReturnType<typeof createSnapshotEvaluator> | null = null;
+    if (!base.authority) {
+      try {
+        evaluator = createSnapshotEvaluator(await loadProductionAuthoritySnapshot());
+        deps = { ...base, authority: evaluator };
+      } catch {
+        // Failing to LOAD authority is not permission to proceed. Falling through with no
+        // evaluator yields UNKNOWN from resolveAuthority, and every gate denies.
+        deps = base;
+      }
     }
+    try {
+      await fn(req, res, deps);
+    } catch (err) {
+      try {
+        toHttp(err);
+      } finally {
+        if (evaluator) void recordAuthorityRefusals(sqlPilotMonitor, evaluator).catch(() => {});
+      }
+      return;
+    }
+    if (evaluator) void recordAuthorityRefusals(sqlPilotMonitor, evaluator).catch(() => {});
   };
 
 export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepository }): Router {
@@ -116,7 +154,7 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   router.post(
     '/consent',
     validateBody(ConsentBody),
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       const { version } = req.body as z.infer<typeof ConsentBody>;
       res.status(201).json({ consent: await recordConsent(deps, uid(req), version) });
     }),
@@ -124,14 +162,14 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
 
   router.post(
     '/enroll',
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       res.status(201).json({ enrollment: await enroll(deps, uid(req)) });
     }),
   );
 
   router.get(
     '/status',
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       await advanceMachineStates(deps, uid(req));
       res.json(await status(deps, uid(req)));
     }),
@@ -140,7 +178,7 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   router.post(
     '/events',
     validateBody(EventBody),
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       const { eventType, metadata } = req.body as z.infer<typeof EventBody>;
       res.status(201).json({ event: await recordEvent(deps, uid(req), eventType, metadata ?? {}) });
     }),
@@ -148,7 +186,7 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
 
   router.get(
     '/day7',
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       res.json(await day7Report(deps, uid(req)));
     }),
   );
@@ -156,7 +194,7 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   router.post(
     '/decision',
     validateBody(DecisionBody),
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       const { targetState, decision, reason, subjectUserId } = req.body as z.infer<typeof DecisionBody>;
       // Actor and subject are now passed SEPARATELY. The subject defaults to the caller so
       // that the pre-existing self-decision shape is unchanged; the authority predicate — not
@@ -173,7 +211,7 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   router.post(
     '/withdraw',
     validateBody(ReasonBody),
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       const { reason } = req.body as z.infer<typeof ReasonBody>;
       res.status(201).json(await withdraw(deps, uid(req), reason));
     }),
@@ -183,7 +221,7 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   router.post(
     '/terminate',
     validateBody(TerminateBody),
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       const { subjectUserId, reason } = req.body as z.infer<typeof TerminateBody>;
       res.status(201).json(await terminateParticipation(deps, uid(req), subjectUserId, reason));
     }),
@@ -194,7 +232,7 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   router.post(
     '/stop',
     validateBody(ReasonBody),
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       const { reason } = req.body as z.infer<typeof ReasonBody>;
       res.status(201).json({ control: await stopPilot(deps, uid(req), reason) });
     }),
@@ -202,19 +240,19 @@ export function createPilotRouter(deps: PilotServiceDeps = { repo: sqlPilotRepos
   router.post(
     '/resume',
     validateBody(ReasonBody),
-    h(async (req, res) => {
+    h(deps, async (req, res, deps) => {
       const { reason } = req.body as z.infer<typeof ReasonBody>;
       res.status(201).json({ control: await resumePilot(deps, uid(req), reason) });
     }),
   );
   // Redacted for an ordinary caller: `stopped` only. The full row - actor, reason, time and
   // the participant cap - requires authority, and production designates none.
-  router.get('/control', h(async (req, res) => { res.json({ control: await pilotControl(deps, uid(req)) }); }));
+  router.get('/control', h(deps, async (req, res, deps) => { res.json({ control: await pilotControl(deps, uid(req)) }); }));
 
   // C-05 — what a participant may be asked to agree to. The registry ships EMPTY, so this
   // answers `[]` and an honest surface offers no consent button. A surface that hard-codes a
   // version instead of reading this is presenting a placeholder as operative consent.
-  router.get('/terms', h(async (_req, res) => { res.json({ terms: await publishedTerms(deps) }); }));
+  router.get('/terms', h(deps, async (_req, res, d) => { res.json({ terms: await publishedTerms(d) }); }));
 
   return router;
 }
