@@ -8,7 +8,7 @@
  * that is a human-governance artifact and remains pending.
  */
 import { describe, it, expect } from 'vitest';
-import { explainAuthority, createSnapshotEvaluator, recordAuthorityRefusals, ROLE_ACTIONS,
+import { explainAuthority, createSnapshotEvaluator, recordAuthorityRefusals, ROLE_ACTIONS, PILOT_ACTIONS,
   type AuthoritySnapshot, type RoleBinding, type AuthorityDecisionArtifact } from './authorityEvaluator';
 import { resolveAuthority, ownAuthority } from './authority';
 import { createMemoryPilotMonitor } from './monitor';
@@ -31,7 +31,10 @@ const binding = (subjectId: string, role: RoleBinding['role'], over: Partial<Rol
 const artifact = (over: Partial<AuthorityDecisionArtifact> = {}): AuthorityDecisionArtifact => ({
   instrument: INSTRUMENT,
   authenticated: true,
-  actions: ['pilot.control.read', 'pilot.stop', 'pilot.resume', 'pilot.participation.terminate', 'pilot.decision.record'],
+  // Tied to the declared vocabulary, not a hand-copied list: when an action is added to
+  // PILOT_ACTIONS this fixture follows it, instead of silently covering one action less
+  // than the role matrix grants (which is how the ENG-12 gap stayed invisible here).
+  actions: [...PILOT_ACTIONS],
   environmentClass: 'PILOT',
   effectiveFrom: past, expiresAt: null, revokedAt: null, ...over,
 });
@@ -114,7 +117,9 @@ describe('§12/§13 — what is never sufficient, and no ALLOW_ALL', () => {
     for (const actions of Object.values(ROLE_ACTIONS)) {
       expect(actions).not.toContain('*');
       expect(actions.length).toBeGreaterThan(0);
-      expect(actions.length).toBeLessThanOrEqual(5);
+      // Bound to the declared vocabulary rather than a magic number. The point of this
+      // assertion is 'no role has everything plus more', not 'no role has six things'.
+      expect(actions.length).toBeLessThanOrEqual(PILOT_ACTIONS.length);
     }
   });
   it('a name, an email or a title in the context grants nothing', () => {

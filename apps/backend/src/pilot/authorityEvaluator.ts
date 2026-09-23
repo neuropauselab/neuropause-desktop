@@ -55,6 +55,23 @@ export type AuthorityReason =
  *   pilot.resume                  -> PILOT_RESUME
  *   pilot.participation.terminate -> PILOT_TERMINATION
  *   pilot.decision.record         -> PILOT_EXECUTION_AUTHORIZATION (outcome decisions)
+ *   pilot.cap.set                 -> PILOT_CONFIGURATION (write)
+ *
+ * `pilot.cap.set` WAS MISSING FROM THIS LIST UNTIL NP-PILOT-FIRST-013, AND THE OMISSION WAS
+ * NOT COSMETIC. `capGovernance.ts` has asked `resolveAuthority` for it since NP-009, but the
+ * literal appeared in neither PILOT_ACTIONS nor any ROLE_ACTIONS row - so step 5 of
+ * `explainAuthority` found `permitted.length === 0` and answered DENY/ACTION_NOT_AUTHORIZED
+ * FOR EVERY ROLE, PERMANENTLY. The governed path built to set the cap could never have set it.
+ *
+ * It failed CLOSED, so nothing was ever wrongly permitted - but D09's cap could never have been
+ * activated, and that would have surfaced only at the moment someone first tried.
+ *
+ * WHY FORTY TESTS AND FOUR MUTANTS MISSED IT: every ENG-10 test injected
+ * `{ evaluate: () => 'ALLOW' }`, which bypasses this function entirely. Nothing ever asked the
+ * real evaluator whether any role may perform the action. That is the same defect class as
+ * NP-007's in-memory repository - a double more permissive than reality - in a control written
+ * after that lesson was recorded. `authorityActionCoverage.test.ts` now pins the invariant at
+ * source level so the next such omission fails a test rather than waiting for a caller.
  */
 export const PILOT_ACTIONS = [
   'pilot.control.read',
@@ -62,6 +79,7 @@ export const PILOT_ACTIONS = [
   'pilot.resume',
   'pilot.participation.terminate',
   'pilot.decision.record',
+  'pilot.cap.set',
 ] as const;
 export type PilotAction = (typeof PILOT_ACTIONS)[number];
 
@@ -79,6 +97,11 @@ export const ROLE_ACTIONS: Readonly<Record<PilotRole, readonly PilotAction[]>> =
   FIRST_PILOT_HUMAN_DECISION_AUTHORITY: [
     'pilot.control.read', 'pilot.stop', 'pilot.resume',
     'pilot.participation.terminate', 'pilot.decision.record',
+    // D05 verbatim lists "participant-cap changes" among this role's authorities, so adding it
+    // here IMPLEMENTS AN ALREADY-SUBMITTED DECISION rather than making a new one. It is on this
+    // row and no other: D04's operator may not change the cap, and D09 states that "increasing
+    // the cap requires a new human decision".
+    'pilot.cap.set',
   ],
   PILOT_OPERATOR_TECHNICAL_OPERATIONS: [
     'pilot.control.read', 'pilot.stop', 'pilot.participation.terminate',
