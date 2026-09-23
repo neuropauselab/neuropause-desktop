@@ -87,3 +87,36 @@ describe('the logger redacts Postgres row-bearing error fields', () => {
     expect(out).not.toContain(CANARY);
   });
 });
+
+describe('NESTED errors - the leak a single-level wildcard cannot cover', () => {
+  /**
+   * `AppError` carries a `logCause` BY DESIGN so a handler can record which upstream
+   * dependency failed, and pino's serializer emits it as `err.logCause`. A pino redact
+   * wildcard matches exactly ONE key level, so `err.detail` and `*.detail` both miss
+   * `err.logCause.detail`.
+   *
+   * Found by a canary against a real Postgres error, not by reading the config: four
+   * single-level probes passed and the nested one leaked.
+   */
+  it('a pg error wrapped as err.logCause is redacted', () => {
+    const out = captureWith(REDACT_PATHS, { err: { name: 'AppError', status: 503, logCause: pgError() } });
+    expect(out).not.toContain(CANARY);
+    expect(out).toContain('AppError'); // the wrapper is still legible
+  });
+
+  it('a pg error wrapped as err.cause (ES2022) is redacted', () => {
+    const out = captureWith(REDACT_PATHS, { err: { name: 'AppError', cause: pgError() } });
+    expect(out).not.toContain(CANARY);
+  });
+
+  it('a pg error nested under an arbitrary key two levels down is redacted', () => {
+    const out = captureWith(REDACT_PATHS, { outer: { inner: pgError() } });
+    expect(out).not.toContain(CANARY);
+  });
+
+  it('CONTROL: without the nested paths, err.logCause.detail DOES leak', () => {
+    const singleLevelOnly = REDACT_PATHS.filter((p) => !p.includes('logCause') && !p.startsWith('*.*') && !p.includes('cause'));
+    const out = captureWith(singleLevelOnly, { err: { logCause: pgError() } });
+    expect(out).toContain(CANARY); // proves the nested paths are what close it
+  });
+});

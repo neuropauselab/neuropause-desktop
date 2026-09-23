@@ -48,6 +48,37 @@ export const REDACT_PATHS = [
   '*.internalQuery',
   '*.query',
   '*.hint',
+
+  /*
+   * NESTED ERRORS. A pino redact wildcard matches EXACTLY ONE key level, so the paths above
+   * cover `err.detail` and `<anything>.detail` and NOT `err.logCause.detail`.
+   *
+   * That nesting is not hypothetical - it is designed. `AppError` takes a `logCause` option
+   * precisely so a handler can record which upstream dependency failed, and the comment in
+   * middleware/error.ts says pino's serializer emits it as `err.logCause`; the handler then
+   * logs `{ err, requestId }` whole. ES2022 `cause` is used the same way in the semantic
+   * clients. So a database error wrapped as a cause carries `DETAIL: Failing row contains
+   * (...)` exactly one level below every path above.
+   *
+   * FOUND BY A CANARY AGAINST A REAL POSTGRES ERROR, NOT BY READING THIS FILE: four
+   * single-level probes passed and the nested probe leaked. NP-PILOT-FIRST-006 is explicit
+   * that the configuration must not be trusted, and this is what that instruction was for.
+   */
+  'err.logCause.detail',
+  'err.logCause.where',
+  'err.logCause.internalQuery',
+  'err.logCause.query',
+  'err.logCause.hint',
+  'err.cause.detail',
+  'err.cause.where',
+  'err.cause.internalQuery',
+  'err.cause.query',
+  'err.cause.hint',
+  '*.*.detail',
+  '*.*.where',
+  '*.*.internalQuery',
+  '*.*.query',
+  '*.*.hint',
 ];
 
 export const logger = pino({
