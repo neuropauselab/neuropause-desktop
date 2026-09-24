@@ -21,7 +21,15 @@
  * reachable to the millisecond.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. Retention is PILOT code, so its fixtures are seeded through the PILOT pool and its
+ * schema is migrated with the PILOT target. Before ENV04-B these suites seeded the product store
+ * and the code under test read the pilot store; with a genuinely separate pilot database that
+ * means every fixture is invisible and the suite passes on empty tables. Same pool for the
+ * fixture and the code under test, or the suite proves nothing.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import {
@@ -48,8 +56,8 @@ const SUBJECT_COLUMNS: Record<string, readonly string[]> = {
   pilot_monitor_events: ['actor_id', 'subject_user_id'],
 };
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await closePool(); await closeRedis(); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await resetPilotPool(); await closePool(); await closeRedis(); });
 
 async function seedSubject(subjectId: string, tag: string, termsId: string) {
   const { rows: [c] } = await query(

@@ -33,21 +33,20 @@ export default defineConfig({
       NODE_ENV: 'test',
       DATABASE_URL: dbUrl,
       /*
-       * ENV04. `src/pilot` reads its store through `db/pilotPool`, which requires
-       * PILOT_DATABASE_URL and has NO fallback to DATABASE_URL - that absence of a fallback is
+       * ENV04-R2. `src/pilot` reads its store through `db/pilotPool`, which requires
+       * PILOT_DATABASE_URL and has NO fallback to DATABASE_URL — that absence of a fallback is
        * the control, and it must not be softened here.
        *
-       * The default below points the pilot store at the SAME disposable database as the product
-       * store, because these suites seed fixtures through `db/pool` and then assert on what the
-       * pilot code sees; pointing them apart would make every fixture invisible to the code
-       * under test and the suite would pass on empty tables - the failure shape this programme
-       * has hit repeatedly.
+       * SET TEST_PILOT_DATABASE_URL TO A GENUINELY SEPARATE DATABASE. That is the configuration
+       * ENV04 actually describes, and it is the one the ENV04-R2 suites measure: the pilot
+       * suites migrate with `runMigrations({ target: 'PILOT' })` and seed through the pilot pool,
+       * so the fixture and the code under test share one store while the PRODUCT store stays a
+       * different database.
        *
-       * THIS CONFIGURATION THEREFORE PROVES NOTHING ABOUT ISOLATION, and is not the evidence for
-       * it: ENV04 separation is established by `pilotPool.test.ts` and the connected-identity
-       * check in `pilot/environment.ts`, which compare the two pools' `current_database()` /
-       * `inet_server_addr()` rather than their configuration strings. Set
-       * TEST_PILOT_DATABASE_URL to run these suites against a genuinely separate store.
+       * The `?? dbUrl` fallback keeps older suites that predate ENV04 runnable against a single
+       * database. WHEN IT IS TAKEN, ISOLATION IS NOT UNDER TEST — `resolvePilotEnvironment`
+       * correctly answers PILOT_STORE_SAME_DATABASE, and any suite asserting a resolved pilot
+       * environment will fail by design rather than pass on a weaker configuration.
        */
       PILOT_DATABASE_URL: process.env.TEST_PILOT_DATABASE_URL ?? dbUrl,
       REDIS_URL: process.env.REDIS_URL ?? 'redis://localhost:6379',

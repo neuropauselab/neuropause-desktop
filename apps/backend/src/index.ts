@@ -27,7 +27,16 @@ async function main(): Promise<void> {
     );
   } else if (await pingDatabase()) {
     try {
-      await runMigrations();
+      /*
+       * ENV04-B — BOOT MIGRATES THE PRODUCT STORE ONLY, AND SAYS SO.
+       *
+       * The target is explicit rather than defaulted, because "whatever runMigrations does" is
+       * how a boot path silently acquires a second responsibility. The pilot store is
+       * provisioned deliberately (`tsx src/db/migrate.ts --target=PILOT`), never as a side
+       * effect of starting the product: a boot that migrated PILOT_DATABASE_URL would create a
+       * pilot schema on any host that happened to have the variable set.
+       */
+      await runMigrations({ target: 'PRODUCT' });
       if (env.SEED_STORE_ON_BOOT) {
         await seedStoreIfEmpty();
       } else {

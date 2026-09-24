@@ -12,7 +12,15 @@
  * `src/pilot/memoryRepository.limits.test.ts`.
  */
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. These are PILOT suites: the code under test reads the pilot store, so the fixtures
+ * are seeded through the pilot pool and the schema is migrated with the PILOT target. While the
+ * two stores were one database this distinction was invisible; with a genuinely separate pilot
+ * database, seeding the product store means the code under test sees empty tables and the suite
+ * passes on nothing. Same pool for the fixture and the code under test.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import { sqlPilotRepository } from '../pilot/repository';
@@ -23,8 +31,8 @@ const P = '33333333-3333-4333-8333-333333333333';
 const OP = '44444444-4444-4444-8444-444444444444';
 const TERMS = { version: 'NP008-RACE-TERMS-v1', digest: 'NP008-RACE-DIGEST' };
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await closePool(); await closeRedis(); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await resetPilotPool(); await closePool(); await closeRedis(); });
 
 /** Run `hook` exactly once, at the moment `on` is called — the interleaving, forced. */
 function interleave(repo: PilotRepository, on: keyof PilotRepository, hook: () => Promise<void>): PilotRepository {

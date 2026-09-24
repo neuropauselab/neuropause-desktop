@@ -12,7 +12,15 @@
  */
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
 import { Client, type QueryResultRow } from 'pg';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. Retention is PILOT code, so its fixtures are seeded through the PILOT pool and its
+ * schema is migrated with the PILOT target. Before ENV04-B these suites seeded the product store
+ * and the code under test read the pilot store; with a genuinely separate pilot database that
+ * means every fixture is invisible and the suite passes on empty tables. Same pool for the
+ * fixture and the code under test, or the suite proves nothing.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import { executeRetention, planRetention, RETENTION_CLASSES, EXECUTABLE_CLASSES } from '../pilot/retention';
@@ -23,8 +31,8 @@ const SUBJECT = 'a7000000-0000-4000-8000-000000000001';
 const ACTOR   = 'a7000000-0000-4000-8000-000000000002';
 const CANARY  = 'NP017-CANARY-ORIGINAL-001';
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await closePool(); await closeRedis(); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await resetPilotPool(); await closePool(); await closeRedis(); });
 
 /** A closed pilot, past its retention clock, with one participant and one row per class. */
 async function seedClosedPilotWithData() {
@@ -301,7 +309,11 @@ describe('NP-019 §14 §15 §16 — transactional atomicity, observed from a SEP
 
   /** A genuinely separate connection, so nothing is observed through the transaction's own client. */
   async function observe<T extends QueryResultRow>(sql: string, params: unknown[] = []) {
-    const c = new Client({ connectionString: process.env.TEST_DATABASE_URL });
+    // ENV04-R2: the independent observer must watch the PILOT store, because that is where
+    // the fixtures and the code under test both now live. Watching DATABASE_URL after the
+    // stores were genuinely separated would report 0 for work that really happened - an
+    // observer pointed at the wrong database is not an independent check, it is a broken one.
+    const c = new Client({ connectionString: process.env.PILOT_DATABASE_URL });
     await c.connect();
     try { return (await c.query<T>(sql, params)).rows; } finally { await c.end(); }
   }

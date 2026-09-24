@@ -13,7 +13,15 @@
  * real account. A green run proves the MECHANISM; it proves nothing about any person's identity.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, it, expect } from 'vitest';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. These are PILOT suites: the code under test reads the pilot store, so the fixtures
+ * are seeded through the pilot pool and the schema is migrated with the PILOT target. While the
+ * two stores were one database this distinction was invisible; with a genuinely separate pilot
+ * database, seeding the product store means the code under test sees empty tables and the suite
+ * passes on nothing. Same pool for the fixture and the code under test.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import {
@@ -57,8 +65,8 @@ const AT_NOW     = at(0);          // the exact boundary
 
 const PILOT_ENV = async () => ({ environmentClass: 'PILOT', environmentId: ENV_ID });
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await closePool(); await closeRedis(); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await resetPilotPool(); await closePool(); await closeRedis(); });
 
 async function reset() {
   await query(`TRUNCATE pilot_cap_decisions, pilot_alert_deliveries, pilot_monitor_events,
@@ -399,7 +407,12 @@ describe('§29 — a plain INSERT manufactures authority the application layer c
     PILOT_ENVIRONMENT_CLASS: 'PILOT',
     PILOT_ENVIRONMENT_ID: ENV_ID,
     PILOT_TARGET_ID: ENV_ID,
-    PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
+    /*
+     * ENV04-R2: the REAL pilot store. `pilot-host` was written when nothing dialled this value;
+     * the resolver now connects to it, so a placeholder yields PILOT_STORE_UNREACHABLE and masks
+     * whatever the case below actually means to assert.
+     */
+    PILOT_DATABASE_URL: process.env.PILOT_DATABASE_URL!,
     DATABASE_URL: 'postgres://prod@prod-host:5432/neuropause',
   } as const;
   const saved: Record<string, string | undefined> = {};

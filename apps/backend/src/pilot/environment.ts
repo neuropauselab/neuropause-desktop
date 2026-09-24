@@ -29,8 +29,9 @@
  * an infrastructure fact and needs infrastructure evidence.
  */
 import { createHash } from 'node:crypto';
-import { query, pilotPool, identityOf, identityKey } from '../db/pilotPool';
+import { pilotPool, identityOf, identityKey } from '../db/pilotPool';
 import { pool as productPool } from '../db/pool';
+import { loadPilotEnv, type PilotEnvConfig } from '../config/pilotEnv';
 
 export type EnvironmentClass = 'PILOT' | 'PRODUCTION' | 'DEVELOPMENT' | 'TEST';
 
@@ -47,7 +48,14 @@ export type EnvironmentRefusal =
   | 'PILOT_STORE_NOT_SEPARATED'
   // ENV04 work item 2: the ACTUAL connected database, not the declared string.
   | 'PILOT_STORE_SAME_DATABASE'
-  | 'PILOT_STORE_UNREACHABLE';
+  | 'PILOT_STORE_UNREACHABLE'
+  /*
+   * ENV04-A (ENV04-R2). The configured pilot store and the database actually reached are not
+   * the same database. Before single-source resolution this state was UNOBSERVABLE: the
+   * declared value came from an argument and the connection came from `process.env`, so
+   * nothing ever compared them. It is now a named refusal.
+   */
+  | 'PILOT_STORE_IDENTITY_MISMATCH';
 
 /**
  * The safe evidence record. §40: it carries identities and digests and NEVER a connection
@@ -83,19 +91,38 @@ export type EnvironmentResolution =
  * invite exactly the comparison it must not enable.
  */
 export function configurationDigest(env: NodeJS.ProcessEnv): string {
+  // ENV04-A: the digest describes the SAME validated configuration the resolver acts on.
+  // Reading `env` directly here would be a second source of the same fact.
+  const c = loadPilotEnv(env);
   const shape = {
-    PILOT_ENVIRONMENT_CLASS: env.PILOT_ENVIRONMENT_CLASS ?? null,
-    PILOT_ENVIRONMENT_ID: env.PILOT_ENVIRONMENT_ID ?? null,
-    PILOT_TARGET_ID: env.PILOT_TARGET_ID ?? null,
-    NODE_ENV: env.NODE_ENV ?? null,
-    DATABASE_URL_PRESENT: env.DATABASE_URL !== undefined,
+    PILOT_ENVIRONMENT_CLASS: c.environmentClass ?? null,
+    PILOT_ENVIRONMENT_ID: c.environmentId ?? null,
+    PILOT_TARGET_ID: c.targetId ?? null,
+    NODE_ENV: c.nodeEnv ?? null,
+    DATABASE_URL_PRESENT: c.productDatabaseUrl !== undefined,
     // ENV-04. PRESENCE and SEPARATION only - never either connection string, for the same
     // reason DATABASE_URL is reduced to a boolean: a digest of a secret is derived from it.
-    PILOT_DATABASE_URL_PRESENT: env.PILOT_DATABASE_URL !== undefined,
+    PILOT_DATABASE_URL_PRESENT: c.databaseUrl !== undefined,
     PILOT_STORE_SEPARATED:
-      env.PILOT_DATABASE_URL !== undefined && env.PILOT_DATABASE_URL !== env.DATABASE_URL,
+      c.databaseUrl !== undefined && c.databaseUrl !== c.productDatabaseUrl,
   };
   return createHash('sha256').update(JSON.stringify(shape)).digest('hex');
+}
+
+/**
+ * The database name a connection string NAMES, or undefined if it names none.
+ *
+ * Used to compare what the configuration SAYS it will reach against what the connection
+ * actually reached. That comparison is the whole point of ENV04-A: a pool handed back for a
+ * different URL, or a routed alias, is otherwise indistinguishable from the real target.
+ */
+export function databaseNameOf(url: string): string | undefined {
+  try {
+    const path = new URL(url).pathname.replace(/^\//, '');
+    return path ? decodeURIComponent(path) : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -109,14 +136,25 @@ export async function resolvePilotEnvironment(
   env: NodeJS.ProcessEnv = process.env,
   applicationVersion = env.npm_package_version ?? 'UNKNOWN',
 ): Promise<EnvironmentResolution> {
-  const declaredClass = env.PILOT_ENVIRONMENT_CLASS?.trim();
+  /*
+   * ENV04-A — ONE SOURCE, READ ONCE, USED FOR EVERYTHING BELOW.
+   *
+   * Every value this function acts on comes from `cfg`, and the pilot pool is built from
+   * `cfg.databaseUrl` rather than resolved independently. Before this, the declared store came
+   * from `env` and the connected store came from `process.env`, so the function could report on
+   * a database its caller never named. There is no second read of the environment past this
+   * line — a `process.env` access below would reopen exactly the defect this closes.
+   */
+  const cfg: PilotEnvConfig = loadPilotEnv(env);
+
+  const declaredClass = cfg.environmentClass;
   if (!declaredClass) return { ok: false, reason: 'ENVIRONMENT_CLASS_NOT_DECLARED' };
   if (declaredClass !== 'PILOT') return { ok: false, reason: 'ENVIRONMENT_CLASS_NOT_PILOT' };
 
-  const environmentId = env.PILOT_ENVIRONMENT_ID?.trim();
+  const environmentId = cfg.environmentId;
   if (!environmentId) return { ok: false, reason: 'ENVIRONMENT_ID_NOT_DECLARED' };
 
-  const targetId = env.PILOT_TARGET_ID?.trim();
+  const targetId = cfg.targetId;
   if (!targetId) return { ok: false, reason: 'TARGET_ID_NOT_DECLARED' };
 
   /*
@@ -142,9 +180,9 @@ export async function resolvePilotEnvironment(
    * reach two distinct servers. That stronger property is a deployment fact, and the evidence
    * package says so rather than implying this check establishes it.
    */
-  const pilotStore = env.PILOT_DATABASE_URL?.trim();
+  const pilotStore = cfg.databaseUrl;
   if (!pilotStore) return { ok: false, reason: 'PILOT_STORE_NOT_DECLARED' };
-  if (pilotStore === env.DATABASE_URL?.trim())
+  if (pilotStore === cfg.productDatabaseUrl)
     return { ok: false, reason: 'PILOT_STORE_NOT_SEPARATED' };
 
   /*
@@ -164,19 +202,50 @@ export async function resolvePilotEnvironment(
    * shown to be separate, and treating an error as separation would turn an outage into a
    * green isolation check.
    */
+  let pilotIdentity;
   try {
+    /*
+     * `pilotPool(pilotStore)` — THE SAME VALUE the checks above were made against. This
+     * argument is ENV04-A's whole repair: the pool can no longer be built from somewhere else.
+     */
     const [pilotId, productId] = await Promise.all([
-      identityOf(pilotPool()),
+      identityOf(pilotPool(pilotStore)),
       identityOf(productPool),
     ]);
     if (identityKey(pilotId) === identityKey(productId))
       return { ok: false, reason: 'PILOT_STORE_SAME_DATABASE' };
+    pilotIdentity = pilotId;
   } catch {
     return { ok: false, reason: 'PILOT_STORE_UNREACHABLE' };
   }
 
-  // THE SECOND, INDEPENDENT ASSERTION. The database answers for itself.
-  const { rows } = await query(
+  /*
+   * CONFIGURED vs ACTUALLY REACHED. The configuration names a database; the server says which
+   * database answered. A routed alias, a pooler pointed elsewhere, or a memoised pool built
+   * from a different URL all show up here and nowhere else.
+   *
+   * Compared ONLY when the URL names a database — a connection string that names none is not
+   * making a claim this check could falsify, and inventing one would be a guard that fires on
+   * its own assumption.
+   */
+  const named = databaseNameOf(pilotStore);
+  if (named !== undefined && named !== pilotIdentity.database)
+    return { ok: false, reason: 'PILOT_STORE_IDENTITY_MISMATCH' };
+
+  /*
+   * THE SECOND, INDEPENDENT ASSERTION. The database answers for itself.
+   *
+   * ON `pilotPool(pilotStore)` RATHER THAN THE BARE `query()`: this line WAS the last surviving
+   * half of ENV04-A, and it survived the first pass of this very repair. `query()` imported from
+   * `db/pilotPool` is the no-argument form, so it resolved through `loadPilotEnv(process.env)` —
+   * meaning the identity row could be read from a DIFFERENT database than the one the checks
+   * above had just measured. Caught by the ENV04-A regression test, which poisons process.env
+   * and asserts nothing changes: the poisoned value was dialled here and nowhere else.
+   *
+   * Fixing the connected-identity check while leaving this one on a second source would have
+   * moved the defect, not removed it.
+   */
+  const { rows } = await pilotPool(pilotStore).query(
     'SELECT environment_class, environment_id, target_id FROM pilot_environment_identity WHERE id = true',
   );
   const row = rows[0];

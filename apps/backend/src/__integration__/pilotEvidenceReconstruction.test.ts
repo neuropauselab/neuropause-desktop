@@ -10,7 +10,15 @@
  * record still be rebuilt FROM PERSISTED ROWS ALONE?
  */
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. These are PILOT suites: the code under test reads the pilot store, so the fixtures
+ * are seeded through the pilot pool and the schema is migrated with the PILOT target. While the
+ * two stores were one database this distinction was invisible; with a genuinely separate pilot
+ * database, seeding the product store means the code under test sees empty tables and the suite
+ * passes on nothing. Same pool for the fixture and the code under test.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import { sqlPilotRepository } from '../pilot/repository';
@@ -23,8 +31,8 @@ const OP = 'dddddddd-0000-4000-8000-000000000002';
 const TERMS = { version: 'NP013-TERMS-v1', digest: 'NP013-DIGEST' };
 const ALLOW = { evaluate: () => 'ALLOW' as const };   // stop path only; NOT an authority claim
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await closePool(); await closeRedis(); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await resetPilotPool(); await closePool(); await closeRedis(); });
 
 async function seed() {
   await query(`TRUNCATE pilot_cap_decisions, pilot_monitor_events, pilot_lifecycle_events,

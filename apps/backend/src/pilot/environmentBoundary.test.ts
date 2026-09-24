@@ -14,19 +14,37 @@ import { join } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const dbIdentity = vi.hoisted(() => vi.fn());
+/**
+ * ENV04-A made the mock's shape matter. `resolvePilotEnvironment` now reads the identity row
+ * through `pilotPool(url).query(...)` rather than the module-level `query`, and it compares the
+ * database the URL NAMES against the database the connection REPORTS. So the stub has to behave
+ * like a pool that is actually connected to the URL it was handed — a stub that always answered
+ * 'pilot_db' would trip the new configured-vs-actual check on every well-formed input, and a
+ * stub with no `.query` would throw.
+ *
+ * Deriving the reported name FROM THE URL is what keeps these tests measuring the declaration
+ * boundary rather than the new check, while leaving the new check able to fire if the two ever
+ * genuinely disagreed.
+ */
+const seen = vi.hoisted(() => ({ pilotUrl: undefined as string | undefined }));
 vi.mock('../db/pilotPool', () => ({
   query: dbIdentity,
   withTransaction: vi.fn(),
-  // ENV04: resolvePilotEnvironment now asks BOTH pools what database they are actually
-  // connected to, so both must be stubbed. Distinct identities here mean the separation
-  // check passes and the test continues to exercise what it was written to exercise —
-  // the declaration boundary — rather than being denied upstream by the new check.
-  pilotPool: () => ({ tag: 'pilot' }),
+  pilotPool: (url?: string) => {
+    seen.pilotUrl = url;
+    return { tag: 'pilot', query: dbIdentity };
+  },
   // The two pools must be DISTINGUISHABLE, or identityOf returns one identity for both and
   // the separation check correctly reports PILOT_STORE_SAME_DATABASE — denying upstream and
   // masking the declaration behaviour these tests exist to measure.
   identityOf: async (p: { tag?: string }) => ({
-    database: p?.tag === 'pilot' ? 'pilot_db' : 'product_db', user: 'u', host: '10.0.0.1', port: 5432,
+    database: p?.tag === 'pilot'
+      ? (() => {
+          try { return new URL(seen.pilotUrl ?? '').pathname.replace(/^\//, '') || 'pilot_db'; }
+          catch { return 'pilot_db'; }
+        })()
+      : 'product_db',
+    user: 'u', host: '10.0.0.1', port: 5432,
   }),
   identityKey: (i: { host: string; port: number; database: string }) => `${i.host}:${i.port}/${i.database}`,
 }));

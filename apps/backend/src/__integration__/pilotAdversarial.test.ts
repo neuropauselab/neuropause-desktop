@@ -12,7 +12,15 @@
  * SYNTHETIC PARTICIPANTS ONLY. Disposable database, truncated between tests.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. These are PILOT suites: the code under test reads the pilot store, so the fixtures
+ * are seeded through the pilot pool and the schema is migrated with the PILOT target. While the
+ * two stores were one database this distinction was invisible; with a genuinely separate pilot
+ * database, seeding the product store means the code under test sees empty tables and the suite
+ * passes on nothing. Same pool for the fixture and the code under test.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import { sqlPilotRepository } from '../pilot/repository';
@@ -31,8 +39,8 @@ const TERMS_DIGEST = 'TEST-FIXTURE-DIGEST-NOT-A-REAL-HASH';
 /** §9 / §16 require >= 100 trials. Recorded so the cardinality is never in doubt. */
 const TRIALS = 100;
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await Promise.allSettled([closePool(), closeRedis()]); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await Promise.allSettled([resetPilotPool(), closePool(), closeRedis()]); });
 
 beforeEach(async () => {
   await query(

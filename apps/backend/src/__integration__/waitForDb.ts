@@ -13,7 +13,15 @@ import { Client } from 'pg';
  * Fails clearly if the server never becomes reachable.
  */
 export default async function setup(): Promise<void> {
-  const connectionString = process.env.TEST_DATABASE_URL;
+  // ENV04-B. Both stores are ensured, because a genuinely separate pilot database must exist
+  // before anything can migrate it, and a missing one previously surfaced as an unrelated
+  // "pilot store unreachable" much later in the run.
+  for (const url of [process.env.TEST_DATABASE_URL, process.env.TEST_PILOT_DATABASE_URL]) {
+    if (url) await ensureDatabase(url);
+  }
+}
+
+async function ensureDatabase(connectionString: string | undefined): Promise<void> {
   if (!connectionString) return; // vitest.integration.config.ts already fails fast when unset
 
   const dbName = decodeURIComponent(new URL(connectionString).pathname.replace(/^\//, ''));

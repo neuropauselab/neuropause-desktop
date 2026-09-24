@@ -8,7 +8,15 @@
  * makes real Postgres mandatory for anything of this shape.
  */
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. These are PILOT suites: the code under test reads the pilot store, so the fixtures
+ * are seeded through the pilot pool and the schema is migrated with the PILOT target. While the
+ * two stores were one database this distinction was invisible; with a genuinely separate pilot
+ * database, seeding the product store means the code under test sees empty tables and the suite
+ * passes on nothing. Same pool for the fixture and the code under test.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import { resolvePilotEnvironment, assertPilotEnvironment, PilotEnvironmentError, configurationDigest } from '../pilot/environment';
@@ -27,12 +35,17 @@ const ENV_OK = {
   PILOT_TARGET_ID: TARGET_ID,
   // ENV-04 (NP-014): a pilot environment now requires a DECLARED, DISTINCT pilot store.
   // Without it resolution refuses PILOT_STORE_NOT_DECLARED, which is the point of the control.
-  PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
+  /*
+     * ENV04-R2: the REAL pilot store. `pilot-host` was written when nothing dialled this value;
+     * the resolver now connects to it, so a placeholder yields PILOT_STORE_UNREACHABLE and masks
+     * whatever the case below actually means to assert.
+     */
+  PILOT_DATABASE_URL: process.env.PILOT_DATABASE_URL!,
   DATABASE_URL: 'postgres://prod@prod-host:5432/neuropause',
 } as NodeJS.ProcessEnv;
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await closePool(); await closeRedis(); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await resetPilotPool(); await closePool(); await closeRedis(); });
 
 async function reset({ declareEnv = true } = {}) {
   await query(`TRUNCATE pilot_monitor_events, pilot_retention_log, pilot_retention_holds,
@@ -118,15 +131,25 @@ describe('ENV-02 — the DATABASE must assert its own identity', () => {
 describe('§40 — the environment evidence record carries no secret', () => {
   it('no connection string, password, token or key appears anywhere in it', async () => {
     await reset();
-    const r = await resolvePilotEnvironment({
-      ...ENV_OK,
-      DATABASE_URL: 'postgres://u:SUPERSECRET@h/db',
-      PILOT_DATABASE_URL: 'postgres://u:PILOTSECRET@ph/pdb',   // ENV-04: the new string must not leak either
-    });
+    /*
+     * ENV04-R2. This used to pass invented secret-bearing URLs and assert the record was clean.
+     * It can no longer: a record only EXISTS once resolution succeeds, and resolution now
+     * CONNECTS, so an invented host refuses before any record is built. Keeping the fake URLs
+     * would have made this test assert nothing about the record at all.
+     *
+     * It is now run against the REAL stores, which is strictly stronger — the credential it must
+     * not leak is an actual one rather than a literal chosen to be easy to find.
+     */
+    const r = await resolvePilotEnvironment(ENV_OK);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     const serialized = JSON.stringify(r.record);
-    for (const forbidden of ['SUPERSECRET', 'PILOTSECRET', 'postgres://', 'password', 'token', 'secret'])
+    const realSecrets = [process.env.DATABASE_URL!, process.env.PILOT_DATABASE_URL!]
+      .flatMap((u) => { const m = /\/\/[^:]+:([^@]+)@/.exec(u); return m ? [m[1]] : []; });
+    expect(realSecrets.length, 'control: the test URLs really do carry a credential')
+      .toBeGreaterThan(0);
+    for (const secret of realSecrets) expect(serialized).not.toContain(secret);
+    for (const forbidden of ['postgres://', 'password', 'token', 'secret'])
       expect(serialized.toLowerCase()).not.toContain(forbidden.toLowerCase());
   });
   it('the configuration digest reflects presence, never the value of DATABASE_URL', () => {
@@ -193,14 +216,45 @@ describe('ENG-04 — production ships bound to nobody', () => {
 describe('ENG-06 — the monitor ledger', () => {
   beforeEach(() => reset());
 
+  /*
+   * SUPERSEDED BY WORK ITEM 3, AND NOT REVERTED (§19).
+   *
+   * This test iterated EVERY key of ALERT_SEVERITY and required CRITICAL. That was sound while
+   * every class was a refusal: its title said "mandatory-stop class" and its body said "every
+   * class", and the two meant the same set.
+   *
+   * Work Item 3 added AUTHORIZED_ACTION: 'INFO' so the ledger could record PERMISSION, not only
+   * refusal - NP-015 having measured that all 13 classes mapped to CRITICAL, which made
+   * `escalates()` a predicate that could not return false. An authorized action is not an alert,
+   * so the two sets stopped being the same and the body stopped matching the title.
+   *
+   * Making this green by reverting INFO would restore a guard that cannot fail, to satisfy an
+   * assertion whose own title never claimed what it was checking. The semantics stand; the test
+   * is corrected to assert them - including, now, the negative half that AUTHORIZED_ACTION does
+   * NOT escalate, which is the property that makes escalates() falsifiable at all.
+   */
+  const MANDATORY_STOP_CLASSES = (Object.keys(ALERT_SEVERITY) as (keyof typeof ALERT_SEVERITY)[])
+    .filter((c) => c !== 'AUTHORIZED_ACTION');
+
   it('§30 every mandatory-stop class is CRITICAL and escalates', async () => {
-    for (const cls of Object.keys(ALERT_SEVERITY) as (keyof typeof ALERT_SEVERITY)[]) {
+    expect(MANDATORY_STOP_CLASSES.length).toBeGreaterThan(10);      // vacuity guard
+    for (const cls of MANDATORY_STOP_CLASSES) {
       const rec = await sqlPilotMonitor.record({ alertClass: cls, outcome: 'DENIED', reasonCode: 'TEST' });
       expect(rec?.severity).toBe('CRITICAL');
       expect(rec?.escalated).toBe(true);
     }
     const { rows } = await query('SELECT count(*)::int AS n FROM pilot_monitor_events WHERE escalated');
-    expect(rows[0].n).toBe(Object.keys(ALERT_SEVERITY).length);
+    expect(rows[0].n).toBe(MANDATORY_STOP_CLASSES.length);
+  });
+
+  it('§30 AUTHORIZED_ACTION is INFO and does NOT escalate — permission is not an alert', async () => {
+    const rec = await sqlPilotMonitor.record({
+      alertClass: 'AUTHORIZED_ACTION', outcome: 'ALLOW', reasonCode: 'ALLOWED',
+    });
+    expect(rec?.severity).toBe('INFO');
+    expect(rec?.escalated).toBe(false);
+    const { rows } = await query('SELECT count(*)::int AS n FROM pilot_monitor_events WHERE escalated');
+    expect(rows[0].n).toBe(0);      // and it raised nothing
   });
 
   it('§29 the event is DURABLE — read back from the ledger, not from the return value', async () => {
@@ -420,9 +474,18 @@ describe('ENG-05 — retention is PREPARED, and refuses to run', () => {
     expect(rows[0].n).toBe(EXECUTABLE_CLASSES.length);
   });
 
-  it('the evidence classes are preserved, not deleted', () => {
-    const evidence = ['pilot_lifecycle_events', 'human_decisions', 'pilot_monitor_events'];
-    for (const name of evidence)
+  /*
+   * SUPERSEDED BY D13-C, AND NOT REVERTED.
+   *
+   * This asserted that all three evidence classes are PSEUDONYMIZED. Two still are; D13-C
+   * decided `pilot_monitor_events -> DELETE`. That is the decision-maker's call about their own
+   * pilot, and NP-PILOT-FIRST-005-R2 records its consequence plainly: after retention runs, the
+   * monitor-event refusal ledger for that participant no longer exists. The evidence that the
+   * pilot was governed rests on pilot_lifecycle_events and human_decisions, which D13-C keeps.
+   */
+  it('the evidence classes D13-C retains are pseudonymized, and the one it removes is deleted', () => {
+    for (const name of ['pilot_lifecycle_events', 'human_decisions'])
       expect(RETENTION_CLASSES.find((c) => c.name === name)?.method).toBe('PSEUDONYMIZED');
+    expect(RETENTION_CLASSES.find((c) => c.name === 'pilot_monitor_events')?.method).toBe('DELETED');
   });
 });

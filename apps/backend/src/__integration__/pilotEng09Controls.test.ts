@@ -6,7 +6,15 @@
  */
 import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
-import { closePool, query } from '../db/pool';
+/*
+ * ENV04-R2. These are PILOT suites: the code under test reads the pilot store, so the fixtures
+ * are seeded through the pilot pool and the schema is migrated with the PILOT target. While the
+ * two stores were one database this distinction was invisible; with a genuinely separate pilot
+ * database, seeding the product store means the code under test sees empty tables and the suite
+ * passes on nothing. Same pool for the fixture and the code under test.
+ */
+import { closePool } from '../db/pool';
+import { query, resetPilotPool } from '../db/pilotPool';
 import { closeRedis } from '../cache/redis';
 import { runMigrations } from '../db/migrate';
 import { sqlPilotMonitor } from '../pilot/monitor';
@@ -26,8 +34,8 @@ const NO_ENV = async () => null;
 const ALLOW = { evaluate: () => 'ALLOW' as const };   // SYNTHETIC_TEST_IDENTITY — grants nothing in production
 const DENY = { evaluate: () => 'DENY' as const };
 
-beforeAll(async () => { await runMigrations(); });
-afterAll(async () => { await closePool(); await closeRedis(); });
+beforeAll(async () => { await runMigrations({ target: 'PILOT' }); });
+afterAll(async () => { await resetPilotPool(); await closePool(); await closeRedis(); });
 
 async function reset() {
   await query(`TRUNCATE pilot_alert_deliveries, pilot_cap_decisions, pilot_monitor_events,
@@ -309,9 +317,14 @@ describe('§18 — the two-sided environment assertion, all four cases', () => {
 
   const cfg = (over: Record<string, string> = {}) => ({
     PILOT_ENVIRONMENT_CLASS: 'PILOT', PILOT_ENVIRONMENT_ID: ENV_ID, PILOT_TARGET_ID: TARGET_ID,
-    // ENV-04 (NP-014): declared and distinct from the product store, or resolution refuses.
-    PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
-    DATABASE_URL: 'postgres://prod@prod-host:5432/neuropause',
+    /*
+     * ENV04-R2: the REAL pilot store, because the resolver now CONNECTS to whatever this names.
+     * `pilot-host` was a placeholder written when nothing dialled it; with ENV04-B it resolves
+     * to a DNS failure and every case below would report PILOT_STORE_UNREACHABLE instead of the
+     * condition it means to test.
+     */
+    PILOT_DATABASE_URL: process.env.PILOT_DATABASE_URL!,
+    DATABASE_URL: process.env.DATABASE_URL!,
     ...over,
   } as NodeJS.ProcessEnv);
 
@@ -389,32 +402,47 @@ describe('§6/§21 — the pilot alert sink is DEMONSTRABLY separate from produc
       for (const m of body.matchAll(/env\.([A-Z][A-Z0-9_]+)/g)) reads.add(m[1]);
     }
     // DATABASE_URL appears only as `env.DATABASE_URL !== undefined` — presence, never value.
+    /*
+     * ENV04-A MOVED FOUR OF THESE OUT OF src/pilot ENTIRELY.
+     *
+     * `environment.ts` used to read PILOT_ENVIRONMENT_CLASS / _ID / PILOT_TARGET_ID /
+     * PILOT_DATABASE_URL and DATABASE_URL straight from the environment object. They are now
+     * read ONCE, in `config/pilotEnv.ts`, and reach this module as a validated configuration —
+     * which is the whole repair, since the second reader was where declared and connected could
+     * disagree.
+     *
+     * So the list SHRANK, and that is the improvement rather than a loss of coverage: what
+     * remains is exactly the modules that still read their own configuration directly, each of
+     * which is a file-path or flag, never a database connection. PILOT_AUTHORITY_TRUST_* were
+     * always real runtime configuration and were simply missing from this declaration.
+     */
     expect([...reads].sort()).toEqual([
-      // DATABASE_URL appears only as a PRESENCE check and as the value PILOT_DATABASE_URL is
-      // compared against for separation — never as a connection the pilot opens.
-      'DATABASE_URL', 'NODE_ENV', 'PILOT_ALERT_DIR', 'PILOT_ALERT_SINK',
-      'PILOT_DATABASE_URL', 'PILOT_ENVIRONMENT_CLASS', 'PILOT_ENVIRONMENT_ID',
-      'PILOT_MODULE_ENABLED', 'PILOT_TARGET_ID',
+      'PILOT_ALERT_DIR', 'PILOT_ALERT_SINK',
+      'PILOT_AUTHORITY_TRUST_DIGEST', 'PILOT_AUTHORITY_TRUST_FILE',
+      'PILOT_MODULE_ENABLED',
     ]);
   });
 });
 
 /* ===================================================================================
- * §35 (environment) — the two cases nothing covered: the declared pilot store is
- * UNREACHABLE, and REACHABLE BUT WITH WRONG CREDENTIALS.
+ * §35 — THE GAP THESE TESTS DOCUMENTED IS CLOSED, AND THEY SAID THIS IS HOW WE WOULD KNOW.
  *
- * These document a GAP, and they are written to fail the day it closes. ENV-04 (NP-014) makes
- * the pilot refuse unless a pilot store is DECLARED and DISTINCT from the product store. It
- * does not make anything connect to it: `src/db/pool.ts:8` builds the single pool from
- * `DATABASE_URL`, `pilot/repository.ts` imports `query` from that pool, and outside
- * `environment.ts` there is no non-test read of PILOT_DATABASE_URL anywhere in src/.
+ * The original block read: "These document a GAP, and they are written to fail the day it
+ * closes." ENV04-R2 is that day. What it recorded was real - ENV-04 (NP-014) made the pilot
+ * refuse unless a store was DECLARED and DISTINCT, and made nothing connect to it, so a pilot
+ * store that did not exist, was switched off, or rejected its own password resolved EXACTLY as
+ * well as a healthy one.
  *
- * So a pilot store that does not exist, is switched off, or rejects its own password resolves
- * EXACTLY as well as a healthy one. The §18 canary measured the same thing from the other
- * side: configured with a separate pilot store, the application reported
- * current_database()=np014 - the PRODUCT store - and every statement landed there.
+ * ENV04-B gives the pilot its own pool and its own migrations, and `resolvePilotEnvironment`
+ * now asks BOTH servers which database answered. So each case below inverts: unreachable and
+ * mis-credentialled are refusals, not passes. The assertions are inverted rather than deleted,
+ * because the inversion is the evidence that the gap closed.
+ *
+ * UNREACHABLE IS A REFUSAL, NOT A PASS. A store that cannot be contacted has not been shown to
+ * be separate, and treating an error as separation would turn an outage into a green isolation
+ * check.
  * =================================================================================== */
-describe('§35 — a declared pilot store is never contacted, so its health is unmeasured', () => {
+describe('§35 — a declared pilot store IS contacted, and its health is now measured', () => {
   beforeEach(() => reset());
   const base = {
     PILOT_ENVIRONMENT_CLASS: 'PILOT', PILOT_ENVIRONMENT_ID: ENV_ID, PILOT_TARGET_ID: TARGET_ID,
@@ -424,26 +452,32 @@ describe('§35 — a declared pilot store is never contacted, so its health is u
   const UNREACHABLE = 'postgres://pilot@127.0.0.1:1/neuropause_pilot';
   const WRONG_CREDS = 'postgres://pilot:definitely-not-the-password@127.0.0.1:55443/neuropause_pilot';
 
-  it('POSITIVE CONTROL: a well-formed, separated pilot store resolves', async () => {
+  it('POSITIVE CONTROL: a well-formed, separated, REACHABLE pilot store resolves', async () => {
     const r = await resolvePilotEnvironment({
-      ...base, PILOT_DATABASE_URL: 'postgres://pilot@pilot-host:5432/neuropause_pilot',
+      ...base, DATABASE_URL: process.env.DATABASE_URL!,
+      PILOT_DATABASE_URL: process.env.PILOT_DATABASE_URL!,
     } as NodeJS.ProcessEnv);
     expect(r.ok).toBe(true);
-  });
+  }, 20_000);
 
-  it('an UNREACHABLE pilot store resolves identically — nothing dials it', async () => {
+  it('an UNREACHABLE pilot store is now REFUSED — the gap is closed', async () => {
     const r = await resolvePilotEnvironment({ ...base, PILOT_DATABASE_URL: UNREACHABLE } as NodeJS.ProcessEnv);
-    expect(r.ok).toBe(true);          // <-- the gap: unreachable is indistinguishable from healthy
-  });
+    expect(r).toEqual({ ok: false, reason: 'PILOT_STORE_UNREACHABLE' });
+  }, 20_000);
 
-  it('WRONG CREDENTIALS for the pilot store resolve identically — nothing authenticates', async () => {
+  it('WRONG CREDENTIALS are now REFUSED — authentication is actually attempted', async () => {
     const r = await resolvePilotEnvironment({ ...base, PILOT_DATABASE_URL: WRONG_CREDS } as NodeJS.ProcessEnv);
-    expect(r.ok).toBe(true);          // <-- same gap, second shape
-  });
+    expect(r).toEqual({ ok: false, reason: 'PILOT_STORE_UNREACHABLE' });
+  }, 20_000);
 
-  it('and the two failure modes are not even distinguishable from each other in the digest', () => {
-    // The digest records PRESENCE and SEPARATION. Both strings are present and both differ from
-    // DATABASE_URL, so a dead store and a mis-credentialled one produce the SAME evidence value.
+  it('the DIGEST still cannot distinguish the two failure modes — a recorded limit, not a gap', () => {
+    /*
+     * STILL TRUE, AND DELIBERATELY UNCHANGED. The digest records PRESENCE and SEPARATION, never
+     * either connection string, because a digest of a secret is derived from the secret. So a
+     * dead store and a mis-credentialled one produce the same evidence VALUE — the difference
+     * between them is now carried by the RESOLUTION (both refuse, above), which is where a
+     * health fact belongs. Making the digest distinguish them would mean hashing the credential.
+     */
     expect(configurationDigest({ ...base, PILOT_DATABASE_URL: UNREACHABLE } as NodeJS.ProcessEnv))
       .toBe(configurationDigest({ ...base, PILOT_DATABASE_URL: WRONG_CREDS } as NodeJS.ProcessEnv));
   });

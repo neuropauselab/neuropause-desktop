@@ -1,5 +1,6 @@
 import { Pool, type PoolClient, type QueryResult, type QueryResultRow } from 'pg';
 import { logger } from '../config/logger';
+import { loadPilotEnv } from '../config/pilotEnv';
 
 /* ==========================================================================================
  * ENV04 — THE PILOT'S OWN CONNECTION.
@@ -31,9 +32,20 @@ export class PilotStoreNotConfigured extends Error {
   }
 }
 
-/** The pilot pool, or a throw. Never the product pool. */
-export function pilotPool(): Pool {
-  const url = process.env.PILOT_DATABASE_URL?.trim();
+/**
+ * The pilot pool, or a throw. Never the product pool.
+ *
+ * ENV04-A. The URL may be PASSED IN, and when it is, that value is the ONLY one consulted.
+ * This is the fix for the two-source defect: a caller that has already loaded a validated
+ * configuration hands the SAME value here, instead of this function re-reading a mutable
+ * global and possibly connecting somewhere the caller never named.
+ *
+ * The no-argument form still works — a pilot module deep in a request path should not have to
+ * thread configuration through every frame — but it resolves through `loadPilotEnv()`, the one
+ * declared reader, rather than touching `process.env` itself.
+ */
+export function pilotPool(databaseUrl?: string): Pool {
+  const url = databaseUrl?.trim() || loadPilotEnv().databaseUrl;
   if (!url) throw new PilotStoreNotConfigured();
   // Rebuild if the configured target changed — tests point this at disposable databases.
   if (lazy && lastUrl === url) return lazy;
@@ -44,7 +56,7 @@ export function pilotPool(): Pool {
   return lazy;
 }
 
-export const pilotStoreConfigured = (): boolean => Boolean(process.env.PILOT_DATABASE_URL?.trim());
+export const pilotStoreConfigured = (): boolean => Boolean(loadPilotEnv().databaseUrl);
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
