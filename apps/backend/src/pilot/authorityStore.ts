@@ -5,6 +5,7 @@
  * "designated but not bound": D05 named three people, `pilot_role_bindings` has no rows, and
  * so every consequential route answers DENY with `ROLE_NOT_BOUND`.
  */
+import type { PoolClient } from 'pg';
 import { query, withTransaction } from '../db/pilotPool';
 import { resolvePilotEnvironment } from './environment';
 import { verifyAuthorityRow, type SignableAuthorityRow, type VerifyFailure } from './authoritySignature';
@@ -13,10 +14,32 @@ import { evaluateBootstrap, type BootstrapRequest, type BootstrapOutcome } from 
 import type { AuthorityDecisionArtifact, AuthorityEnvironment, RoleBinding, PilotRole } from './authorityEvaluator';
 import { loadAuthoritySnapshot } from './authorityEvaluator';
 
-export async function loadRoleBindings(): Promise<readonly RoleBinding[]> {
-  const { rows } = await query(
-    `SELECT subject_id, role, decision_ref, bound_at, expires_at, revoked_at FROM pilot_role_bindings`,
-  );
+/*
+ * D-034-5 — DETERMINISTIC SELECTION RULE. NP-033 measured that this SELECT had no ORDER BY while
+ * `explainAuthority` takes `permitted[0]`, so with two live bindings for one subject BOTH the
+ * granted action and the INSTRUMENT CREDITED IN THE AUDIT were decided by PostgreSQL's physical
+ * row order — unspecified, and free to change with the plan, a vacuum, or page layout.
+ *
+ * THE RULE, and why this one: `bound_at ASC, id ASC`. EARLIEST LIVE BINDING WINS.
+ *   - `authorityBootstrap.ts:126` states the governing semantics: "one subject, one live role",
+ *     because the three roles are separations of duty. In a correct store exactly one row is
+ *     live, so ordering is unobservable and this changes nothing.
+ *   - When the invariant HAS been broken, the later row is the artifact of the race that
+ *     CONFLICTING_BINDING was written to refuse. Preferring the EARLIEST therefore declines to
+ *     reward the racer; preferring the newest would hand authority to precisely the write that
+ *     should not exist, which D-034-5 forbids in as many words.
+ *   - `id ASC` breaks an exact `bound_at` tie (the column defaults to now(), so two inserts in
+ *     one transaction can share a timestamp) so the rule is TOTAL, never merely partial.
+ * This rule orders; it does not authorise. Expiry, revocation, the role matrix, the decision
+ * artifact and its signature are all still evaluated downstream and none of them is bypassed.
+ */
+const ROLE_BINDINGS_SQL =
+  `SELECT subject_id, role, decision_ref, bound_at, expires_at, revoked_at
+     FROM pilot_role_bindings
+    ORDER BY bound_at ASC, id ASC`;
+
+export async function loadRoleBindings(client?: PoolClient): Promise<readonly RoleBinding[]> {
+  const { rows } = client ? await client.query(ROLE_BINDINGS_SQL) : await query(ROLE_BINDINGS_SQL);
   return rows.map((r) => ({
     subjectId: r.subject_id as string,
     role: r.role as PilotRole,
@@ -56,12 +79,17 @@ export const lastAuthorityVerificationRefusals = (): readonly { instrument: stri
  * fails SIGNER_KEY_NOT_TRUSTED, and the loader returns [] — which denies everything. That is
  * the correct posture for a pilot whose key ceremony has not happened.
  */
-export async function loadAuthorityDecisions(): Promise<readonly AuthorityDecisionArtifact[]> {
-  const { rows } = await query(
-    `SELECT instrument, authenticated, actions, environment_class, effective_from, expires_at,
-            revoked_at, signature, signer_key_id
-     FROM pilot_authority_decisions`,
-  );
+const AUTHORITY_DECISIONS_SQL =
+  `SELECT instrument, authenticated, actions, environment_class, effective_from, expires_at,
+          revoked_at, signature, signer_key_id
+     FROM pilot_authority_decisions`;
+
+export async function loadAuthorityDecisions(
+  client?: PoolClient,
+): Promise<readonly AuthorityDecisionArtifact[]> {
+  const { rows } = client
+    ? await client.query(AUTHORITY_DECISIONS_SQL)
+    : await query(AUTHORITY_DECISIONS_SQL);
   const trustLoad = loadPilotTrust();
   const trust = trustLoad.keys;
   lastAnchor = { anchorDigest: trustLoad.anchorDigest, fileDigest: trustLoad.fileDigest,
@@ -151,6 +179,17 @@ export function loadProductionAuthoritySnapshot(now: Date = new Date()) {
  * role could ever be bound and every consequential pilot route answered ROLE_NOT_BOUND.
  * ========================================================================================== */
 
+/**
+ * Advisory-lock namespace for the first-identity role-binding path (amended D-034-4).
+ *
+ * The two-argument `pg_advisory_xact_lock(classid, objid)` form is used deliberately: the classid
+ * is a fixed namespace for THIS path, so a hashtext collision with any other advisory-lock user
+ * in the same database cannot serialise or, worse, fail to serialise this one. The value itself
+ * is arbitrary but must never change, because changing it would silently stop two concurrent
+ * callers — an old build and a new one — from taking the same lock.
+ */
+const ROLE_BINDING_LOCK_CLASS = 340344;
+
 /** Every bootstrap attempt this process has seen, decision included. Diagnostics. */
 const attempts: { at: string; actorId: string; subjectId: string; role: string; result: string }[] = [];
 export const bootstrapAttempts = (): readonly (typeof attempts)[number][] => attempts;
@@ -167,26 +206,63 @@ export async function bootstrapRoleBinding(
   req: BootstrapRequest,
   now: Date = new Date(),
 ): Promise<BootstrapResult> {
-  const admitted = await loadAuthorityDecisions();   // already H13-anchored + signature-verified
-  const existing = await loadRoleBindings();
-  const outcome = evaluateBootstrap(req, admitted, existing, now);
-
   const note = (result: string): void => {
     attempts.push({ at: now.toISOString(), actorId: req.actorId, subjectId: req.subjectId, role: req.role, result });
   };
 
-  if (!outcome.ok) {
-    note(outcome.reason);
-    return outcome;
-  }
-
   /*
-   * THE BINDING AND ITS AUDIT ROW ARE ONE TRANSACTION. A binding without a ledger entry is an
-   * authority whose creation cannot be reconstructed, which is the same "work with no evidence"
-   * shape the retention defect had. `withTransaction` ROLLBACKs only on a throw, so the ledger
-   * insert must be allowed to throw rather than being swallowed.
+   * AMENDED D-034-4 — TRANSACTION-SCOPED ADVISORY LOCK.
+   *
+   * THE DEFECT THIS CLOSES, measured 8 of 8 on both machines: the reads, the decision and the
+   * write used to sit OUTSIDE any shared transaction, so two concurrent calls for one subject
+   * with DIFFERENT roles each read zero live bindings, each passed CONFLICTING_BINDING, and BOTH
+   * inserted. `UNIQUE (subject_id, role)` constrains the PAIR, so two roles for one subject are
+   * two legal rows, and `explainAuthority` then grants the UNION — handing an operator the
+   * `pilot.resume`, `pilot.decision.record` and `pilot.cap.set` authorities that D07/D04/D05
+   * reserve to the decision authority.
+   *
+   * WHY THE LOCK MUST WRAP THE READS AND NOT ONLY THE WRITE: a lock taken after
+   * `loadRoleBindings` would serialise two writers that had each already read a stale empty set,
+   * and both would still insert. The amendment says "acquired before the authoritative binding
+   * read, validation, and mutation sequence" — so the transaction opens FIRST, the lock is taken
+   * FIRST, and the reads are then issued ON THE LOCKED CLIENT.
+   *
+   * WHY AN ADVISORY LOCK AND NOT A ROW LOCK OR AN INDEX:
+   *   - `SELECT ... FOR UPDATE` on a protected table is refused 42501 once the NP-030 privilege
+   *     contract is applied (measured), so a row lock COLLIDES with the contract. An advisory
+   *     lock is not a table privilege — it needs only EXECUTE on the function, which is PUBLIC —
+   *     so it is compatible with a SELECT-only runtime (measured).
+   *   - the previously proposed partial unique index is WITHDRAWN by the directive and must not
+   *     appear: it is too strict for an expired-but-unrevoked binding, too loose for a
+   *     future-dated revocation, and an index predicate cannot call now() (IMMUTABLE only).
+   *
+   * THE KEY is deterministic and per-subject: a fixed namespace classid plus hashtext(subject).
+   * Per-subject rather than global so unrelated subjects are never serialised. It is a
+   * SYNCHRONISATION PRIMITIVE ONLY — it grants nothing, and every authority check below still
+   * runs. Transaction-scoped, so it is released by COMMIT or ROLLBACK and can never leak.
    */
   return withTransaction(async (client) => {
+    await client.query(
+      `SELECT pg_advisory_xact_lock($1::int, hashtext($2::text))`,
+      [ROLE_BINDING_LOCK_CLASS, req.subjectId],
+    );
+
+    // Reads issued INSIDE the lock, on the locked client, so the decision cannot be stale.
+    const admitted = await loadAuthorityDecisions(client);  // H13-anchored + signature-verified
+    const existing = await loadRoleBindings(client);
+    const outcome = evaluateBootstrap(req, admitted, existing, now);
+
+    if (!outcome.ok) {
+      note(outcome.reason);
+      return outcome;
+    }
+
+    /*
+     * THE BINDING AND ITS AUDIT ROW ARE ONE TRANSACTION. A binding without a ledger entry is an
+     * authority whose creation cannot be reconstructed, which is the same "work with no evidence"
+     * shape the retention defect had. `withTransaction` ROLLBACKs only on a throw, so the ledger
+     * insert must be allowed to throw rather than being swallowed.
+     */
     const { rows } = await client.query(
       `INSERT INTO pilot_role_bindings (subject_id, role, decision_ref)
        VALUES ($1, $2, $3) RETURNING id`,
