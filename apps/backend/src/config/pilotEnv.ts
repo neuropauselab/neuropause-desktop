@@ -38,6 +38,7 @@ const present = z
 
 const PilotEnvSchema = z.object({
   PILOT_DATABASE_URL: present,
+  PILOT_GOVERNANCE_DATABASE_URL: present,
   PILOT_ENVIRONMENT_CLASS: present,
   PILOT_ENVIRONMENT_ID: present,
   PILOT_TARGET_ID: present,
@@ -66,6 +67,7 @@ export const PILOT_RUNTIME_ENV_VARS = [
   'PILOT_DATABASE_URL',
   'PILOT_ENVIRONMENT_CLASS',
   'PILOT_ENVIRONMENT_ID',
+  'PILOT_GOVERNANCE_DATABASE_URL',
   'PILOT_MODULE_ENABLED',
   'PILOT_TARGET_ID',
 ] as const;
@@ -73,6 +75,15 @@ export const PILOT_RUNTIME_ENV_VARS = [
 export interface PilotEnvConfig {
   /** PILOT_DATABASE_URL, trimmed. `undefined` means NOT DECLARED — never "use the product". */
   readonly databaseUrl: string | undefined;
+  /**
+   * D-034-2 — PILOT_GOVERNANCE_DATABASE_URL, the CONTROLLED WRITER's connection, trimmed.
+   * `undefined` means NOT DECLARED, and the governance writer then refuses rather than falling
+   * back to `databaseUrl`. A fallback here would silently restore the defect §10 removes: the
+   * runtime credential performing governance writes because nobody configured the writer.
+   * Carried on the SAME object as `databaseUrl` so the "are these actually different" check has
+   * both halves from one source — the ENV04-A two-source lesson applied to the new pair.
+   */
+  readonly governanceDatabaseUrl: string | undefined;
   /**
    * DATABASE_URL, carried ONLY so the separation check has both halves of the comparison from
    * the SAME object. It is never used to open a pilot connection.
@@ -101,6 +112,7 @@ export function loadPilotEnv(env: NodeJS.ProcessEnv = process.env): PilotEnvConf
   const productDatabaseUrl = env.DATABASE_URL?.trim() || undefined;
   return {
     databaseUrl: p.PILOT_DATABASE_URL,
+    governanceDatabaseUrl: p.PILOT_GOVERNANCE_DATABASE_URL,
     productDatabaseUrl,
     environmentClass: p.PILOT_ENVIRONMENT_CLASS,
     environmentId: p.PILOT_ENVIRONMENT_ID,

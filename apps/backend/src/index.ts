@@ -5,6 +5,9 @@ import { loadEnv } from './config/env';
 import { enabledProviderIds } from './auth/providers/registry';
 import { logger } from './config/logger';
 import { runMigrations } from './db/migrate';
+import { assertRuntimeSecurityContract } from './pilot/securityContract';
+import { pilotPool } from './db/pilotPool';
+import { pilotGovernancePool, pilotGovernanceWriterConfigured } from './db/pilotGovernancePool';
 import { seedStoreIfEmpty } from './db/seed';
 import { closePool, pingDatabase } from './db/pool';
 import { closeRedis } from './cache/redis';
@@ -17,6 +20,29 @@ async function main(): Promise<void> {
   // external webhook when ALERT_WEBHOOK_URL is set (no-op otherwise). Registered
   // before the server accepts traffic so the first /health poll is covered.
   installWebhookAlertSink();
+
+  /*
+   * D-034-3 — RUNTIME DATABASE SECURITY CONTRACT SELF-CHECK, AT STARTUP, BEFORE TRAFFIC.
+   *
+   * Runs only when the pilot module is enabled, by the same literal-'true' rule the mount gate
+   * uses: a product-only boot declares no pilot configuration and must start unaffected.
+   *
+   * FAIL CLOSED: `assertRuntimeSecurityContract` THROWS, main() has no catch around this, so an
+   * invalid contract means the process does not reach app.listen. That is deliberate — D-034-3
+   * requires the check to fail closed, and there is no caller at boot to hand a refusal to.
+   * A deployment whose runtime credential can still write governance state does not serve.
+   *
+   * It grants nothing and repairs nothing: every statement is a catalog read, and a wrong
+   * contract is reported rather than fixed, because granting or revoking is a human act.
+   */
+  if (process.env.PILOT_MODULE_ENABLED?.trim() === 'true') {
+    const writer = pilotGovernanceWriterConfigured() ? pilotGovernancePool() : null;
+    const roles = await assertRuntimeSecurityContract(pilotPool(), writer);
+    logger.info(
+      { runtimeRole: roles.runtimeRole, governanceWriterRole: roles.writerRole },
+      'pilot runtime database security contract verified',
+    );
+  }
 
   // Apply migrations on boot for single-instance / compose deploys. In a
   // multi-replica orchestrator (k8s), set RUN_MIGRATIONS_ON_BOOT=false and run

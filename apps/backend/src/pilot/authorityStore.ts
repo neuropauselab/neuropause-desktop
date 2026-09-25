@@ -6,7 +6,8 @@
  * so every consequential route answers DENY with `ROLE_NOT_BOUND`.
  */
 import type { PoolClient } from 'pg';
-import { query, withTransaction } from '../db/pilotPool';
+import { query } from '../db/pilotPool';
+import { withGovernanceTransaction } from '../db/pilotGovernancePool';
 import { resolvePilotEnvironment } from './environment';
 import { verifyAuthorityRow, type SignableAuthorityRow, type VerifyFailure } from './authoritySignature';
 import { loadPilotTrust } from './authorityTrust';
@@ -241,7 +242,24 @@ export async function bootstrapRoleBinding(
    * SYNCHRONISATION PRIMITIVE ONLY — it grants nothing, and every authority check below still
    * runs. Transaction-scoped, so it is released by COMMIT or ROLLBACK and can never leak.
    */
-  return withTransaction(async (client) => {
+  /*
+   * D-034-2 — THE WRITE RUNS ON THE CONTROLLED WRITER, NOT ON THE RUNTIME CREDENTIAL.
+   *
+   * `withGovernanceTransaction` opens on PILOT_GOVERNANCE_DATABASE_URL. The runtime role no
+   * longer holds INSERT on `pilot_role_bindings`, so if this were still `withTransaction` the
+   * write would be refused 42501 — which is the §10 negative control, and the reason this line
+   * is the whole implementation of the controlled-writer boundary on this path.
+   *
+   * THE ENTIRE OPERATION MOVES, NOT JUST THE INSERT. The advisory lock, both authority reads and
+   * both writes share this one transaction on this one connection. Splitting them across pools
+   * would leave the §8/§9 lock serialising a connection that does not perform the write, and
+   * would let the binding and its audit row land in separate transactions.
+   *
+   * IT GRANTS NOTHING. `evaluateBootstrap` below is unchanged and still refuses an unadmitted
+   * instrument, a subject mismatch and a conflicting live binding — the writer changes WHO may
+   * write, never WHETHER this write is authorised.
+   */
+  return withGovernanceTransaction(async (client) => {
     await client.query(
       `SELECT pg_advisory_xact_lock($1::int, hashtext($2::text))`,
       [ROLE_BINDING_LOCK_CLASS, req.subjectId],
