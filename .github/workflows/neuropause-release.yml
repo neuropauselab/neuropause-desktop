@@ -34,7 +34,7 @@ jobs:
       candidate_tag: ${{ steps.admit.outputs.candidate_tag }}
       candidate_version: ${{ steps.admit.outputs.candidate_version }}
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - id: admit
         name: Candidate admission (authoritative — invokes candidate-admission.cjs)
         env:
@@ -61,7 +61,7 @@ jobs:
       contents: read
       actions: read           # read this run's deployment-review history (who approved, for which environment)
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: '${{ needs.candidate-admission.outputs.candidate_sha }}'
           fetch-depth: 0
@@ -116,7 +116,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: .nvmrc, cache: npm }
@@ -157,7 +157,7 @@ jobs:
     runs-on: windows-latest
     environment: production-release       # signing credential is exposed only behind the protected environment
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: .nvmrc, cache: npm }
@@ -215,7 +215,7 @@ jobs:
     runs-on: macos-15                     # PINNED: rc.29 died in the temporary-keychain step on macos-latest (macOS 26)
     environment: production-release
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: .nvmrc, cache: npm }
@@ -274,7 +274,7 @@ jobs:
     needs: [candidate-admission, authority-admission, verify-monorepo]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
       - name: Assert exact checkout of the admitted commit
         env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
@@ -322,7 +322,7 @@ jobs:
     needs: [candidate-admission, authority-admission, verify-monorepo]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with: { node-version-file: .nvmrc, cache: npm }
@@ -349,7 +349,7 @@ jobs:
     needs: [build-desktop-windows, build-desktop-macos]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with: { name: tree-win, path: tree-win }
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
@@ -367,7 +367,7 @@ jobs:
       id-token: write         # OIDC for Sigstore — this job holds no credential and no publish verb (analyzer v6.4)
       attestations: write
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with: { pattern: 'desktop-*', path: dist, merge-multiple: true }
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
@@ -394,7 +394,7 @@ jobs:
     needs: [provenance, candidate-admission]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with: { name: desktop-win, path: dist-win }
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
@@ -409,7 +409,7 @@ jobs:
     needs: [verify-artifacts]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with: { name: desktop-win, path: dist }
       - name: Install Authenticode verifier
@@ -423,7 +423,7 @@ jobs:
     needs: [verify-artifacts]
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with: { name: desktop-mac, path: dist }
       - name: Verify codesign + Gatekeeper + notarization staple (fail-closed; team id pinned by variable)
@@ -436,7 +436,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-release       # protected env (admin-configured) — gates credential exposure
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Preflight — production environment contract (fail-closed; admin-captured evidence, never self-declared)
         run: node scripts/verify-production-environment-contract.cjs release-policy/env-contract.json
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
@@ -501,7 +501,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-release
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with: { name: stage-receipt, path: receipt }
       - name: Promote backend — schema migration Job pinned to the staged digest, then roll the Deployment to that exact digest
@@ -575,7 +575,7 @@ jobs:
     needs: [promote-publication, candidate-admission]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: What the public sees must be exactly what was admitted (feeds, payload digests, stable download names, backend health)
         env:
           CANDIDATE_VERSION: "${{ needs.candidate-admission.outputs.candidate_version }}"
@@ -598,7 +598,7 @@ jobs:
     needs: [public-verification, candidate-admission]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
         with: { pattern: '*-receipt*', path: receipts, merge-multiple: true }
       - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
