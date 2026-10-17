@@ -118,7 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with: { node-version-file: .nvmrc, cache: npm }
       - name: Assert exact checkout of the admitted commit
         env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
@@ -159,7 +159,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with: { node-version-file: .nvmrc, cache: npm }
       - name: Assert exact checkout of the admitted commit
         shell: bash
@@ -217,7 +217,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with: { node-version-file: .nvmrc, cache: npm }
       - name: Assert exact checkout of the admitted commit
         env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
@@ -324,7 +324,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with: { ref: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with: { node-version-file: .nvmrc, cache: npm }
       - name: Assert exact checkout of the admitted commit
         env: { CANDIDATE_SHA: '${{ needs.candidate-admission.outputs.candidate_sha }}' }
